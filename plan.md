@@ -69,8 +69,8 @@ These are cheap now and very expensive to retrofit later. Include them in instru
   1. ✅ **Stage setup** (code only, placeholder art; done 2026-10-01) — animated water with depth colour and shoreline foam, smooth coast, rock cliffs and sandy beaches, grid lines only in Placement Mode, soft ground shadows, y-sorted objects, placeholder trees. Lives in `scenes/village/` (`island.gdshader` paints the island; `island_map.gd` decides where land, beaches and trees are)
   2. **Photo studio + first real art** — Construction Office, Small House, Wheat Farm, Flour Mill, Bakery, trees, rocks. Buildings grow to 2×2/3×3 footprints (a game-rule change, with tests).
      - ✅ Studio built (`tools/sprite_studio.gd`, 2026-10-01): two photos per model (the building, then its shadow alone) combined into one transparent PNG with a baked shadow; also makes a contact sheet of a whole kit to choose from. All 5 buildings use **temporary** models from Kenney City Kit (Commercial) — a city kit, so the farm and mill are stand-in office blocks. **Expect these sprites to be swapped:** changing art = edit `tools/sprite_studio.json` and re-run the studio; no game code changes
-     - Raw model kits live in `Sprites kit/` but are **not committed** (big, re-downloadable, likely to change; sources noted in `tools/sprite_studio.json`); only the small generated sprites are. So Git LFS isn't needed yet — turn it on before the step-3 island picture (several MB)
-     - Still to do: farm/mill/bakery-style models (e.g. a Kenney farm or nature kit), trees and rocks as sprites, bigger footprints
+	 - Raw model kits live in `Sprites kit/` but are **not committed** (big, re-downloadable, likely to change; sources noted in `tools/sprite_studio.json`); only the small generated sprites are. So Git LFS isn't needed yet — turn it on before the step-3 island picture (several MB)
+	 - Still to do: farm/mill/bakery-style models (e.g. a Kenney farm or nature kit), trees and rocks as sprites, bigger footprints
   3. **The island itself** — 3D terrain built in the studio from the same coastline seed (flat plot in the middle, cliffs and beaches around it, mountain and forest at the back), baked once into a background picture cut into chunks for phones
   4. **Life** — spinning mill sails, bakery smoke, swaying trees, drifting cloud shadows, birds, boats
 - **Audio** — not yet planned (see Open Questions); placeholder SFX for collect/sell/build go a long way for game feel even in Phase 1.
@@ -175,7 +175,7 @@ _Rescaled 2026-10-01 for the ~1–2h offline window: batches ×4 and timers ×4,
 ## 6. UI/UX Screens
 
 **Phase 1 screens:**
-- **Village View** — main isometric view, tap/click a building to interact, pan/zoom camera
+- **Village View** — main isometric view, tap/click a building to interact, pan/zoom camera. Starts on the whole-island view (re-framed if the window changes size before the player moves); zooming out stops at that view and panning stops at the island's edges
 - **Build Menu + Placement Mode** — list of buildable buildings with cost, then place on the grid (needed in Phase 1a: the player's first action is building a Wheat Farm)
 - **Building Panel** — current recipe, timer progress, job queue, collect button, upgrade button (upgrade button from Phase 2)
 - **Recipe Select** — sub-panel of Building Panel (once 2+ recipes unlocked)
@@ -340,6 +340,9 @@ A hidden dev menu (key combo on PC, secret tap sequence on mobile) for testing t
 Both are functional, self-contained HTML/JS artifacts used to validate the trading-mechanic math and UX before porting logic into Godot.
 
 ## 15. Revision Log
+
+**2026-10-01 (camera framing):**
+- Starting view fits the whole island including cliffs, and re-frames when the window settles to its real size (the editor's stretched game panel, phones); zoom-out is capped at the whole-island view and panning stays within the island
 
 **2026-10-01 (visual step 2, first part — sprite studio):**
 - Built the sprite studio (`tools/sprite_studio.gd` + `tools/sprite_studio.json`); buildings now show studio pictures from `assets/buildings/`, falling back to the placeholder box if a building has none

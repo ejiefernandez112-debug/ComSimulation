@@ -39,11 +39,7 @@ func _ready() -> void:
 	_plant_trees()
 	_sync_buildings()
 	camera.bounds = island.world_bounds()
-	camera.position = Iso.to_world((Vector2(island.plot_size) - Vector2.ONE) / 2.0)
-	# Start zoomed out far enough to see the whole island.
-	var fit := get_viewport_rect().size / camera.bounds.size
-	var start_zoom := clampf(minf(fit.x, fit.y) * 0.95, VillageCamera.ZOOM_MIN, 1.0)
-	camera.zoom = Vector2(start_zoom, start_zoom)
+	camera.show_whole_island()
 	camera.hovered.connect(_on_hovered)
 	camera.tapped.connect(_on_tapped)
 	Economy.changed.connect(_on_economy_changed)

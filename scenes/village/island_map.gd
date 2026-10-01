@@ -12,6 +12,9 @@ const IslandShader = preload("res://scenes/village/island.gdshader")
 const SEA_PAD := 18
 ## Distance written on the data's outer edge, which the shader repeats across the open sea.
 const OPEN_SEA := 99.0
+## How high the land stands above the sea, in pixels: rocky cliffs and sandy beaches.
+const CLIFF_PX := 40.0
+const BEACH_PX := 7.0
 
 var plot_size := Vector2i.ZERO
 var _settings: Dictionary
@@ -40,12 +43,13 @@ func is_land(cell: Vector2i) -> bool:
 	return _land.has(cell)
 
 
-## Rectangle (in world pixels) around the whole island, used to stop the camera wandering off.
+## Rectangle (in world pixels) around everything you can see of the island: the outer tiles' edges
+## and the cliffs hanging below the front coast. The camera frames and stays within this.
 func world_bounds() -> Rect2:
 	var rect := Rect2(Iso.to_world(Vector2(_land.keys()[0])), Vector2.ZERO)
 	for cell: Vector2i in _land:
 		rect = rect.expand(Iso.to_world(Vector2(cell)))
-	return rect
+	return rect.grow_individual(Iso.TILE_W / 2.0, Iso.TILE_H / 2.0, Iso.TILE_W / 2.0, Iso.TILE_H / 2.0 + CLIFF_PX)
 
 
 ## Where PLACEHOLDER trees stand: patches of forest on the land around the plot, never on the plot,
@@ -213,6 +217,8 @@ func _setup_shader() -> void:
 	mat.set_shader_parameter("tile_px", Vector2(Iso.TILE_W, Iso.TILE_H))
 	mat.set_shader_parameter("shadow_px", Iso.SHADOW)
 	mat.set_shader_parameter("sun_dir", -Iso.to_cell_f(Iso.SHADOW).normalized())
+	mat.set_shader_parameter("cliff_px", CLIFF_PX)
+	mat.set_shader_parameter("beach_px", BEACH_PX)
 	material = mat
 
 

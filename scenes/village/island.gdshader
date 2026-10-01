@@ -12,8 +12,8 @@ uniform vec4 plot_rect;       // buildable plot: x, y, width, height in cells
 uniform vec2 tile_px = vec2(64.0, 32.0);
 uniform vec2 shadow_px = vec2(0.9, 0.11);  // where shadows fall, per px of height (Iso.SHADOW)
 uniform vec2 sun_dir = vec2(-0.86, 0.51);  // toward the sun, in grid directions (set from Iso.SHADOW)
-uniform float cliff_px = 40.0;  // how high rocky coast stands above the sea
-uniform float beach_px = 7.0;   // how high sandy coast stands above the sea
+uniform float cliff_px = 40.0;  // how high rocky coast stands above the sea (set from island_map.gd)
+uniform float beach_px = 7.0;   // how high sandy coast stands above the sea (set from island_map.gd)
 
 const vec3 DEEP = vec3(0.05, 0.22, 0.36);
 const vec3 MID = vec3(0.08, 0.38, 0.55);
