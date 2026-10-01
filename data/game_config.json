@@ -1,0 +1,6 @@
+{
+	"_note": "Global tuning values. PLACEHOLDERS (plan.md 5.6 / 5.8).",
+	"starting_cash": 750,
+	"population_growth_seconds": 10,
+	"starting_buildings": ["construction_office", "small_house"]
+}

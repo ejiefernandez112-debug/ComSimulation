@@ -1,0 +1,6 @@
+{
+	"_note": "Retail prices are PLACEHOLDERS. Must respect plan.md 5.4 ratios: 1 Flour = 1.25 Wheat, 1 Bread = 1.67 Wheat, plus margin.",
+	"wheat": { "name": "Wheat", "tier": 0, "retail_price": 2 },
+	"flour": { "name": "Flour", "tier": 1, "retail_price": 3 },
+	"bread": { "name": "Bread", "tier": 2, "retail_price": 5 }
+}

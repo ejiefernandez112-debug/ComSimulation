@@ -1,0 +1,36 @@
+{
+	"_note": "Timers in seconds. Build costs and starting values are PLACEHOLDERS (plan.md 5.4 / 5.8).",
+	"construction_office": {
+		"name": "Construction Office", "category": "civic",
+		"build_cost": 0, "buildable": false
+	},
+	"small_house": {
+		"name": "Small House", "category": "residential",
+		"build_cost": 150, "buildable": false,
+		"population_capacity": 10
+	},
+	"wheat_farm": {
+		"name": "Wheat Farm", "category": "extractor",
+		"build_cost": 100, "buildable": true,
+		"storage_cap": 100, "queue_size": 5,
+		"recipes": [
+			{ "id": "grow_wheat", "inputs": {}, "outputs": { "wheat": 10 }, "duration": 60 }
+		]
+	},
+	"flour_mill": {
+		"name": "Flour Mill", "category": "processor",
+		"build_cost": 250, "buildable": true,
+		"storage_cap": 80, "queue_size": 5,
+		"recipes": [
+			{ "id": "mill_flour", "inputs": { "wheat": 10 }, "outputs": { "flour": 8 }, "duration": 90 }
+		]
+	},
+	"bakery": {
+		"name": "Bakery", "category": "processor",
+		"build_cost": 400, "buildable": true,
+		"storage_cap": 60, "queue_size": 5,
+		"recipes": [
+			{ "id": "bake_bread", "inputs": { "flour": 8 }, "outputs": { "bread": 6 }, "duration": 150 }
+		]
+	}
+}

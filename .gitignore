@@ -1,0 +1,11 @@
+# Godot 4 cache / generated files
+.godot/
+*.import
+/android/
+/build/
+/export/
+
+# OS junk
+.DS_Store
+Thumbs.db
+desktop.ini
