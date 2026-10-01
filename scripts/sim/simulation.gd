@@ -124,7 +124,9 @@ static func _settle_population(state: Dictionary, data: Dictionary, now: float) 
 
 # --- Player actions -----------------------------------------------------------
 
-static func build(state: Dictionary, data: Dictionary, type_id: String, cell: Vector2i, now: float) -> Dictionary:
+## Whether a building could go on this cell right now (changes nothing).
+## The placement preview uses this too, so preview and real build always agree.
+static func can_build(state: Dictionary, data: Dictionary, type_id: String, cell: Vector2i) -> Dictionary:
 	var def: Dictionary = data.buildings.get(type_id, {})
 	if def.is_empty() or not def.get("buildable", false):
 		return _fail("This building can't be built.")
@@ -133,10 +135,16 @@ static func build(state: Dictionary, data: Dictionary, type_id: String, cell: Ve
 		return _fail("That spot is outside your land.")
 	if not building_at(state, cell).is_empty():
 		return _fail("That spot is taken.")
-	var cost := int(def.build_cost)
-	if state.profile.currency < cost:
+	if state.profile.currency < int(def.build_cost):
 		return _fail("Not enough money.")
-	state.profile.currency -= cost
+	return _ok({})
+
+
+static func build(state: Dictionary, data: Dictionary, type_id: String, cell: Vector2i, now: float) -> Dictionary:
+	var check := can_build(state, data, type_id, cell)
+	if not check.ok:
+		return check
+	state.profile.currency -= int(data.buildings[type_id].build_cost)
 	var b := _add_building(state, type_id, cell, now)
 	return _ok({"building_id": b.id})
 

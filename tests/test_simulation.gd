@@ -80,6 +80,18 @@ func test_build_rules() -> void:
 	_check(state.profile.currency == 0, "money never goes negative")
 
 
+func test_can_build_matches_build() -> void:
+	var data := _data()
+	var state := Sim.new_game(data, T0)
+	var before: int = state.buildings.size()
+	_check(Sim.can_build(state, data, "farm", Vector2i(3, 3)).ok, "can_build says yes on a free spot")
+	_check(state.buildings.size() == before and state.profile.currency == 500, "can_build changes nothing")
+	Sim.build(state, data, "farm", Vector2i(3, 3), T0)
+	var taken: Dictionary = Sim.can_build(state, data, "farm", Vector2i(3, 3))
+	_check(not taken.ok and taken.error == "That spot is taken.", "can_build explains why not")
+	_check(not Sim.can_build(state, data, "farm", Vector2i(-1, 0)).ok, "can_build rejects outside the land")
+
+
 func test_extractor_produces_on_its_own() -> void:
 	var s: Array = _setup("farm")
 	var state: Dictionary = s[0]

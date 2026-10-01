@@ -1,6 +1,6 @@
 extends Control
-## TEMPORARY test buttons (step 2), shown on top of the Village View until the real Build Menu
-## and Building Panel exist. It only calls Economy and displays results, like the real UI will.
+## TEMPORARY test buttons (step 2), shown on top of the Village View until the real Building
+## Panel and Sell screen exist. It only calls Economy and displays results, like the real UI will.
 
 var _status: Label
 var _readout: Label
@@ -18,8 +18,6 @@ func _ready() -> void:
 	buttons.custom_minimum_size.x = 1200
 	buttons.mouse_filter = MOUSE_FILTER_IGNORE
 	root.add_child(buttons)
-	for type_id in ["wheat_farm", "flour_mill", "bakery"]:
-		_add_button(buttons, "Build %s" % GameData.buildings[type_id].name, _build.bind(type_id))
 	_add_button(buttons, "Queue Flour job", _queue_all.bind("flour_mill", "mill_flour"))
 	_add_button(buttons, "Queue Bread job", _queue_all.bind("bakery", "bake_bread"))
 	_add_button(buttons, "Collect all", _collect_all)
@@ -55,16 +53,6 @@ func _add_button(parent: Node, text: String, action: Callable) -> void:
 
 func _show(result: Dictionary, success_text: String) -> void:
 	_status.text = success_text if result.ok else result.error
-
-
-func _build(type_id: String) -> void:
-	# Real placement comes in step 5; for now take the first free cell.
-	var grid: Array = Economy.state.plot.grid_size
-	for y in int(grid[1]):
-		for x in int(grid[0]):
-			if Economy.building_at(Vector2i(x, y)).is_empty():
-				_show(Economy.build(type_id, Vector2i(x, y)), "Built %s." % GameData.buildings[type_id].name)
-				return
 
 
 func _queue_all(type_id: String, recipe_id: String) -> void:

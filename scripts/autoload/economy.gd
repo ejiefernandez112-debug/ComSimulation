@@ -72,6 +72,11 @@ func warehouse_cap() -> int:
 	return Simulation.warehouse_cap(data())
 
 
+## Whether type_id could be built on cell right now ({"ok", "error"}); changes nothing.
+func can_build(type_id: String, cell: Vector2i) -> Dictionary:
+	return Simulation.can_build(state, data(), type_id, cell)
+
+
 func building_at(cell: Vector2i) -> Dictionary:
 	return Simulation.building_at(state, cell)
 
