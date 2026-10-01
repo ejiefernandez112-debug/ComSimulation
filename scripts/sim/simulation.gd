@@ -11,6 +11,8 @@ extends RefCounted
 ## "Settling" turns elapsed time into finished output in one calculation, never tick-by-tick.
 
 const SAVE_VERSION := 1
+## Used when game_config.json has no staffing_levels: share of max_workers per level.
+const DEFAULT_STAFFING_LEVELS := {"low": 0.5, "medium": 0.75, "high": 1.0}
 
 
 # --- New game -----------------------------------------------------------------
@@ -37,16 +39,20 @@ static func new_game(data: Dictionary, now: float) -> Dictionary:
 
 # --- Settling time ------------------------------------------------------------
 
-## Brings every building and the population up to `now`.
-## Returns everything produced, e.g. {"wheat": 30, "population": 2} (for the offline summary).
+## Brings every building, the population and wages up to `now`.
+## Returns everything produced, e.g. {"wheat": 30, "population": 2, "wages": 120} (for the
+## offline summary).
 ##
-## Buildings short of workers run slower (see staffing). Staffing only changes at a few moments
-## (a person moves in, a building finishes), so the time since the last settle is split at those
-## moments and each piece is worked out in one go at a fixed speed. That's a handful of steps
-## however long the player was away, never a minute-by-minute replay.
+## A building's speed depends on how many workers are actually working in it (see
+## building_speed), and wages are paid for each of them. That only changes at a few moments
+## (a person moves in, a building finishes, the player changes staffing, which settles first),
+## so the time since the last settle is split at those moments and each piece is worked out in
+## one go. That's a handful of steps however long the player was away, never a minute-by-minute
+## replay.
 static func settle(state: Dictionary, data: Dictionary, now: float) -> Dictionary:
 	var report := {}
 	var grown := 0
+	var wages := 0
 	var t := float(state.get("settled_at", state.get("last_saved_at", now)))
 	if now <= t:
 		# No time to add (or the clock moved backwards): only settle what can happen instantly,
@@ -58,30 +64,45 @@ static func settle(state: Dictionary, data: Dictionary, now: float) -> Dictionar
 		while t < now and steps < 100000:  # the cap is only a safety net
 			steps += 1
 			var next := _next_staffing_change(state, data, t, now)
-			var speed := staffing(state, data, t)
 			for b in state.buildings:
-				_add_to(report, _settle_span(state, b, data, t, next, speed))
+				_add_to(report, _settle_span(state, b, data, t, next, building_speed(state, data, b, t)))
+			wages += _pay_wages(state, _wages_per_hour(state, data, t) * (next - t) / 3600.0)
 			grown += _grow_population(state, data, next)
 			t = next
 		state["settled_at"] = now
 	if grown > 0:
 		report["population"] = grown
+	if wages > 0:
+		report["wages"] = wages
 	_record_history(state, data, now)
 	return report
 
 
-## Settles one building over [t0, t1] while it works at `speed` (1 = fully staffed). A building
+## Settles one building over [t0, t1] while it works at `speed` (1 = full speed). A building
 ## at 70% speed gets 70% of the time's work: it is settled up to t0 + 0.7 x (t1 - t0), then its
 ## current job's start is moved later by the other 30%, so at t1 it is exactly as far along as
 ## that work allows.
 static func _settle_span(state: Dictionary, b: Dictionary, data: Dictionary, t0: float, t1: float, speed: float) -> Dictionary:
-	var needs_workers := int(data.buildings.get(b.type, {}).get("workers", 0)) > 0
-	if not needs_workers or speed >= 1.0 or float(b.job_started_at) > t0:
+	if speed >= 1.0 or float(b.job_started_at) > t0:
 		return _settle_one(state, b, data, t1)  # full speed (or not started yet, e.g. being built)
 	var span := t1 - t0
 	var produced := _settle_one(state, b, data, t0 + speed * span)
 	b.job_started_at = float(b.job_started_at) + span * (1.0 - speed)
 	return produced
+
+
+## Takes wages out of cash. Cash may go below 0 (debt); sales pay it back. Part-coins are kept
+## in "wage_carry" until they add up, so many short settles cost exactly the same as one long one.
+static func _pay_wages(state: Dictionary, amount: float) -> int:
+	if amount <= 0.0:
+		return 0
+	var owed := float(state.get("wage_carry", 0.0)) + amount
+	var whole := floori(owed)
+	state["wage_carry"] = owed - whole
+	state.profile.currency -= whole
+	var spending: Dictionary = stats(state).spending
+	spending["wages"] = int(spending.get("wages", 0)) + whole
+	return whole
 
 
 ## The first moment after t (and before `until`) when staffing can change: a building finishing
@@ -249,6 +270,29 @@ static func move(state: Dictionary, building_id: String, cell: Vector2i) -> Dict
 	if not check.ok:
 		return check
 	find_building(state, building_id).position = [cell.x, cell.y]
+	return _ok()
+
+
+## Whether the building's staffing could be set to `level` ("low", "medium", "high"); changes nothing.
+static func can_set_staffing(state: Dictionary, data: Dictionary, building_id: String, level: String) -> Dictionary:
+	var b := find_building(state, building_id)
+	if b.is_empty():
+		return _fail("Building not found.")
+	if max_workers(data, b) <= 0:
+		return _fail("This building has no workers.")
+	if not data.config.get("staffing_levels", DEFAULT_STAFFING_LEVELS).has(level):
+		return _fail("Unknown staffing level.")
+	return _ok()
+
+
+## Choose how many workers the building employs: fewer = slower but cheaper wages.
+## Time before the change is worked out with the old staffing first.
+static func set_staffing(state: Dictionary, data: Dictionary, building_id: String, level: String, now: float) -> Dictionary:
+	var check := can_set_staffing(state, data, building_id, level)
+	if not check.ok:
+		return check
+	settle(state, data, now)
+	find_building(state, building_id)["staffing"] = level
 	return _ok()
 
 
@@ -502,12 +546,57 @@ static func job_progress(state: Dictionary, b: Dictionary, data: Dictionary, now
 	return clampf(worked / float(recipe.duration), 0.0, 1.0)
 
 
-## How fast a building works: 1.0 = full speed. Buildings that need workers share the people
-## there are (see staffing); others always work at full speed.
+## How fast a building works: workers actually working ÷ max_workers (6 of 8 = 0.75).
+## Buildings without workers (homes, the office) always work at full speed.
 static func building_speed(state: Dictionary, data: Dictionary, b: Dictionary, now: float) -> float:
-	if int(data.buildings.get(b.type, {}).get("workers", 0)) <= 0:
+	var most := max_workers(data, b)
+	if most <= 0:
 		return 1.0
-	return staffing(state, data, now)
+	return workers_working(state, data, b, now) / float(most)
+
+
+## The most workers this building can employ (at its level; level 1 for now).
+static func max_workers(data: Dictionary, b: Dictionary) -> int:
+	return int(data.buildings.get(b.type, {}).get("max_workers", 0))
+
+
+## The building's chosen staffing level: "low", "medium" or "high".
+static func staffing_level(data: Dictionary, b: Dictionary) -> String:
+	return str(b.get("staffing", data.config.get("default_staffing", "high")))
+
+
+## How many workers the building asks for at its staffing level (Low 4 / Medium 6 / High 8 of 8).
+static func workers_wanted(data: Dictionary, b: Dictionary) -> int:
+	var levels: Dictionary = data.config.get("staffing_levels", DEFAULT_STAFFING_LEVELS)
+	return roundi(max_workers(data, b) * float(levels.get(staffing_level(data, b), 1.0)))
+
+
+## How many people are actually working there: what it asks for, cut back evenly across all
+## buildings when there are fewer people than jobs. Can be a fraction (an average over the
+## town); 0 while it's still being built.
+static func workers_working(state: Dictionary, data: Dictionary, b: Dictionary, now: float) -> float:
+	if not is_built(b, now):
+		return 0.0
+	return workers_wanted(data, b) * staffing(state, data, now)
+
+
+## Wage per hour for one worker of this building's type (game_config.json worker_types).
+static func wage_per_worker(data: Dictionary, b: Dictionary) -> float:
+	var type: String = data.buildings.get(b.type, {}).get("worker_type", "low_skilled")
+	return float(data.config.get("worker_types", {}).get(type, {}).get("wage_per_hour", 0.0))
+
+
+## What the building's workers cost per hour right now.
+static func building_wages(state: Dictionary, data: Dictionary, b: Dictionary, now: float) -> float:
+	return workers_working(state, data, b, now) * wage_per_worker(data, b)
+
+
+## What all workers in town cost per hour right now.
+static func _wages_per_hour(state: Dictionary, data: Dictionary, now: float) -> float:
+	var total := 0.0
+	for b in state.buildings:
+		total += building_wages(state, data, b, now)
+	return total
 
 
 # --- Statistics ---------------------------------------------------------------
@@ -561,8 +650,8 @@ static func production_rates(state: Dictionary, data: Dictionary, now: float) ->
 
 
 ## Share of jobs that are filled, 0.0 to 1.0 (1.0 when there are enough people or no jobs).
-## Every building that needs workers runs at this speed: with 10 people and 14 jobs they all
-## work at 71% (plan.md §5.6: short-staffed buildings slow down rather than stop).
+## When short, every building gets this share of the workers it asks for: with 10 people and
+## 16 jobs each gets 63% (plan.md §5.6: short-staffed buildings slow down rather than stop).
 static func staffing(state: Dictionary, data: Dictionary, now: float) -> float:
 	var e := employment(state, data, now)
 	if e.jobs <= 0:
@@ -570,27 +659,28 @@ static func staffing(state: Dictionary, data: Dictionary, now: float) -> float:
 	return float(e.employed) / float(e.jobs)
 
 
-## Jobs come from finished buildings ("workers" in buildings.json); people fill them up to the
-## population. {"population", "jobs", "employed", "unemployed", "open_jobs"}
+## Jobs = workers asked for by finished buildings at their staffing levels; people fill them up
+## to the population. {"population", "jobs", "employed", "unemployed", "open_jobs"}
 static func employment(state: Dictionary, data: Dictionary, now: float) -> Dictionary:
 	var jobs := 0
 	for b in state.buildings:
 		if is_built(b, now):
-			jobs += int(data.buildings.get(b.type, {}).get("workers", 0))
+			jobs += workers_wanted(data, b)
 	var people := int(state.population.current)
 	var employed := mini(people, jobs)
 	return {"population": people, "jobs": jobs, "employed": employed, "unemployed": people - employed, "open_jobs": jobs - employed}
 
 
-## Money in and out over (up to) the last `window` seconds, from the history points:
+## Money in and out over at least the last `window` seconds (or since the first history point),
+## counted from the newest point at or before the window's start:
 ## {"income", "spending", "seconds" (how much time that really covers; 0 = no history yet)}.
+## Time away is a single history point, so after 4 hours away this covers those 4 hours.
 static func cash_flow(state: Dictionary, window: float, now: float) -> Dictionary:
 	var s := stats(state)
 	var from := {}
 	for point in s.history:
-		if float(point.t) >= now - window:
+		if float(point.t) <= now - window or from.is_empty():
 			from = point
-			break
 	if from.is_empty():
 		return {"income": 0, "spending": 0, "seconds": 0.0}
 	return {
@@ -627,7 +717,7 @@ static func _record_history(state: Dictionary, data: Dictionary, now: float) -> 
 static func _new_stats() -> Dictionary:
 	return {
 		"income": {"sales": 0, "demolish": 0},  # money in, by where it came from
-		"spending": {"construction": 0},  # money out, by what it went on
+		"spending": {"construction": 0, "wages": 0},  # money out, by what it went on
 		"sales_by_item": {},  # resource -> money earned selling it
 		"made": {},  # resource -> amount ever produced
 		"sold": {},  # resource -> amount ever sold

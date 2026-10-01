@@ -85,7 +85,7 @@ func _people_page() -> VBoxContainer:
 	work.add_child(_value("work_speed"))
 	var by_type := _section(page, "Jobs by building")
 	for type_id in GameData.buildings:
-		if int(GameData.buildings[type_id].get("workers", 0)) > 0:
+		if int(GameData.buildings[type_id].get("max_workers", 0)) > 0:
 			_value_row(by_type, GameData.buildings[type_id].name, "jobs_" + type_id)
 	var note := _body("When there are more jobs than people, every building that needs workers runs slower. Build houses so more people move in.")
 	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -112,6 +112,7 @@ func _cash_page() -> VBoxContainer:
 	_value_row(money_in, "Total", "in_total")
 	var money_out := _section(page, "All time: money out")
 	_value_row(money_out, "Construction", "out_construction")
+	_value_row(money_out, "Wages", "out_wages")
 	_value_row(money_out, "Total", "out_total")
 	return page
 
@@ -193,13 +194,15 @@ func _refresh_people() -> void:
 	else:
 		_show("work_speed", "Buildings work at %d%% speed: %d more worker%s needed" % [floori(speed * 100.0), e.open_jobs, "" if e.open_jobs == 1 else "s"], DOWN)
 	var counts := {}
+	var jobs := {}  # type -> jobs asked for at the chosen staffing levels
 	for building in Economy.state.buildings:
 		if Economy.is_built(building):
 			counts[building.type] = int(counts.get(building.type, 0)) + 1
+			jobs[building.type] = int(jobs.get(building.type, 0)) + int(Economy.workers(building).wanted)
 	for type_id in GameData.buildings:
 		if _values.has("jobs_" + type_id):
 			var n := int(counts.get(type_id, 0))
-			_show("jobs_" + type_id, "%d built · %d jobs" % [n, n * int(GameData.buildings[type_id].workers)])
+			_show("jobs_" + type_id, "%d built · %d jobs" % [n, int(jobs.get(type_id, 0))])
 
 
 func _refresh_cash() -> void:
@@ -207,7 +210,12 @@ func _refresh_cash() -> void:
 	_show("cash", UITheme.number(Economy.currency()))
 	var flow := Economy.cash_flow(3600.0)
 	var span := float(flow.seconds)
-	_values.flow_title.text = "Last hour" if span >= 3540.0 else ("Last %s" % LineChart._ago(span) if span >= 60.0 else "Last hour (collecting data…)")
+	if span < 60.0:
+		_values.flow_title.text = "Last hour (collecting data…)"
+	elif absf(span - 3600.0) <= 120.0:
+		_values.flow_title.text = "Last hour"
+	else:
+		_values.flow_title.text = "Last %s" % LineChart._ago(span)  # shorter at first; longer right after time away
 	_show("flow_in", ("+" if flow.income > 0 else "") + UITheme.number(flow.income), UP if flow.income > 0 else LineChart.INK)
 	_show("flow_out", ("-" if flow.spending > 0 else "") + UITheme.number(flow.spending), DOWN if flow.spending > 0 else LineChart.INK)
 	var net: int = flow.income - flow.spending
@@ -220,7 +228,8 @@ func _refresh_cash() -> void:
 	_show("in_demolish", UITheme.number(int(st.income.demolish)))
 	_show("in_total", UITheme.number(total_in + int(st.income.demolish)), UP)
 	_show("out_construction", UITheme.number(int(st.spending.construction)))
-	_show("out_total", UITheme.number(int(st.spending.construction)), DOWN)
+	_show("out_wages", UITheme.number(int(st.spending.get("wages", 0))))
+	_show("out_total", UITheme.number(int(st.spending.construction) + int(st.spending.get("wages", 0))), DOWN)
 
 
 ## Builds the chosen graph's lines from the history points (one every minute), plus a point for

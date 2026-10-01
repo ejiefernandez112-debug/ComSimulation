@@ -1,6 +1,6 @@
 {
-	"_note": "Retail prices are PLACEHOLDERS. Must respect plan.md 5.4 ratios: 1 Flour = 1.25 Wheat, 1 Bread = 1.67 Wheat, plus margin.",
+	"_note": "Retail prices are PLACEHOLDERS. Must respect plan.md 5.4 ratios (1 Flour = 1.25 Wheat, 1 Bread = 1.67 Wheat) plus a margin that covers wages: at High staffing each building pays 8 x 15 = 120/hour. Per building per minute at full speed: Farm 20 earned - 2 wages; Mill 21.3 flour - 13.3 wheat - 2 wages = +6; Bakery 19.2 bread - 12.8 flour - 2 wages = +4.4.",
 	"wheat": { "name": "Wheat", "tier": 0, "retail_price": 2 },
-	"flour": { "name": "Flour", "tier": 1, "retail_price": 3 },
-	"bread": { "name": "Bread", "tier": 2, "retail_price": 5 }
+	"flour": { "name": "Flour", "tier": 1, "retail_price": 4 },
+	"bread": { "name": "Bread", "tier": 2, "retail_price": 8 }
 }

@@ -11,6 +11,14 @@
 	"_stats": "Statistics graphs: a point is recorded every stats_sample_seconds while playing (one point covers time spent away), keeping the latest stats_history_size points (360 x 60s = 6 hours).",
 	"stats_sample_seconds": 60,
 	"stats_history_size": 360,
+	"_workers": "staffing_levels = share of a building's max_workers the player can choose (8 at level 1 -> Low 4, Medium 6, High 8). New buildings start at default_staffing. worker_types: wage_per_hour is paid for every worker actually working, including while the game is closed; cash may go below 0 (debt). available = false types can't be hired yet (high-skilled = high school graduates, professional = college graduates; they arrive with schools). All PLACEHOLDERS.",
+	"staffing_levels": { "low": 0.5, "medium": 0.75, "high": 1.0 },
+	"default_staffing": "high",
+	"worker_types": {
+		"low_skilled": { "name": "Low-skilled", "wage_per_hour": 15, "available": true },
+		"high_skilled": { "name": "High-skilled", "wage_per_hour": 30, "available": false },
+		"professional": { "name": "Professional", "wage_per_hour": 60, "available": false }
+	},
 	"island": {
 		"_comment": "Land around the buildable plot. margin = tiles of non-buildable land around the plot; coast_roughness / coast_frequency = how wobbly the coastline is; seed picks one fixed coastline (change it for a different shape); beaches = rough share of the coast that is sand instead of rock cliff (0-1); tree_density = how thick the placeholder forests are (0-1).",
 		"margin": 6,

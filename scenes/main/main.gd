@@ -37,6 +37,7 @@ func _ready() -> void:
 	building_panel.cancel_requested.connect(_ask_cancel)
 	building_panel.move_requested.connect(_start_move)
 	building_panel.demolish_requested.connect(_ask_demolish)
+	building_panel.staffing_requested.connect(_set_staffing)
 	menu_bar.tile_pressed.connect(_on_menu_tile)
 	menu_bar.coming_soon.connect(func(title): hud.toast("%s is coming soon" % title))
 	# The bottom menu steps aside for anything else that uses the bottom of the screen.
@@ -205,8 +206,17 @@ func _place() -> void:
 		build_menu.end_placement()
 		hud.toast("%s built!" % GameData.buildings[type_id].name)
 		# Heads-up: once finished, its jobs won't all be filled even when the houses are full.
-		var workers := int(GameData.buildings[type_id].get("workers", 0))
+		var levels: Dictionary = GameData.config.get("staffing_levels", {})
+		var share := float(levels.get(GameData.config.get("default_staffing", "high"), 1.0))
+		var workers := roundi(int(GameData.buildings[type_id].get("max_workers", 0)) * share)
 		if workers > 0 and Economy.employment().jobs + workers > Economy.population_capacity():
 			hud.toast("Not enough people for all the jobs: work will slow down. Build a house!", true)
 	else:
 		build_menu.show_hint(result.error)  # stay in Placement Mode so the player can try another tile
+
+
+## Low / Medium / High staffing in the building window: fewer workers = slower but cheaper.
+func _set_staffing(building_id: String, level: String) -> void:
+	var result := Economy.set_staffing(building_id, level)
+	if not result.ok:
+		hud.toast(result.error, true)

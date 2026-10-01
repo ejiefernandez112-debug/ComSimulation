@@ -33,11 +33,14 @@ static func amounts(items: Dictionary) -> String:
 	return " + ".join(parts)
 
 
-## Short of workers: say how slow it is and why (shown as a warning).
+## Below full speed: say how slow and why. Too few people in town is a warning; a lower
+## staffing level the player chose is not.
 static func _with_speed(text: String, progress: float, speed: float) -> Dictionary:
-	if speed >= 1.0:
+	if speed >= 0.999:
 		return {"text": text, "progress": progress, "good": true}
-	return {"text": "%s · %d%% speed, short of workers" % [text, floori(speed * 100.0)], "progress": progress, "good": false}
+	if Economy.staffing() < 1.0:
+		return {"text": "%s · %d%% speed, short of workers" % [text, floori(speed * 100.0 + 0.001)], "progress": progress, "good": false}
+	return {"text": "%s · %d%% speed" % [text, floori(speed * 100.0 + 0.001)], "progress": progress, "good": true}
 
 
 static func _no_workers(progress: float) -> Dictionary:

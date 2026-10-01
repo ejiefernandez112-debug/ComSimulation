@@ -62,6 +62,11 @@ func demolish(building_id: String) -> Dictionary:
 	return _after(Simulation.demolish(state, data(), building_id, TimeService.now()))
 
 
+## level: "low", "medium" or "high" (see staffing_levels in game_config.json).
+func set_staffing(building_id: String, level: String) -> Dictionary:
+	return _after(Simulation.set_staffing(state, data(), building_id, level, TimeService.now()))
+
+
 func sell(resource_id: String, qty: int) -> Dictionary:
 	return _after(Simulation.sell(state, data(), resource_id, qty))
 
@@ -136,9 +141,28 @@ func building_speed(building: Dictionary) -> float:
 	return Simulation.building_speed(state, data(), building, TimeService.now())
 
 
-## Share of jobs filled (0.0 to 1.0): the speed of every building that needs workers.
+## Share of jobs filled in town (0.0 to 1.0). Below 1, every building gets that share of the
+## workers it asks for.
 func staffing() -> float:
 	return Simulation.staffing(state, data(), TimeService.now())
+
+
+## A building's workers: {"level" (low/medium/high), "wanted" (asked for at that level),
+## "working" (actually working, can be a fraction when short), "max", "wage_each" (per hour),
+## "wages" (per hour now), "type" (worker type name)}.
+func workers(building: Dictionary) -> Dictionary:
+	var now := TimeService.now()
+	var d := data()
+	var type_id: String = d.buildings.get(building.type, {}).get("worker_type", "low_skilled")
+	return {
+		"level": Simulation.staffing_level(d, building),
+		"wanted": Simulation.workers_wanted(d, building),
+		"working": Simulation.workers_working(state, d, building, now),
+		"max": Simulation.max_workers(d, building),
+		"wage_each": Simulation.wage_per_worker(d, building),
+		"wages": Simulation.building_wages(state, d, building, now),
+		"type": str(d.config.get("worker_types", {}).get(type_id, {}).get("name", type_id)),
+	}
 
 
 ## False while the building is still under construction.

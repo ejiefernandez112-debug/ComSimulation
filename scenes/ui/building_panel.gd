@@ -11,6 +11,7 @@ signal fill_requested(building_id: String)
 signal cancel_requested(building_id: String, index: int)
 signal move_requested(building_id: String)
 signal demolish_requested(building_id: String)
+signal staffing_requested(building_id: String, level: String)
 
 var building_id := ""
 
@@ -23,6 +24,10 @@ var _storage_bar: ProgressBar
 var _collect: Button
 var _produce: Button
 var _fill: Button
+var _staff_buttons := {}  # staffing level -> its button
+var _workers_text: Label
+var _wages_text: Label
+var _rate_text: Label
 
 
 func _ready() -> void:
@@ -48,6 +53,8 @@ func _build_rows(b: Dictionary, def: Dictionary) -> void:
 	_collect = null
 	_produce = null
 	_fill = null
+	_staff_buttons.clear()
+	_workers_text = null
 	var about := _body(def.get("description", ""))
 	about.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	about.custom_minimum_size.x = WIDTH - 70  # wrapped text needs a width, or it measures one word per line
@@ -100,6 +107,9 @@ func _build_rows(b: Dictionary, def: Dictionary) -> void:
 		for i in int(def.queue_size):
 			slots.add_child(_queue_slot(i, BuildingInfo.output_of(r)))
 
+	if int(def.get("max_workers", 0)) > 0:
+		_build_workers(def)
+
 	if def.has("storage_cap"):
 		var store := _section("Storage")
 		var row := HBoxContainer.new()
@@ -148,6 +158,62 @@ func _build_rows(b: Dictionary, def: Dictionary) -> void:
 		tools.add_child(_small_button("RedButton", "Demolish", "demolish", func(): demolish_requested.emit(building_id)))
 
 
+## Workers: the staffing choice (Low / Medium / High, with how many workers each means), who's
+## working, what they cost, and how fast the building produces with them.
+func _build_workers(def: Dictionary) -> void:
+	var box := _section("Workers")
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 6)
+	box.add_child(row)
+	var levels: Dictionary = GameData.config.get("staffing_levels", {})
+	for level in levels:
+		var button := Button.new()
+		button.text = "%s  %d" % [level.capitalize(), roundi(int(def.max_workers) * float(levels[level]))]
+		button.tooltip_text = "Employ %d of %d workers. Fewer workers = slower, but lower wages" % [roundi(int(def.max_workers) * float(levels[level])), int(def.max_workers)]
+		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		button.custom_minimum_size.y = 44
+		button.add_theme_font_size_override("font_size", 17)
+		button.pressed.connect(func(): staffing_requested.emit(building_id, level))
+		row.add_child(button)
+		_staff_buttons[level] = button
+	_workers_text = _wrapped("")
+	box.add_child(_workers_text)
+	_wages_text = _wrapped("")
+	box.add_child(_wages_text)
+	_rate_text = _wrapped("")
+	box.add_child(_rate_text)
+
+
+func _refresh_workers(b: Dictionary, def: Dictionary) -> void:
+	var w := Economy.workers(b)
+	for level in _staff_buttons:
+		_staff_buttons[level].theme_type_variation = "YellowButton" if level == w.level else "BlueButton"
+	var working := _count(w.working)
+	if not Economy.is_built(b):
+		_workers_text.text = "Workers start when it's built: %d %s asked for (max %d)" % [w.wanted, w.type.to_lower(), w.max]
+	elif w.working < w.wanted - 0.01:
+		_workers_text.text = "%s of %d %s working (max %d) · short of people: build houses" % [working, w.wanted, w.type.to_lower(), w.max]
+	else:
+		_workers_text.text = "%s %s working (max %d)" % [working, w.type.to_lower(), w.max]
+	_wages_text.text = "Wages: %s x %s = %s / hour" % [working, UITheme.number(roundi(w.wage_each)), UITheme.number(roundi(w.wages))]
+	var r := BuildingInfo.recipe(b.type)
+	var speed := Economy.building_speed(b)
+	var producing: bool = Economy.is_built(b) and not b.blocked and (def.category == "extractor" or not b.queue.is_empty())
+	if def.category == "extractor":
+		var per_batch := 0
+		for res in r.outputs:
+			per_batch += int(r.outputs[res])
+		producing = producing and int(def.storage_cap) - BuildingInfo.stored(b) >= per_batch
+	var per_minute := 0.0
+	for res in r.outputs:
+		per_minute += int(r.outputs[res]) * 60.0 / float(r.duration) * speed
+	var item_name := BuildingInfo.resource_name(BuildingInfo.output_of(r))
+	if producing:
+		_rate_text.text = "Production: %.1f %s / min (%d%% speed)" % [per_minute, item_name, floori(speed * 100.0 + 0.001)]
+	else:
+		_rate_text.text = "Production: 0 %s / min right now (%.1f / min when working)" % [item_name, per_minute]
+
+
 func _small_button(variation: String, text: String, icon_name: String, action: Callable) -> Button:
 	var button := Button.new()
 	button.theme_type_variation = variation
@@ -191,6 +257,8 @@ func _refresh() -> void:
 			_slots[i].tooltip_text = "Being made now. Cancel to get %d%% of the ingredients back" % _percent("cancel_refund_in_progress")
 		else:
 			_slots[i].tooltip_text = "Waiting. Cancel to get %d%% of the ingredients back" % _percent("cancel_refund_waiting")
+	if _workers_text:
+		_refresh_workers(b, def)
 	if _storage_bar:
 		var stored := BuildingInfo.stored(b)
 		_storage_bar.value = 100.0 * stored / float(def.storage_cap)
@@ -281,3 +349,16 @@ func _body(text: String) -> Label:
 	label.text = text
 	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	return label
+
+
+## Body text that wraps onto more lines instead of making the window wider.
+func _wrapped(text: String) -> Label:
+	var label := _body(text)
+	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	label.custom_minimum_size.x = WIDTH - 70
+	return label
+
+
+## "6" for whole workers, "4.3" when short of people (an average across the town's buildings).
+func _count(workers: float) -> String:
+	return str(roundi(workers)) if absf(workers - roundf(workers)) < 0.05 else "%.1f" % workers

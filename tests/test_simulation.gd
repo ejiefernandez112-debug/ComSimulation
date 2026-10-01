@@ -46,9 +46,9 @@ func _data() -> Dictionary:
 				"recipes": [{"id": "mill", "inputs": {"wheat": 10}, "outputs": {"flour": 8}, "duration": 90}]},
 			"cabin": {"category": "residential", "build_cost": 0, "buildable": true, "build_time": 200, "population_capacity": 5},
 			# Buildings that need workers (2 and 3 jobs). They slow down when there aren't enough people.
-			"crew_farm": {"category": "extractor", "build_cost": 0, "buildable": true, "workers": 2, "storage_cap": 1000,
+			"crew_farm": {"category": "extractor", "build_cost": 0, "buildable": true, "max_workers": 2, "storage_cap": 1000,
 				"recipes": [{"id": "grow", "inputs": {}, "outputs": {"wheat": 10}, "duration": 60}]},
-			"crew_mill": {"category": "processor", "build_cost": 0, "buildable": true, "workers": 3, "storage_cap": 100, "queue_size": 8,
+			"crew_mill": {"category": "processor", "build_cost": 0, "buildable": true, "max_workers": 3, "storage_cap": 100, "queue_size": 8,
 				"recipes": [{"id": "mill", "inputs": {"wheat": 10}, "outputs": {"flour": 8}, "duration": 90}]},
 		},
 		"config": {"starting_cash": 500, "population_growth_seconds": 10, "warehouse_cap": 1000,
@@ -486,6 +486,98 @@ func test_away_matches_playing() -> void:
 	_check(made > 0 and made < 4 * 10 * 3000 / 60, "short-staffed early on, so less wheat than 4 full-speed farms")
 
 
+## A test town with one 8-worker farm, enough people, and wages of 36/hour per worker
+## (so 8 workers cost 288/hour = 0.08 per second). Returns [state, data, farm].
+func _wage_town() -> Array:
+	var data := _data()
+	data.config["population_growth_seconds"] = 0  # people only change when the test says so
+	data.config["staffing_levels"] = {"low": 0.5, "medium": 0.75, "high": 1.0}
+	data.config["worker_types"] = {"low_skilled": {"name": "Low-skilled", "wage_per_hour": 36}}
+	data.buildings["big_farm"] = {"category": "extractor", "build_cost": 0, "buildable": true,
+		"max_workers": 8, "worker_type": "low_skilled", "storage_cap": 1000,
+		"recipes": [{"id": "grow", "inputs": {}, "outputs": {"wheat": 10}, "duration": 60}]}
+	var state := Sim.new_game(data, T0)
+	state.population.current = 10
+	var farm := Sim.find_building(state, Sim.build(state, data, "big_farm", Vector2i(3, 3), T0).building_id)
+	return [state, data, farm]
+
+
+func test_staffing_levels() -> void:
+	var s := _wage_town()
+	var state: Dictionary = s[0]
+	var data: Dictionary = s[1]
+	var farm: Dictionary = s[2]
+	_check(Sim.workers_wanted(data, farm) == 8 and is_equal_approx(Sim.building_speed(state, data, farm, T0), 1.0), "new buildings start at High: 8 of 8 workers, full speed")
+	_check(Sim.set_staffing(state, data, farm.id, "low", T0).ok, "staffing can be changed")
+	_check(Sim.workers_wanted(data, farm) == 4 and is_equal_approx(Sim.building_speed(state, data, farm, T0), 0.5), "Low: 4 workers, half speed")
+	Sim.settle(state, data, T0 + 119)
+	_check(farm.storage.is_empty(), "at Low a 60s batch isn't done after 119s")
+	Sim.settle(state, data, T0 + 120)
+	_check(int(farm.storage.get("wheat", 0)) == 10, "at Low a 60s batch takes 120s")
+	Sim.set_staffing(state, data, farm.id, "medium", T0 + 120)
+	_check(Sim.workers_wanted(data, farm) == 6 and is_equal_approx(Sim.building_speed(state, data, farm, T0 + 120), 0.75), "Medium: 6 workers, 75% speed")
+	_check(Sim.employment(state, data, T0 + 120).jobs == 6, "jobs follow the staffing level")
+	state.population.current = 3
+	_check(is_equal_approx(Sim.workers_working(state, data, farm, T0 + 120), 3.0) and is_equal_approx(Sim.building_speed(state, data, farm, T0 + 120), 3.0 / 8.0), "only 3 people for 6 jobs: 3 working, 3/8 speed")
+	_check(not Sim.set_staffing(state, data, farm.id, "huge", T0).ok, "unknown staffing levels are refused")
+	_check(not Sim.set_staffing(state, data, state.buildings[1].id, "low", T0).ok, "a house has no workers to set")
+
+
+func test_wages_and_debt() -> void:
+	var s := _wage_town()
+	var state: Dictionary = s[0]
+	var data: Dictionary = s[1]
+	var farm: Dictionary = s[2]
+	state.profile.currency = 50
+	var report := Sim.settle(state, data, T0 + 1000)  # 8 workers x 36/h for 1000 s = 80
+	_check(state.profile.currency == -30, "wages are paid over time and cash can go below 0 (debt)")
+	_check(int(report.get("wages", 0)) == 80 and int(Sim.stats(state).spending.wages) == 80, "wages show in the report and the statistics")
+	_check(not Sim.build(state, data, "farm", Vector2i(5, 5), T0 + 1000).ok, "can't build while in debt")
+	Sim.set_staffing(state, data, farm.id, "low", T0 + 1000)
+	Sim.settle(state, data, T0 + 2000)  # 4 workers x 36/h for 1000 s = 40
+	_check(state.profile.currency == -70, "Low staffing halves the wages")
+	state.population.current = 0
+	Sim.settle(state, data, T0 + 3000)
+	_check(state.profile.currency == -70, "nobody working, no wages")
+
+	var t := _wage_town()
+	var steps: Dictionary = t[0]
+	var at := T0
+	while at < T0 + 1000:
+		at += 0.7
+		Sim.settle(steps, data, at)
+	_check(int(Sim.stats(steps).spending.wages) == 80, "wages in many tiny steps add up to the same 80 (part-coins carried over)")
+
+	var u := _wage_town()
+	var building: Dictionary = u[0]
+	building.profile.currency = 100
+	Sim.build(building, data, "slow_farm", Vector2i(6, 6), T0)  # no workers needed
+	data.buildings.slow_farm["max_workers"] = 8
+	Sim.find_building(building, building.buildings[-1].id)["built_at"] = T0 + 10_000.0
+	Sim.set_staffing(building, data, u[2].id, "low", T0)  # the big farm: 4 workers
+	Sim.settle(building, data, T0 + 1000)
+	_check(int(Sim.stats(building).spending.wages) == 40, "a building under construction pays no wages")
+
+
+## The real data: worker types exist with wages, and staffing levels give whole workers.
+func test_real_worker_data() -> void:
+	var buildings := GameDataScript.load_json("res://data/buildings.json")
+	var config := GameDataScript.load_json("res://data/game_config.json")
+	var types: Dictionary = config.get("worker_types", {})
+	_check(config.get("staffing_levels", {}).has(config.get("default_staffing", "")), "default staffing is one of the levels")
+	for type_id in buildings:
+		var def: Dictionary = buildings[type_id]
+		var most := int(def.get("max_workers", 0))
+		if most <= 0:
+			continue
+		var kind: String = def.get("worker_type", "")
+		_check(types.has(kind) and float(types[kind].get("wage_per_hour", -1)) >= 0, "%s's worker type '%s' exists with a wage" % [type_id, kind])
+		_check(types.get(kind, {}).get("available", false), "%s uses a worker type that can be hired" % type_id)
+		for level in config.staffing_levels:
+			var wanted: float = most * float(config.staffing_levels[level])
+			_check(is_equal_approx(wanted, roundf(wanted)), "%s at %s staffing is a whole number of workers" % [type_id, level])
+
+
 func test_history_and_cash_flow() -> void:
 	var data := _data()
 	data.config["stats_sample_seconds"] = 60
@@ -500,7 +592,7 @@ func test_history_and_cash_flow() -> void:
 	Sim.settle(state, data, T0 + 100_000)
 	_check(Sim.stats(state).history.size() == 3, "time away is one point, not one per minute")
 	var flow := Sim.cash_flow(state, 3600, T0 + 100_000)
-	_check(flow.spending == 0 and flow.seconds == 0.0, "nothing spent in the last hour (only the newest point is that recent)")
+	_check(flow.spending == 0 and is_equal_approx(flow.seconds, 99_940.0), "\"last hour\" stretches back over the time away (one point), and the farm was bought before that")
 	flow = Sim.cash_flow(state, 200_000, T0 + 100_000)
 	_check(flow.spending == 100 and is_equal_approx(flow.seconds, 100_000.0), "the whole history covers the farm purchase")
 	Sim.settle(state, data, T0 + 99_000)

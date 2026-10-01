@@ -7,7 +7,7 @@ extends Control
 const ROW_WIDTH := 236.0
 
 var _cash: Label
-var _shown_cash := -1.0  # what the cash label shows; it counts up/down to the real amount
+var _shown_cash := NAN  # what the cash label shows (NAN = nothing yet); it counts up/down to the real amount
 var _cash_tween: Tween
 var _population: Label
 var _population_bar: ProgressBar
@@ -136,7 +136,7 @@ func _icon_rect(texture: Texture2D, side: float) -> TextureRect:
 
 func _refresh() -> void:
 	var cash := Economy.currency()
-	if _shown_cash < 0.0:
+	if is_nan(_shown_cash):
 		_shown_cash = cash
 	if roundi(_shown_cash) != cash:
 		if _cash_tween:
@@ -161,3 +161,5 @@ func _refresh() -> void:
 func _show_cash(value: float) -> void:
 	_shown_cash = value
 	_cash.text = UITheme.number(roundi(value))
+	# In debt (wages can take cash below 0): show it in red.
+	_cash.add_theme_color_override("font_color", UITheme.BAD if value < 0.0 else UITheme.TEXT)
