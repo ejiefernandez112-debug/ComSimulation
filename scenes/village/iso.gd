@@ -6,6 +6,10 @@ class_name Iso
 const TILE_W := 64.0
 const TILE_H := 32.0
 
+## Where shadows fall on screen, per pixel of an object's height. The sun shines from the upper
+## left (plan.md §4 look rules); the island shader and every object use this, so all shadows agree.
+const SHADOW := Vector2(0.9, 0.11)
+
 
 ## Centre of a cell on screen. Accepts fractions too (e.g. -0.5 gives a cell's corner).
 static func to_world(cell: Vector2) -> Vector2:
@@ -14,14 +18,22 @@ static func to_world(cell: Vector2) -> Vector2:
 
 ## Which cell a screen point falls in.
 static func to_cell(world: Vector2) -> Vector2i:
-	var fx := (world.x / (TILE_W / 2.0) + world.y / (TILE_H / 2.0)) / 2.0
-	var fy := (world.y / (TILE_H / 2.0) - world.x / (TILE_W / 2.0)) / 2.0
-	return Vector2i(roundi(fx), roundi(fy))
+	return Vector2i(to_cell_f(world).round())
+
+
+## Like to_cell, but keeps the fraction (where inside the cell the point is).
+static func to_cell_f(world: Vector2) -> Vector2:
+	return Vector2(world.x / TILE_W + world.y / TILE_H, world.y / TILE_H - world.x / TILE_W)
 
 
 ## The 4 corners of a cell's diamond: top, right, bottom, left.
 static func diamond(cell: Vector2i, lift := 0.0) -> PackedVector2Array:
-	var c := to_world(Vector2(cell)) - Vector2(0, lift)
+	return diamond_at(to_world(Vector2(cell)), lift)
+
+
+## The same diamond around any screen point (e.g. a building's position), raised by `lift` pixels.
+static func diamond_at(center: Vector2, lift := 0.0) -> PackedVector2Array:
+	var c := center - Vector2(0, lift)
 	return PackedVector2Array([
 		c + Vector2(0, -TILE_H / 2.0),
 		c + Vector2(TILE_W / 2.0, 0),

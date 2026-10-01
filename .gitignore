@@ -9,3 +9,8 @@
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# Raw downloaded 3D model kits: big, free to re-download, likely to be swapped.
+# Only the sprites made from them (assets/buildings/) are committed. Keep each kit's .gdignore.
+/Sprites kit/**
+!/Sprites kit/.gdignore

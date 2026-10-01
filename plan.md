@@ -54,10 +54,25 @@ These are cheap now and very expensive to retrofit later. Include them in instru
 
 - **Style:** 2D isometric sprite art styled to look 3D (illusion of 3D, not true rotatable 3D)
 - **Camera:** Fixed-angle, Clash-of-Clans-style top-down village view — zoom/pan only, no rotation
-- **Pipeline — not yet chosen:**
-  1. **3D-model-to-sprite:** Blender + TexturePacker — most authentic to CoC's actual pipeline, steeper learning curve
-  2. **Hand-drawn 2D isometric:** Aseprite/Krita + DragonBones + TexturePacker — faster start, flatter look unless skilled at shading
-- **Current recommendation:** start with hand-drawn/placeholder art for Phase 1; Blender as a later polish-phase skill; commissioning an artist later also valid.
+- **Target look:** `ChatGPT Image Sep 30, 2026, 07_51_57 PM.png` (repo root) — lush island, rock cliffs, beaches, mountain, dense trees. A mood reference only, never game art: AI images can't keep one camera angle, light direction and scale across many pieces, so placed side by side they look like a collage.
+- **Pipeline — decided 2026-10-01: 3D models "photographed" into 2D sprites** (CoC's approach)
+  - A small Godot "photo studio" tool scene (built and run by Claude Code, never shipped) places each 3D model under the game's exact camera angle and the same sun, and saves a PNG with its shadow. The game itself stays 2D — fast on low-end Android and Web.
+  - Start with free CC0 low-poly model libraries (Kenney, Quaternius, KayKit); upgrade to paid or commissioned models later by re-running the studio. Blender is not required.
+  - Rejected: AI-generated images as game art (see above); a truly 3D game (costs phone battery/performance, and the Compatibility renderer's lighting is simpler than a pre-rendered picture).
+- **Look rules (every asset follows these):**
+  - One sun, from the upper left of the screen; shadows fall to the right (`Iso.SHADOW` in code)
+  - The buildable plot is flat; height (cliffs, mountain) lives in the scenery around it
+  - Tall scenery goes at the back (top of the screen) so it never hides buildings
+  - Fixed scenery becomes one baked background picture; anything the player can change (buildings, clearable trees, roads) is a separate sprite on top
+  - Things lower on screen are drawn in front of things higher up (y-sorting)
+- **Visual roadmap:**
+  1. ✅ **Stage setup** (code only, placeholder art; done 2026-10-01) — animated water with depth colour and shoreline foam, smooth coast, rock cliffs and sandy beaches, grid lines only in Placement Mode, soft ground shadows, y-sorted objects, placeholder trees. Lives in `scenes/village/` (`island.gdshader` paints the island; `island_map.gd` decides where land, beaches and trees are)
+  2. **Photo studio + first real art** — Construction Office, Small House, Wheat Farm, Flour Mill, Bakery, trees, rocks. Buildings grow to 2×2/3×3 footprints (a game-rule change, with tests).
+     - ✅ Studio built (`tools/sprite_studio.gd`, 2026-10-01): two photos per model (the building, then its shadow alone) combined into one transparent PNG with a baked shadow; also makes a contact sheet of a whole kit to choose from. All 5 buildings use **temporary** models from Kenney City Kit (Commercial) — a city kit, so the farm and mill are stand-in office blocks. **Expect these sprites to be swapped:** changing art = edit `tools/sprite_studio.json` and re-run the studio; no game code changes
+     - Raw model kits live in `Sprites kit/` but are **not committed** (big, re-downloadable, likely to change; sources noted in `tools/sprite_studio.json`); only the small generated sprites are. So Git LFS isn't needed yet — turn it on before the step-3 island picture (several MB)
+     - Still to do: farm/mill/bakery-style models (e.g. a Kenney farm or nature kit), trees and rocks as sprites, bigger footprints
+  3. **The island itself** — 3D terrain built in the studio from the same coastline seed (flat plot in the middle, cliffs and beaches around it, mountain and forest at the back), baked once into a background picture cut into chunks for phones
+  4. **Life** — spinning mill sails, bakery smoke, swaying trees, drifting cloud shadows, birds, boats
 - **Audio** — not yet planned (see Open Questions); placeholder SFX for collect/sell/build go a long way for game feel even in Phase 1.
 
 ## 5. Game Mechanics
@@ -234,6 +249,7 @@ PlayerSave
 - **Limit active per-frame logic** — only actively-producing buildings need per-frame updates; idle/finished ones don't
 - **Offline/idle catch-up must be a one-time math calculation, not a simulated tick-by-tick replay** — calculate completed jobs via elapsed time ÷ timer duration, never simulate every second that passed (would visibly freeze the game on reopen after a long absence)
 - **Test on a real low-to-mid-range Android device early**, not just in-editor or on PC — catch problems in Phase 1 (3-4 buildings) rather than Phase 3 (full village)
+- **Watch the island shader** — `scenes/village/island.gdshader` runs for every screen pixel every frame (the water animates). It is kept cheap (detail work only near the coast), but check its frame cost in that first real-device test; once the island becomes a baked picture (Section 4, visual step 3) only the water part remains
 
 ### 9.2 Security — Two Separate Concerns
 **App cloning/piracy** (someone repackages/redistributes the built app):
@@ -273,7 +289,7 @@ A hidden dev menu (key combo on PC, secret tap sequence on mobile) for testing t
 
 **Later phases:**
 - [ ] Target platforms — is iOS in scope?
-- [ ] Art pipeline final choice (Blender-to-sprite vs. hand-drawn vs. commissioned artist)
+- [x] Art pipeline → **3D models rendered into 2D sprites by a Godot "photo studio" tool; free CC0 low-poly models first, upgrade later** (decided 2026-10-01, see Section 4)
 - [ ] Audio/music plan (sources, licensing, or commissioned)
 - [ ] Localization — which languages, and from which phase
 - [ ] Firebase vs. Nakama — not needed until Phase 4
@@ -324,6 +340,16 @@ A hidden dev menu (key combo on PC, secret tap sequence on mobile) for testing t
 Both are functional, self-contained HTML/JS artifacts used to validate the trading-mechanic math and UX before porting logic into Godot.
 
 ## 15. Revision Log
+
+**2026-10-01 (visual step 2, first part — sprite studio):**
+- Built the sprite studio (`tools/sprite_studio.gd` + `tools/sprite_studio.json`); buildings now show studio pictures from `assets/buildings/`, falling back to the placeholder box if a building has none
+- Temporary building art from Kenney City Kit (Commercial), kept in `Sprites kit/` (ignored by Godot via `.gdignore`, excluded from the Android export along with `tools/`)
+- Textures now import with mipmaps by default (`project.godot` importer defaults), so detailed sprites don't shimmer when zoomed out
+
+**2026-10-01 (art direction + visual step 1):**
+- Decided the art pipeline (Section 4): 3D models rendered into 2D sprites by a Godot "photo studio" tool, free CC0 low-poly models first; added look rules and a 4-step visual roadmap
+- Visual step 1 done: shader-painted island (smooth coast, cliffs, beaches, animated water and foam), placeholder trees, soft shadows, y-sorted buildings/trees, grid only in Placement Mode; the hover highlight now only shows in Placement Mode
+- New island settings in `game_config.json`: `beaches`, `tree_density`
 
 **2026-10-01 (Phase 1a step 2 — game rules):**
 - Resolved four Phase 1a Open Questions (extractor behavior, offline window, resource flow, construction timers)

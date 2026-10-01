@@ -1,0 +1,41 @@
+{
+	"_note": "Written by tools/sprite_studio.gd - do not edit by hand.",
+	"pixels_per_tile": 128.0,
+	"sprites": {
+		"bakery": {
+			"anchor": [
+				56.0,
+				117.0
+			],
+			"model": "building-b.glb"
+		},
+		"construction_office": {
+			"anchor": [
+				58.0,
+				184.0
+			],
+			"model": "building-m.glb"
+		},
+		"flour_mill": {
+			"anchor": [
+				46.0,
+				81.0
+			],
+			"model": "building-j.glb"
+		},
+		"small_house": {
+			"anchor": [
+				50.0,
+				77.0
+			],
+			"model": "building-c.glb"
+		},
+		"wheat_farm": {
+			"anchor": [
+				40.0,
+				64.0
+			],
+			"model": "building-k.glb"
+		}
+	}
+}

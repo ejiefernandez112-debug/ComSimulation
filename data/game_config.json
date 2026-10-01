@@ -5,11 +5,13 @@
 	"warehouse_cap": 2000,
 	"grid_size": [20, 20],
 	"island": {
-		"_comment": "Land around the buildable plot. margin = tiles of non-buildable land around the plot; coast_roughness / coast_frequency = how wobbly the coastline is; seed picks one fixed coastline (change it for a different shape).",
+		"_comment": "Land around the buildable plot. margin = tiles of non-buildable land around the plot; coast_roughness / coast_frequency = how wobbly the coastline is; seed picks one fixed coastline (change it for a different shape); beaches = rough share of the coast that is sand instead of rock cliff (0-1); tree_density = how thick the placeholder forests are (0-1).",
 		"margin": 6,
 		"coast_roughness": 0.3,
 		"coast_frequency": 0.09,
-		"seed": 7
+		"seed": 7,
+		"beaches": 0.4,
+		"tree_density": 0.6
 	},
 	"starting_buildings": [
 		{ "type": "construction_office", "position": [9, 9] },

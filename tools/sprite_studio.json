@@ -1,0 +1,12 @@
+{
+	"_comment": "Sprite studio settings (see tools/sprite_studio.gd). kit_folder = where the 3D models are; output_folder = where the building pictures go. For each building id from data/buildings.json: model = file in the kit, turn = quarter turns (0-3) so its front faces the camera, tiles = how many tiles wide it stands (default 1). TEMPORARY art, expected to be swapped: Kenney City Kit (Commercial) 2.1, CC0, from https://kenney.nl/assets/city-kit-commercial - a city kit, so there is no real farm or mill yet. Kits are not committed to Git; re-download into Sprites kit/ to re-run the studio on another computer.",
+	"kit_folder": "Sprites kit/kenney_city-kit-commercial_2.1/Models/GLB format",
+	"output_folder": "assets/buildings",
+	"buildings": {
+		"construction_office": { "model": "building-m.glb", "turn": 0 },
+		"small_house": { "model": "building-c.glb", "turn": 0 },
+		"wheat_farm": { "model": "building-k.glb", "turn": 0 },
+		"flour_mill": { "model": "building-j.glb", "turn": 0 },
+		"bakery": { "model": "building-b.glb", "turn": 0 }
+	}
+}
