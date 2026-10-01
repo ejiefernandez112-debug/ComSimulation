@@ -559,6 +559,16 @@ func test_wages_and_debt() -> void:
 	_check(int(Sim.stats(building).spending.wages) == 40, "a building under construction pays no wages")
 
 
+func test_dev_cash_tools() -> void:
+	var data := _data()
+	var state := Sim.new_game(data, T0)
+	Sim.dev_add_cash(state, 1000)
+	_check(state.profile.currency == 1500, "dev: add cash")
+	Sim.dev_set_cash(state, -250)
+	_check(state.profile.currency == -250, "dev: set cash (negative to test debt)")
+	_check(Sim.stats(state).income.sales == 0 and Sim.stats(state).spending.construction == 0, "dev cash isn't counted as income or spending")
+
+
 ## The real data: worker types exist with wages, and staffing levels give whole workers.
 func test_real_worker_data() -> void:
 	var buildings := GameDataScript.load_json("res://data/buildings.json")

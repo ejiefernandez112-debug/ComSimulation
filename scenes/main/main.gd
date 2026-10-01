@@ -43,6 +43,12 @@ func _ready() -> void:
 	# The bottom menu steps aside for anything else that uses the bottom of the screen.
 	menu_bar.hide_while_visible([building_bar, build_menu.placing_bar, build_menu.window()])
 	test_panel.message.connect(hud.toast)
+	# Developer tools exist only in test builds (plan.md §10): never loaded for real players.
+	if OS.is_debug_build():
+		var dev_panel: Control = load("res://scenes/debug/dev_panel.gd").new()
+		dev_panel.name = "DevPanel"
+		ui_root.add_child(dev_panel)
+		dev_panel.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)  # made in code, so give it the whole screen
 
 
 ## A card in the bottom menu bar was tapped.
@@ -168,7 +174,7 @@ func _demolish(building_id: String) -> void:
 	var result := Economy.demolish(building_id)
 	if result.ok:
 		building_panel.close()
-		hud.toast("%s demolished. +%s cash" % [building_name, UITheme.number(result.money)])
+		hud.toast("%s demolished. +%s" % [building_name, UITheme.money(result.money)])
 	else:
 		hud.toast(result.error, true)
 

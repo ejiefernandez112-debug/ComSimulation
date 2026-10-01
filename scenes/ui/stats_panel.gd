@@ -172,7 +172,7 @@ func _refresh_production() -> void:
 		_show("rate_net_" + res, ("+" if made - used > 0.05 else "") + _rate(made - used), _signed_color(made - used))
 		_show("life_made_" + res, UITheme.number(int(st.made.get(res, 0))))
 		_show("life_sold_" + res, UITheme.number(int(st.sold.get(res, 0))))
-		_show("life_earned_" + res, UITheme.number(int(st.sales_by_item.get(res, 0))))
+		_show("life_earned_" + res, UITheme.money(int(st.sales_by_item.get(res, 0))))
 	var b: Dictionary = rates.buildings
 	_show("buildings", "Buildings: %d working · %d idle · %d storage full · %d being built" % [b.working, b.idle, b.full, b.building])
 
@@ -207,7 +207,7 @@ func _refresh_people() -> void:
 
 func _refresh_cash() -> void:
 	var st := Economy.stats()
-	_show("cash", UITheme.number(Economy.currency()))
+	_show("cash", UITheme.money(Economy.currency()))
 	var flow := Economy.cash_flow(3600.0)
 	var span := float(flow.seconds)
 	if span < 60.0:
@@ -216,20 +216,20 @@ func _refresh_cash() -> void:
 		_values.flow_title.text = "Last hour"
 	else:
 		_values.flow_title.text = "Last %s" % LineChart._ago(span)  # shorter at first; longer right after time away
-	_show("flow_in", ("+" if flow.income > 0 else "") + UITheme.number(flow.income), UP if flow.income > 0 else LineChart.INK)
-	_show("flow_out", ("-" if flow.spending > 0 else "") + UITheme.number(flow.spending), DOWN if flow.spending > 0 else LineChart.INK)
+	_show("flow_in", ("+" if flow.income > 0 else "") + UITheme.money(flow.income), UP if flow.income > 0 else LineChart.INK)
+	_show("flow_out", ("-" if flow.spending > 0 else "") + UITheme.money(flow.spending), DOWN if flow.spending > 0 else LineChart.INK)
 	var net: int = flow.income - flow.spending
-	_show("flow_net", ("+" if net > 0 else "") + UITheme.number(net), _signed_color(net))
+	_show("flow_net", ("+" if net > 0 else "") + UITheme.money(net), _signed_color(net))
 	var total_in := 0
 	for res in GameData.resources:
 		var earned := int(st.sales_by_item.get(res, 0))
 		total_in += earned
-		_show("in_sales_" + res, UITheme.number(earned))
-	_show("in_demolish", UITheme.number(int(st.income.demolish)))
-	_show("in_total", UITheme.number(total_in + int(st.income.demolish)), UP)
-	_show("out_construction", UITheme.number(int(st.spending.construction)))
-	_show("out_wages", UITheme.number(int(st.spending.get("wages", 0))))
-	_show("out_total", UITheme.number(int(st.spending.construction) + int(st.spending.get("wages", 0))), DOWN)
+		_show("in_sales_" + res, UITheme.money(earned))
+	_show("in_demolish", UITheme.money(int(st.income.demolish)))
+	_show("in_total", UITheme.money(total_in + int(st.income.demolish)), UP)
+	_show("out_construction", UITheme.money(int(st.spending.construction)))
+	_show("out_wages", UITheme.money(int(st.spending.get("wages", 0))))
+	_show("out_total", UITheme.money(int(st.spending.construction) + int(st.spending.get("wages", 0))), DOWN)
 
 
 ## Builds the chosen graph's lines from the history points (one every minute), plus a point for
@@ -246,11 +246,11 @@ func _refresh_graph() -> void:
 	match _graph:
 		"cash":
 			lines.append({"name": "Cash", "color": 0, "points": _points(history, now, func(p): return float(p.cash))})
-			_chart.set_data(lines, -_range, 0.0)
+			_chart.set_data(lines, -_range, 0.0, "", 0, "$")
 		"flow":
 			lines.append({"name": "In", "color": 0, "points": _per_minute(history, now, func(p): return float(p.income))})
 			lines.append({"name": "Out", "color": 1, "points": _per_minute(history, now, func(p): return float(p.spending))})
-			_chart.set_data(lines, -_range, 0.0, "/min", 1)
+			_chart.set_data(lines, -_range, 0.0, "/min", 1, "$")
 		"people":
 			var specs := [["People", "population"], ["Employed", "employed"], ["Jobs", "jobs"]]
 			for i in specs.size():

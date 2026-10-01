@@ -153,6 +153,11 @@ static func number(value: int) -> String:
 	return ("-" if value < 0 else "") + digits + out
 
 
+## Money in dollars: "$1,250", or "-$202" when in debt. Use this wherever cash is shown.
+static func money(value: int) -> String:
+	return ("-$" if value < 0 else "$") + number(absi(value))
+
+
 ## "2m 05s" / "45s" / "1h 20m" for time left.
 static func duration(seconds: float) -> String:
 	var s := maxi(ceili(seconds), 0)

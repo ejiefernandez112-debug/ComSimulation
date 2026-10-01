@@ -480,6 +480,19 @@ static func sell(state: Dictionary, data: Dictionary, resource_id: String, qty: 
 	return _ok({"earned": earned})
 
 
+# --- Developer tools (scenes/debug/, test builds only; plan.md §10) --------------
+# They change cash directly and aren't counted as income or spending in the statistics.
+
+static func dev_set_cash(state: Dictionary, amount: int) -> Dictionary:
+	state.profile.currency = amount
+	return _ok()
+
+
+static func dev_add_cash(state: Dictionary, amount: int) -> Dictionary:
+	state.profile.currency += amount
+	return _ok()
+
+
 # --- Questions the UI can ask -------------------------------------------------
 
 static func find_building(state: Dictionary, building_id: String) -> Dictionary:

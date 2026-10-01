@@ -62,6 +62,15 @@ func demolish(building_id: String) -> Dictionary:
 	return _after(Simulation.demolish(state, data(), building_id, TimeService.now()))
 
 
+## Developer tools only (the dev panel in scenes/debug/, test builds only).
+func dev_set_cash(amount: int) -> Dictionary:
+	return _after(Simulation.dev_set_cash(state, amount))
+
+
+func dev_add_cash(amount: int) -> Dictionary:
+	return _after(Simulation.dev_add_cash(state, amount))
+
+
 ## level: "low", "medium" or "high" (see staffing_levels in game_config.json).
 func set_staffing(building_id: String, level: String) -> Dictionary:
 	return _after(Simulation.set_staffing(state, data(), building_id, level, TimeService.now()))

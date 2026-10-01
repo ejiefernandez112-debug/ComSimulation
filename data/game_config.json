@@ -1,6 +1,6 @@
 {
 	"_note": "Global tuning values. PLACEHOLDERS (plan.md 5.1 / 5.6 / 5.8).",
-	"starting_cash": 750,
+	"starting_cash": 5750,
 	"population_growth_seconds": 10,
 	"warehouse_cap": 2000,
 	"grid_size": [20, 20],

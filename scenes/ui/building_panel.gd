@@ -28,6 +28,7 @@ var _staff_buttons := {}  # staffing level -> its button
 var _workers_text: Label
 var _wages_text: Label
 var _rate_text: Label
+var _workers_note: Label
 
 
 func _ready() -> void:
@@ -176,12 +177,26 @@ func _build_workers(def: Dictionary) -> void:
 		button.pressed.connect(func(): staffing_requested.emit(building_id, level))
 		row.add_child(button)
 		_staff_buttons[level] = button
-	_workers_text = _wrapped("")
-	box.add_child(_workers_text)
-	_wages_text = _wrapped("")
-	box.add_child(_wages_text)
-	_rate_text = _wrapped("")
-	box.add_child(_rate_text)
+	_workers_text = _figure_row(box, "Workers:")
+	_rate_text = _figure_row(box, "Production Rate:")
+	_wages_text = _figure_row(box, "Wage:")
+	_workers_note = _wrapped("")
+	_workers_note.add_theme_font_size_override("font_size", 15)
+	box.add_child(_workers_note)
+
+
+## "Title ........ value" with the value in bigger type. Returns the value label.
+func _figure_row(parent: Control, title: String) -> Label:
+	var row := HBoxContainer.new()
+	parent.add_child(row)
+	var label := _body(title)
+	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(label)
+	var value := _body("")
+	value.add_theme_font_size_override("font_size", 20)
+	value.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	row.add_child(value)
+	return value
 
 
 func _refresh_workers(b: Dictionary, def: Dictionary) -> void:
@@ -189,13 +204,11 @@ func _refresh_workers(b: Dictionary, def: Dictionary) -> void:
 	for level in _staff_buttons:
 		_staff_buttons[level].theme_type_variation = "YellowButton" if level == w.level else "BlueButton"
 	var working := _count(w.working)
-	if not Economy.is_built(b):
-		_workers_text.text = "Workers start when it's built: %d %s asked for (max %d)" % [w.wanted, w.type.to_lower(), w.max]
-	elif w.working < w.wanted - 0.01:
-		_workers_text.text = "%s of %d %s working (max %d) · short of people: build houses" % [working, w.wanted, w.type.to_lower(), w.max]
-	else:
-		_workers_text.text = "%s %s working (max %d)" % [working, w.type.to_lower(), w.max]
-	_wages_text.text = "Wages: %s x %s = %s / hour" % [working, UITheme.number(roundi(w.wage_each)), UITheme.number(roundi(w.wages))]
+	var short: bool = Economy.is_built(b) and w.working < w.wanted - 0.01
+	# Workers employed / most it can employ, e.g. "6/8".
+	_workers_text.text = "%s/%d" % [working, w.max]
+	_workers_text.add_theme_color_override("font_color", UITheme.BAD.darkened(0.3) if short else UITheme.TEXT_DARK)
+	_wages_text.text = "%s / hour" % UITheme.money(roundi(w.wages))
 	var r := BuildingInfo.recipe(b.type)
 	var speed := Economy.building_speed(b)
 	var producing: bool = Economy.is_built(b) and not b.blocked and (def.category == "extractor" or not b.queue.is_empty())
@@ -208,10 +221,16 @@ func _refresh_workers(b: Dictionary, def: Dictionary) -> void:
 	for res in r.outputs:
 		per_minute += int(r.outputs[res]) * 60.0 / float(r.duration) * speed
 	var item_name := BuildingInfo.resource_name(BuildingInfo.output_of(r))
-	if producing:
-		_rate_text.text = "Production: %.1f %s / min (%d%% speed)" % [per_minute, item_name, floori(speed * 100.0 + 0.001)]
-	else:
-		_rate_text.text = "Production: 0 %s / min right now (%.1f / min when working)" % [item_name, per_minute]
+	_rate_text.text = "%d%%" % floori(speed * 100.0 + 0.001)
+	# The details: why it isn't full speed, what that rate makes, and the wage per worker.
+	var note := "%s workers at %s / hour each · %.1f %s / min" % [w.type, UITheme.money(roundi(w.wage_each)), per_minute, item_name]
+	if not Economy.is_built(b):
+		note = "Workers start when it's built (%d asked for). " % w.wanted + note
+	elif short:
+		note = "Only %s of the %d asked for: not enough people, build houses. " % [working, w.wanted] + note
+	elif not producing:
+		note = "Not producing right now (%s). " % ("storage full" if def.category == "extractor" or b.blocked else "no jobs queued") + note
+	_workers_note.text = note
 
 
 func _small_button(variation: String, text: String, icon_name: String, action: Callable) -> Button:

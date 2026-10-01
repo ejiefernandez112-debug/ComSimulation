@@ -160,6 +160,6 @@ func _refresh() -> void:
 ## Cash counts smoothly towards the new amount, like coins pouring in.
 func _show_cash(value: float) -> void:
 	_shown_cash = value
-	_cash.text = UITheme.number(roundi(value))
+	_cash.text = UITheme.money(roundi(value))
 	# In debt (wages can take cash below 0): show it in red.
 	_cash.add_theme_color_override("font_color", UITheme.BAD if value < 0.0 else UITheme.TEXT)

@@ -170,7 +170,7 @@ _Rescaled 2026-10-01 for the ~1–2h offline window: batches ×4 and timers ×4,
 - **Starting kit (Phase 1a):**
   - Construction Office — pre-built, Level 1, already placed
   - Small House (Residential) — pre-built, already placed → Population growth begins immediately
-  - Starting cash — placeholder amount (e.g. ₱500–1000, tunable later; soft/premium currency names TBD)
+  - Starting cash — **$5,750** (`starting_cash` in `game_config.json`; raised by $5,000 on 2026-10-01, still tunable)
   - Wheat Farm — **not** pre-built; building it is the player's first tutorial action
 
 ## 6. UI/UX Screens
@@ -281,6 +281,8 @@ A hidden dev menu (key combo on PC, secret tap sequence on mobile) for testing t
 
 **Planned commands:**
 
+✅ **Built so far (2026-10-01):** `scenes/debug/dev_panel.gd`, the **Developer** window: set cash to any amount (negative to test debt), add any amount, quick +$1,000 / +$10,000 / +$100,000, set $0. Opens with **F12** on a computer or **5 quick taps on the cash bar** on a phone; `main.gd` only loads it when `OS.is_debug_build()`. Dev cash isn't counted as income in the statistics. Step 2 (exclude `scenes/debug/` from export) waits until there is a separate release preset: the only preset today is the Android one used for phone testing, which should keep the dev window.
+
 | Category | Commands |
 |---|---|
 | Economy | Add currency/premium currency, spawn any resource in any quantity, reset wallet |
@@ -299,7 +301,7 @@ A hidden dev menu (key combo on PC, secret tap sequence on mobile) for testing t
 - [x] Confirm the proposed resource-flow rules in 5.1 → **Confirmed as written** (decided 2026-10-01); Warehouse cap placeholder 2000 total units
 - [x] Construction timers for new buildings → **5 seconds for every building** (`build_time` in `data/buildings.json`, changed from instant on 2026-10-01). While being built a building is faded with a countdown bar, makes nothing, takes no orders and adds no housing; starting buildings come already built. Builder limits (one construction at a time, etc.) may come in a later phase
 - [x] Phone orientation → **Sideways (landscape) only**, like Clash of Clans (decided 2026-10-01). `display/window/handheld/orientation` = sensor landscape, so the game flips if the phone is turned the other way round. Held upright, the whole game was drawn at about a third of its size (the 1280x720 layout stretched across a narrow screen)
-- [ ] Soft and premium currency names (₱ is a placeholder)
+- [x] Soft currency → **dollars ($)**, shown everywhere money appears as "$1,250" (debt as "-$202") via `UITheme.money()` (decided 2026-10-01). Premium currency name still TBD
 
 **Later phases:**
 - [ ] Target platforms — is iOS in scope?

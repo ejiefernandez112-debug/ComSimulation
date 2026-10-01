@@ -24,6 +24,7 @@ var lines: Array = []
 var t_from := 0.0
 var t_to := 1.0
 var unit := ""  # added after values, e.g. "/min"
+var prefix := ""  # put before values, e.g. "$" for money
 var decimals := 0
 var empty_text := "Not enough data yet."
 
@@ -43,11 +44,12 @@ func _init() -> void:
 		queue_redraw())
 
 
-func set_data(new_lines: Array, from: float, to: float, value_unit := "", value_decimals := 0) -> void:
+func set_data(new_lines: Array, from: float, to: float, value_unit := "", value_decimals := 0, value_prefix := "") -> void:
 	lines = new_lines
 	t_from = from
 	t_to = maxf(to, from + 1.0)
 	unit = value_unit
+	prefix = value_prefix
 	decimals = value_decimals
 	queue_redraw()
 
@@ -66,23 +68,29 @@ func _draw() -> void:
 
 	var visible_lines: Array = []
 	var top := 0.0
+	var bottom := 0.0
 	for line in lines:
 		var pts: Array = line.points.filter(func(p: Vector2): return p.x >= t_from and p.x <= t_to)
 		if pts.size() >= 2:
 			visible_lines.append({"color": COLORS[int(line.color) % COLORS.size()], "points": pts, "name": line.name})
 			for p in pts:
 				top = maxf(top, p.y)
+				bottom = minf(bottom, p.y)
 	if visible_lines.is_empty():
 		draw_string(font, Vector2(0, plot.get_center().y), empty_text, HORIZONTAL_ALIGNMENT_CENTER, size.x, 16, MUTED)
 		return
 
-	# Gridlines at 0, half and the top, on a "nice" round scale.
-	var y_max := _nice_max(top)
+	# Gridlines at the bottom, half way and the top, on a "nice" round scale. The bottom is 0
+	# unless something went below it (cash in debt); then 0 gets its own darker line.
+	var y_max := _nice_max(top) if top > 0.0 or bottom == 0.0 else 0.0
+	var y_min := -_nice_max(-bottom) if bottom < 0.0 else 0.0
 	for i in 3:
-		var value := y_max * i / 2.0
+		var value := y_min + (y_max - y_min) * i / 2.0
 		var y := plot.end.y - plot.size.y * i / 2.0
-		draw_line(Vector2(plot.position.x, y), Vector2(plot.end.x, y), GRID if i > 0 else BORDER, 1.0)
+		draw_line(Vector2(plot.position.x, y), Vector2(plot.end.x, y), GRID, 1.0)
 		draw_string(font, Vector2(4, y + 5), _compact(value), HORIZONTAL_ALIGNMENT_RIGHT, PAD_LEFT - 10, 13, MUTED)
+	var zero_y := plot.end.y - (0.0 - y_min) / (y_max - y_min) * plot.size.y
+	draw_line(Vector2(plot.position.x, zero_y), Vector2(plot.end.x, zero_y), BORDER, 1.0)
 	# Time labels: start, middle, now.
 	var span := t_to - t_from
 	for i in 3:
@@ -91,7 +99,7 @@ func _draw() -> void:
 		draw_string(font, Vector2(x - 40, size.y - 8), text, HORIZONTAL_ALIGNMENT_CENTER, 80, 13, MUTED)
 
 	var to_screen := func(p: Vector2) -> Vector2:
-		return Vector2(plot.position.x + (p.x - t_from) / span * plot.size.x, plot.end.y - p.y / y_max * plot.size.y)
+		return Vector2(plot.position.x + (p.x - t_from) / span * plot.size.x, plot.end.y - (p.y - y_min) / (y_max - y_min) * plot.size.y)
 	for line in visible_lines:
 		var screen := PackedVector2Array()
 		for p in line.points:
@@ -157,21 +165,23 @@ func _dot(at: Vector2, color: Color) -> void:
 	draw_circle(at, 4.0, color, true, -1.0, true)
 
 
+## "$1,250", "-$202", "12.5/min".
 func _format(value: float) -> String:
-	if decimals > 0:
-		return ("%." + str(decimals) + "f%s") % [value, unit]
-	return UITheme.number(roundi(value)) + unit
+	var digits := ("%." + str(decimals) + "f") % absf(value) if decimals > 0 else UITheme.number(roundi(absf(value)))
+	return ("-" if value < 0.0 and digits.to_float() != 0.0 else "") + prefix + digits + unit
 
 
-## Short axis numbers: 950, 1.2k, 15k.
+## Short axis numbers: 950, 1.2k, 15k, -$500.
 func _compact(value: float) -> String:
-	if value >= 10000.0:
-		return "%dk" % roundi(value / 1000.0)
-	if value >= 1000.0:
-		return "%.1fk" % (value / 1000.0)
-	if decimals > 0 and value < 10.0 and value != roundf(value):
-		return "%.1f" % value
-	return str(roundi(value))
+	var sign := "-" if value < 0.0 else ""
+	var v := absf(value)
+	if v >= 10000.0:
+		return "%s%s%dk" % [sign, prefix, roundi(v / 1000.0)]
+	if v >= 1000.0:
+		return "%s%s%.1fk" % [sign, prefix, v / 1000.0]
+	if decimals > 0 and v < 10.0 and v != roundf(v):
+		return "%s%s%.1f" % [sign, prefix, v]
+	return "%s%s%d" % [sign, prefix, roundi(v)]
 
 
 ## "45m", "2h", "1h 30m": for time labels.

@@ -369,7 +369,7 @@ func _show_details(type_id: String) -> void:
 	_shown = type_id
 	var def: Dictionary = GameData.buildings[type_id]
 	_name.text = def.name
-	_cost.text = UITheme.number(int(def.build_cost))
+	_cost.text = UITheme.money(int(def.build_cost))
 	_about.text = def.get("description", "")
 	for child in _makes.get_children():
 		_makes.remove_child(child)
@@ -416,7 +416,7 @@ func _refresh() -> void:
 	var locked: bool = not GameData.buildings[_shown].get("buildable", false)
 	var short := _shortfall(_shown)
 	_cost.add_theme_color_override("font_color", UITheme.BAD if short > 0 and not locked else UITheme.TEXT)
-	_cost_note.text = "Not available yet" if locked else ("Need %s more" % UITheme.number(short) if short > 0 else "")
+	_cost_note.text = "Not available yet" if locked else ("Need %s more" % UITheme.money(short) if short > 0 else "")
 	_build.disabled = not _can_place(_shown)
 
 

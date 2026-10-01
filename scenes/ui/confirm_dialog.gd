@@ -71,7 +71,7 @@ func _amount(icon_name: String, qty: int) -> HBoxContainer:
 	icon.custom_minimum_size = Vector2(34, 34)
 	row.add_child(icon)
 	var label := Label.new()
-	label.text = UITheme.number(qty)
+	label.text = UITheme.money(qty) if icon_name == "cash" else UITheme.number(qty)
 	label.add_theme_font_size_override("font_size", 20)
 	row.add_child(label)
 	return row

@@ -31,7 +31,7 @@ func _add_button(parent: Node, text: String, action: Callable) -> void:
 func _sell(resource_id: String, qty: int) -> void:
 	var result := Economy.sell(resource_id, qty)
 	if result.ok:
-		message.emit("Sold %d %s for %d" % [qty, GameData.resources[resource_id].name, result.earned], false)
+		message.emit("Sold %d %s for %s" % [qty, GameData.resources[resource_id].name, UITheme.money(result.earned)], false)
 	else:
 		message.emit(result.error, true)
 
