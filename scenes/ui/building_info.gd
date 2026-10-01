@@ -33,6 +33,17 @@ static func amounts(items: Dictionary) -> String:
 	return " + ".join(parts)
 
 
+## Short of workers: say how slow it is and why (shown as a warning).
+static func _with_speed(text: String, progress: float, speed: float) -> Dictionary:
+	if speed >= 1.0:
+		return {"text": text, "progress": progress, "good": true}
+	return {"text": "%s · %d%% speed, short of workers" % [text, floori(speed * 100.0)], "progress": progress, "good": false}
+
+
+static func _no_workers(progress: float) -> Dictionary:
+	return {"text": "Stopped: no workers yet. Build houses so people move in", "progress": progress, "good": false}
+
+
 ## What the building is doing: {"text": String, "progress": 0..1, or -1 for no bar, "good": bool}.
 static func status(b: Dictionary) -> Dictionary:
 	var def: Dictionary = GameData.buildings[b.type]
@@ -47,16 +58,22 @@ static func status(b: Dictionary) -> Dictionary:
 			if int(def.storage_cap) - stored(b) < per_cycle:
 				return {"text": "Storage full! Collect to keep going", "progress": 1.0, "good": false}
 			var p := Economy.job_progress(b)
-			var left := (1.0 - p) * float(r.duration)
-			return {"text": "Growing %s · next in %s" % [resource_name(output_of(r)), UITheme.duration(left)], "progress": p, "good": true}
+			var speed := Economy.building_speed(b)
+			if speed <= 0.0:
+				return _no_workers(p)
+			var left := (1.0 - p) * float(r.duration) / speed
+			return _with_speed("Growing %s · next in %s" % [resource_name(output_of(r)), UITheme.duration(left)], p, speed)
 		"processor":
 			if b.blocked:
 				return {"text": "Done! Collect to make room", "progress": 1.0, "good": false}
 			if b.queue.is_empty():
 				return {"text": "Idle: add a job to start", "progress": -1.0, "good": false}
 			var p := Economy.job_progress(b)
-			var left: float = (1.0 - p) * float(r.duration) + (b.queue.size() - 1) * float(r.duration)
-			return {"text": "Making %s · %s left" % [resource_name(output_of(r)), UITheme.duration(left)], "progress": p, "good": true}
+			var speed := Economy.building_speed(b)
+			if speed <= 0.0:
+				return _no_workers(p)
+			var left: float = ((1.0 - p) * float(r.duration) + (b.queue.size() - 1) * float(r.duration)) / speed
+			return _with_speed("Making %s · %s left" % [resource_name(output_of(r)), UITheme.duration(left)], p, speed)
 		"residential":
 			return {"text": "Home for %d people" % int(def.get("population_capacity", 0)), "progress": -1.0, "good": true}
 	return {"text": "Your headquarters", "progress": -1.0, "good": true}

@@ -34,9 +34,9 @@ func _data() -> Dictionary:
 		"buildings": {
 			"office": {"category": "civic", "build_cost": 0, "buildable": false},
 			"house": {"category": "residential", "build_cost": 0, "buildable": false, "population_capacity": 10},
-			"farm": {"category": "extractor", "build_cost": 100, "buildable": true, "workers": 2, "storage_cap": 100,
+			"farm": {"category": "extractor", "build_cost": 100, "buildable": true, "storage_cap": 100,
 				"recipes": [{"id": "grow", "inputs": {}, "outputs": {"wheat": 10}, "duration": 60}]},
-			"mill": {"category": "processor", "build_cost": 200, "buildable": true, "workers": 3, "storage_cap": 16, "queue_size": 4,
+			"mill": {"category": "processor", "build_cost": 200, "buildable": true, "storage_cap": 16, "queue_size": 4,
 				"recipes": [{"id": "mill", "inputs": {"wheat": 10}, "outputs": {"flour": 8}, "duration": 90}]},
 			# Same as farm / mill, but they take time to build (the ones above are instant, to keep
 			# the other tests simple). The cabin is a home that takes a long time to build.
@@ -45,6 +45,11 @@ func _data() -> Dictionary:
 			"slow_mill": {"category": "processor", "build_cost": 200, "buildable": true, "build_time": 5, "storage_cap": 16, "queue_size": 4,
 				"recipes": [{"id": "mill", "inputs": {"wheat": 10}, "outputs": {"flour": 8}, "duration": 90}]},
 			"cabin": {"category": "residential", "build_cost": 0, "buildable": true, "build_time": 200, "population_capacity": 5},
+			# Buildings that need workers (2 and 3 jobs). They slow down when there aren't enough people.
+			"crew_farm": {"category": "extractor", "build_cost": 0, "buildable": true, "workers": 2, "storage_cap": 1000,
+				"recipes": [{"id": "grow", "inputs": {}, "outputs": {"wheat": 10}, "duration": 60}]},
+			"crew_mill": {"category": "processor", "build_cost": 0, "buildable": true, "workers": 3, "storage_cap": 100, "queue_size": 8,
+				"recipes": [{"id": "mill", "inputs": {"wheat": 10}, "outputs": {"flour": 8}, "duration": 90}]},
 		},
 		"config": {"starting_cash": 500, "population_growth_seconds": 10, "warehouse_cap": 1000,
 			"grid_size": [10, 10],
@@ -410,8 +415,8 @@ func test_production_rates() -> void:
 func test_employment() -> void:
 	var data := _data()
 	var state := Sim.new_game(data, T0)
-	Sim.build(state, data, "farm", Vector2i(3, 3), T0)  # 2 jobs
-	Sim.build(state, data, "mill", Vector2i(4, 4), T0)  # 3 jobs
+	Sim.build(state, data, "crew_farm", Vector2i(3, 3), T0)  # 2 jobs
+	Sim.build(state, data, "crew_mill", Vector2i(4, 4), T0)  # 3 jobs
 	var e := Sim.employment(state, data, T0)
 	_check(e.jobs == 5 and e.employed == 0 and e.open_jobs == 5, "no people yet: all jobs open")
 	Sim.settle(state, data, T0 + 30)  # 3 people
@@ -420,6 +425,65 @@ func test_employment() -> void:
 	Sim.settle(state, data, T0 + 100)  # 10 people
 	e = Sim.employment(state, data, T0 + 100)
 	_check(e.employed == 5 and e.unemployed == 5 and e.open_jobs == 0, "10 people, 5 jobs: 5 unemployed")
+
+
+func test_short_staffed_buildings_slow_down() -> void:
+	var data := _data()
+	data.config["population_growth_seconds"] = 0  # people only change when the test says so
+	var state := Sim.new_game(data, T0)
+	state.population.current = 1
+	var farm := Sim.find_building(state, Sim.build(state, data, "crew_farm", Vector2i(3, 3), T0).building_id)
+	_check(is_equal_approx(Sim.staffing(state, data, T0), 0.5), "1 person for 2 jobs: half speed")
+	Sim.settle(state, data, T0 + 119)
+	_check(farm.storage.is_empty(), "at half speed a 60s batch isn't done after 119s")
+	Sim.settle(state, data, T0 + 120)
+	_check(int(farm.storage.get("wheat", 0)) == 10, "at half speed a 60s batch takes 120s")
+	_check(is_equal_approx(float(Sim.production_rates(state, data, T0 + 120).made.wheat), 5.0), "rates show the slower speed")
+	Sim.settle(state, data, T0 + 150)
+	_check(is_equal_approx(Sim.job_progress(state, farm, data, T0 + 150), 0.25), "progress bar moves at half speed")
+	state.population.current = 2  # fully staffed from T0 + 150
+	Sim.settle(state, data, T0 + 195)
+	_check(int(farm.storage.get("wheat", 0)) == 20, "full speed again once staffed (15s + 45s of work)")
+
+	var empty := Sim.new_game(data, T0)
+	var idle := Sim.find_building(empty, Sim.build(empty, data, "crew_farm", Vector2i(3, 3), T0).building_id)
+	Sim.settle(empty, data, T0 + 600)
+	_check(idle.storage.is_empty(), "nobody to work: nothing is made")
+	empty.population.current = 2
+	Sim.settle(empty, data, T0 + 659)
+	_check(idle.storage.is_empty(), "work starts from scratch when people arrive (not 10 minutes ahead)")
+	Sim.settle(empty, data, T0 + 660)
+	_check(int(idle.storage.get("wheat", 0)) == 10, "first batch 60s after people arrive")
+
+
+## Being away for a long time must give exactly the same result as playing the whole time,
+## even while people move in, a home finishes and the staffing keeps changing.
+func test_away_matches_playing() -> void:
+	var data := _data()
+	var played := Sim.new_game(data, T0)
+	var away := Sim.new_game(data, T0)
+	for state in [played, away]:
+		for x in 4:
+			Sim.build(state, data, "crew_farm", Vector2i(x, 5), T0)  # 4 x 2 jobs
+		var mill_id: String = Sim.build(state, data, "crew_mill", Vector2i(6, 6), T0).building_id  # 3 jobs: 11 in all
+		Sim.build(state, data, "cabin", Vector2i(8, 8), T0)  # room for 15 people from T0 + 200
+		state.inventory["wheat"] = 80
+		Sim.fill_queue(state, data, mill_id, "mill", T0)
+	var t := T0
+	while t < T0 + 3000:
+		t += 7.0
+		Sim.settle(played, data, t)
+	Sim.settle(away, data, t)
+	var same: bool = played.population.current == away.population.current
+	for i in played.buildings.size():
+		same = same and played.buildings[i].storage == away.buildings[i].storage
+		same = same and played.buildings[i].queue.size() == away.buildings[i].queue.size()
+	_check(same, "one long absence = playing in 7-second steps (population, storage, queues)")
+	_check(int(away.population.current) == 15 and Sim.staffing(away, data, t) == 1.0, "the cabin let enough people in to fill every job (15 people, 11 jobs)")
+	var made := 0
+	for b in away.buildings:
+		made += int(b.storage.get("wheat", 0))
+	_check(made > 0 and made < 4 * 10 * 3000 / 60, "short-staffed early on, so less wheat than 4 full-speed farms")
 
 
 func test_history_and_cash_flow() -> void:

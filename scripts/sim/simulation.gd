@@ -26,6 +26,7 @@ static func new_game(data: Dictionary, now: float) -> Dictionary:
 		"buildings": [],
 		"inventory": {},  # the Warehouse
 		"population": {"current": 0, "growth_anchor": now},
+		"settled_at": now,  # everything has been worked out up to this moment
 		"stats": _new_stats(),
 	}
 	for entry in config.starting_buildings:
@@ -38,12 +39,72 @@ static func new_game(data: Dictionary, now: float) -> Dictionary:
 
 ## Brings every building and the population up to `now`.
 ## Returns everything produced, e.g. {"wheat": 30, "population": 2} (for the offline summary).
+##
+## Buildings short of workers run slower (see staffing). Staffing only changes at a few moments
+## (a person moves in, a building finishes), so the time since the last settle is split at those
+## moments and each piece is worked out in one go at a fixed speed. That's a handful of steps
+## however long the player was away, never a minute-by-minute replay.
 static func settle(state: Dictionary, data: Dictionary, now: float) -> Dictionary:
 	var report := {}
+	var grown := 0
+	var t := float(state.get("settled_at", state.get("last_saved_at", now)))
+	if now <= t:
+		# No time to add (or the clock moved backwards): only settle what can happen instantly,
+		# e.g. a finished batch that was waiting for storage space the player just freed.
+		for b in state.buildings:
+			_add_to(report, _settle_one(state, b, data, now))
+	else:
+		var steps := 0
+		while t < now and steps < 100000:  # the cap is only a safety net
+			steps += 1
+			var next := _next_staffing_change(state, data, t, now)
+			var speed := staffing(state, data, t)
+			for b in state.buildings:
+				_add_to(report, _settle_span(state, b, data, t, next, speed))
+			grown += _grow_population(state, data, next)
+			t = next
+		state["settled_at"] = now
+	if grown > 0:
+		report["population"] = grown
+	_record_history(state, data, now)
+	return report
+
+
+## Settles one building over [t0, t1] while it works at `speed` (1 = fully staffed). A building
+## at 70% speed gets 70% of the time's work: it is settled up to t0 + 0.7 x (t1 - t0), then its
+## current job's start is moved later by the other 30%, so at t1 it is exactly as far along as
+## that work allows.
+static func _settle_span(state: Dictionary, b: Dictionary, data: Dictionary, t0: float, t1: float, speed: float) -> Dictionary:
+	var needs_workers := int(data.buildings.get(b.type, {}).get("workers", 0)) > 0
+	if not needs_workers or speed >= 1.0 or float(b.job_started_at) > t0:
+		return _settle_one(state, b, data, t1)  # full speed (or not started yet, e.g. being built)
+	var span := t1 - t0
+	var produced := _settle_one(state, b, data, t0 + speed * span)
+	b.job_started_at = float(b.job_started_at) + span * (1.0 - speed)
+	return produced
+
+
+## The first moment after t (and before `until`) when staffing can change: a building finishing
+## construction (new jobs or new homes), or, while short of workers, the next person moving in.
+static func _next_staffing_change(state: Dictionary, data: Dictionary, t: float, until: float) -> float:
+	var next := until
 	for b in state.buildings:
-		_add_to(report, _settle_one(state, b, data, now))
-	# A home finishing construction raises the population cap partway through the elapsed time,
-	# so grow the population up to each such moment with the cap that applied before it.
+		var finish := built_at(b)
+		if finish > t and finish < next:
+			next = finish
+	var pop: Dictionary = state.population
+	var step := float(data.config.population_growth_seconds)
+	var e := employment(state, data, t)
+	if step > 0.0 and e.jobs > e.population and int(pop.current) < population_capacity(state, data, t):
+		var arrival := float(pop.growth_anchor) + step * (floorf((t - float(pop.growth_anchor)) / step + 0.000001) + 1.0)
+		if arrival > t and arrival < next:
+			next = arrival
+	return next
+
+
+## Grows the population up to `now`. A home finishing construction raises the cap partway through,
+## so grow up to each such moment with the cap that applied before it.
+static func _grow_population(state: Dictionary, data: Dictionary, now: float) -> int:
 	var grown := 0
 	var finishes: Array[float] = []
 	for b in state.buildings:
@@ -54,10 +115,7 @@ static func settle(state: Dictionary, data: Dictionary, now: float) -> Dictionar
 	for t in finishes:
 		grown += _settle_population(state, data, t, _capacity(state, data, t, false))
 	grown += _settle_population(state, data, now, population_capacity(state, data, now))
-	if grown > 0:
-		report["population"] = grown
-	_record_history(state, data, now)
-	return report
+	return grown
 
 
 ## settle_building, plus counting what was made for the statistics. Rules code uses this one.
@@ -133,7 +191,8 @@ static func _settle_population(state: Dictionary, data: Dictionary, now: float, 
 	if pop.current >= cap:
 		pop.growth_anchor = now
 		return 0
-	var grown := mini(int((now - pop.growth_anchor) / step), cap - int(pop.current))
+	# (The tiny extra stops rounding from losing a person who arrives exactly at `now`.)
+	var grown := mini(int((now - pop.growth_anchor) / step + 0.000001), cap - int(pop.current))
 	pop.current += grown
 	if pop.current >= cap:
 		pop.growth_anchor = now
@@ -163,6 +222,7 @@ static func build(state: Dictionary, data: Dictionary, type_id: String, cell: Ve
 	var check := can_build(state, data, type_id, cell)
 	if not check.ok:
 		return check
+	settle(state, data, now)  # time so far was worked with the old staffing
 	var def: Dictionary = data.buildings[type_id]
 	state.profile.currency -= int(def.build_cost)
 	stats(state).spending.construction += int(def.build_cost)
@@ -218,7 +278,7 @@ static func can_enqueue(state: Dictionary, data: Dictionary, building_id: String
 static func enqueue(state: Dictionary, data: Dictionary, building_id: String, recipe_id: String, now: float) -> Dictionary:
 	var b := find_building(state, building_id)
 	if not b.is_empty():
-		_settle_one(state, b, data, now)  # a job may have just finished, freeing a queue slot
+		settle(state, data, now)  # a job may have just finished, freeing a queue slot
 	var check := can_enqueue(state, data, building_id, recipe_id, now)
 	if not check.ok:
 		return check
@@ -250,7 +310,7 @@ static func batches_possible(state: Dictionary, data: Dictionary, building_id: S
 static func fill_queue(state: Dictionary, data: Dictionary, building_id: String, recipe_id: String, now: float) -> Dictionary:
 	var b := find_building(state, building_id)
 	if not b.is_empty():
-		_settle_one(state, b, data, now)  # a job may have just finished, freeing a slot
+		settle(state, data, now)  # a job may have just finished, freeing a slot
 	var check := can_enqueue(state, data, building_id, recipe_id, now)
 	if not check.ok:
 		return check
@@ -265,7 +325,7 @@ static func collect(state: Dictionary, data: Dictionary, building_id: String, no
 	var b := find_building(state, building_id)
 	if b.is_empty():
 		return _fail("Building not found.")
-	_settle_one(state, b, data, now)
+	settle(state, data, now)
 	if b.storage.is_empty():
 		return _fail("Nothing to collect.")
 	var free := warehouse_cap(data) - warehouse_total(state)
@@ -279,7 +339,7 @@ static func collect(state: Dictionary, data: Dictionary, building_id: String, no
 		return _fail("The warehouse is full.")
 	_remove_from(b.storage, moved)
 	_add_to(state.inventory, moved)
-	_settle_one(state, b, data, now)  # a job that was waiting for space can finish now
+	settle(state, data, now)  # a job that was waiting for space can finish now
 	return _ok({"moved": moved})
 
 
@@ -305,7 +365,7 @@ static func can_cancel_job(state: Dictionary, data: Dictionary, building_id: Str
 static func cancel_job(state: Dictionary, data: Dictionary, building_id: String, index: int, now: float) -> Dictionary:
 	var b := find_building(state, building_id)
 	if not b.is_empty():
-		_settle_one(state, b, data, now)  # the job may have just finished
+		settle(state, data, now)  # the job may have just finished
 	var check := can_cancel_job(state, data, building_id, index)
 	if not check.ok:
 		return check
@@ -342,7 +402,7 @@ static func can_demolish(state: Dictionary, data: Dictionary, building_id: Strin
 static func demolish(state: Dictionary, data: Dictionary, building_id: String, now: float) -> Dictionary:
 	var b := find_building(state, building_id)
 	if not b.is_empty():
-		_settle_one(state, b, data, now)
+		settle(state, data, now)
 	var check := can_demolish(state, data, building_id)
 	if not check.ok:
 		return check
@@ -423,8 +483,9 @@ static func warehouse_total(state: Dictionary) -> int:
 	return _total(state.inventory)
 
 
-## 0.0 to 1.0 progress of the current cycle/job, for progress bars.
-static func job_progress(b: Dictionary, data: Dictionary, now: float) -> float:
+## 0.0 to 1.0 progress of the current cycle/job, for progress bars. Time since the last settle
+## counts at the building's current speed, so a short-staffed building's bar moves slower.
+static func job_progress(state: Dictionary, b: Dictionary, data: Dictionary, now: float) -> float:
 	var def: Dictionary = data.buildings.get(b.type, {})
 	var recipe := {}
 	if def.get("category", "") == "extractor":
@@ -433,7 +494,20 @@ static func job_progress(b: Dictionary, data: Dictionary, now: float) -> float:
 		recipe = _recipe(def, b.queue[0].recipe_id)
 	if recipe.is_empty():
 		return 0.0
-	return clampf((now - b.job_started_at) / float(recipe.duration), 0.0, 1.0)
+	var started := float(b.job_started_at)
+	var settled := float(state.get("settled_at", now))
+	var worked := now - started
+	if now > settled and started <= settled:
+		worked = (settled - started) + (now - settled) * building_speed(state, data, b, now)
+	return clampf(worked / float(recipe.duration), 0.0, 1.0)
+
+
+## How fast a building works: 1.0 = full speed. Buildings that need workers share the people
+## there are (see staffing); others always work at full speed.
+static func building_speed(state: Dictionary, data: Dictionary, b: Dictionary, now: float) -> float:
+	if int(data.buildings.get(b.type, {}).get("workers", 0)) <= 0:
+		return 1.0
+	return staffing(state, data, now)
 
 
 # --- Statistics ---------------------------------------------------------------
@@ -478,7 +552,7 @@ static func production_rates(state: Dictionary, data: Dictionary, now: float) ->
 		else:
 			recipe = _recipe(def, b.queue[0].recipe_id)
 		counts.working += 1
-		var per_minute := 60.0 / float(recipe.duration)
+		var per_minute := 60.0 / float(recipe.duration) * building_speed(state, data, b, now)
 		for res in recipe.outputs:
 			made[res] = float(made.get(res, 0.0)) + int(recipe.outputs[res]) * per_minute
 		for res in recipe.get("inputs", {}):
@@ -486,9 +560,18 @@ static func production_rates(state: Dictionary, data: Dictionary, now: float) ->
 	return {"made": made, "used": used, "buildings": counts}
 
 
+## Share of jobs that are filled, 0.0 to 1.0 (1.0 when there are enough people or no jobs).
+## Every building that needs workers runs at this speed: with 10 people and 14 jobs they all
+## work at 71% (plan.md §5.6: short-staffed buildings slow down rather than stop).
+static func staffing(state: Dictionary, data: Dictionary, now: float) -> float:
+	var e := employment(state, data, now)
+	if e.jobs <= 0:
+		return 1.0
+	return float(e.employed) / float(e.jobs)
+
+
 ## Jobs come from finished buildings ("workers" in buildings.json); people fill them up to the
-## population. Headcount only for now: being short of workers doesn't slow anything down yet.
-## {"population", "jobs", "employed", "unemployed", "open_jobs"}
+## population. {"population", "jobs", "employed", "unemployed", "open_jobs"}
 static func employment(state: Dictionary, data: Dictionary, now: float) -> Dictionary:
 	var jobs := 0
 	for b in state.buildings:

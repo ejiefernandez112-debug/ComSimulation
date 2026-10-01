@@ -153,7 +153,7 @@ _Rescaled 2026-10-01 for the ~1–2h offline window: batches ×4 and timers ×4,
 
 - **Small House** (Residential) — +10 population capacity, one-time build cost, no recipe. **Included in Phase 1a's starting kit.**
 - **Population** grows automatically toward capacity (e.g. +1/10s), shown on the persistent HUD; offline growth is calculated from `last_saved_at` like production
-- In **Phase 1**, Population has no mechanical effect yet. Each building offers a number of jobs (`workers` in `data/buildings.json`, PLACEHOLDER: Wheat Farm 4, Flour Mill 3, Bakery 3) and people fill them up to the population, but only as a headcount for the Statistics screen: being short of workers doesn't slow anything down yet (that arrives with Employment Matching below)
+- **Workers (built 2026-10-01, pulled forward from Phase 2/3):** each building offers a number of jobs (`workers` in `data/buildings.json`, PLACEHOLDER: Wheat Farm 4, Flour Mill 3, Bakery 3) and people fill them up to the population. When there are fewer people than jobs, **every building that needs workers runs slower in proportion** (10 people for 14 jobs = 71% speed; no people = stopped). The Small House is now buildable so players can grow the workforce. Offline catch-up stays one calculation: the time away is split only at the moments staffing changes (a person moves in, a building finishes) and each piece is worked out in one go. No wages yet
 - In **Phase 2/3**, once Employees exist, **Employment Matching** activates: Available = Population − Employed. Understaffed buildings run at reduced capacity/output rather than failing to hire outright.
 
 ### 5.7 Education System (Phase 3+)
@@ -298,6 +298,7 @@ A hidden dev menu (key combo on PC, secret tap sequence on mobile) for testing t
 - [x] Target offline window → **~1–2 hours** (decided 2026-10-01); Phase 1a numbers in 5.4 rescaled to match
 - [x] Confirm the proposed resource-flow rules in 5.1 → **Confirmed as written** (decided 2026-10-01); Warehouse cap placeholder 2000 total units
 - [x] Construction timers for new buildings → **5 seconds for every building** (`build_time` in `data/buildings.json`, changed from instant on 2026-10-01). While being built a building is faded with a countdown bar, makes nothing, takes no orders and adds no housing; starting buildings come already built. Builder limits (one construction at a time, etc.) may come in a later phase
+- [x] Phone orientation → **Sideways (landscape) only**, like Clash of Clans (decided 2026-10-01). `display/window/handheld/orientation` = sensor landscape, so the game flips if the phone is turned the other way round. Held upright, the whole game was drawn at about a third of its size (the 1280x720 layout stretched across a narrow screen)
 - [ ] Soft and premium currency names (₱ is a placeholder)
 
 **Later phases:**

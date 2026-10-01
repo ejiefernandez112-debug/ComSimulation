@@ -128,7 +128,17 @@ func can_demolish(building_id: String) -> Dictionary:
 
 
 func job_progress(building: Dictionary) -> float:
-	return Simulation.job_progress(building, data(), TimeService.now())
+	return Simulation.job_progress(state, building, data(), TimeService.now())
+
+
+## How fast the building works right now: 1.0 = full speed, less when short of workers.
+func building_speed(building: Dictionary) -> float:
+	return Simulation.building_speed(state, data(), building, TimeService.now())
+
+
+## Share of jobs filled (0.0 to 1.0): the speed of every building that needs workers.
+func staffing() -> float:
+	return Simulation.staffing(state, data(), TimeService.now())
 
 
 ## False while the building is still under construction.

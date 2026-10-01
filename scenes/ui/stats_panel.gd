@@ -82,11 +82,12 @@ func _people_page() -> VBoxContainer:
 		_value_row(work, row[1], row[0])
 	_employed_bar = _bar(work, "GoldBar")
 	work.add_child(_value("employed_share"))
+	work.add_child(_value("work_speed"))
 	var by_type := _section(page, "Jobs by building")
 	for type_id in GameData.buildings:
 		if int(GameData.buildings[type_id].get("workers", 0)) > 0:
 			_value_row(by_type, GameData.buildings[type_id].name, "jobs_" + type_id)
-	var note := _body("Workers don't change production yet: for now this shows who your buildings would employ.")
+	var note := _body("When there are more jobs than people, every building that needs workers runs slower. Build houses so more people move in.")
 	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	note.custom_minimum_size.x = WIDTH - 70
 	note.modulate.a = 0.8
@@ -186,6 +187,11 @@ func _refresh_people() -> void:
 	_show("jobs", str(e.jobs))
 	_employed_bar.value = 100.0 * e.employed / maxf(e.population, 1)
 	_show("employed_share", "%d%% of people have a job" % roundi(100.0 * e.employed / maxf(e.population, 1)))
+	var speed := Economy.staffing()
+	if speed >= 1.0:
+		_show("work_speed", "Buildings work at full speed")
+	else:
+		_show("work_speed", "Buildings work at %d%% speed: %d more worker%s needed" % [floori(speed * 100.0), e.open_jobs, "" if e.open_jobs == 1 else "s"], DOWN)
 	var counts := {}
 	for building in Economy.state.buildings:
 		if Economy.is_built(building):

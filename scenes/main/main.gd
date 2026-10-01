@@ -204,5 +204,9 @@ func _place() -> void:
 		village.stop_placement()
 		build_menu.end_placement()
 		hud.toast("%s built!" % GameData.buildings[type_id].name)
+		# Heads-up: once finished, its jobs won't all be filled even when the houses are full.
+		var workers := int(GameData.buildings[type_id].get("workers", 0))
+		if workers > 0 and Economy.employment().jobs + workers > Economy.population_capacity():
+			hud.toast("Not enough people for all the jobs: work will slow down. Build a house!", true)
 	else:
 		build_menu.show_hint(result.error)  # stay in Placement Mode so the player can try another tile

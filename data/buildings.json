@@ -1,5 +1,5 @@
 {
-	"_note": "Timers in seconds. Build costs are PLACEHOLDERS. build_time = seconds of construction after placing (starting buildings are already built). workers = jobs it offers once built (PLACEHOLDER headcount; it does not change production yet). Batches/timers scaled for a ~1-2h offline window; per-minute rates match plan.md 5.4.",
+	"_note": "Timers in seconds. Build costs are PLACEHOLDERS. build_time = seconds of construction after placing (starting buildings are already built). workers = jobs it offers once built (PLACEHOLDER). When there are fewer people than jobs, every building with workers runs slower in proportion (plan.md 5.6). Batches/timers scaled for a ~1-2h offline window; per-minute rates match plan.md 5.4.",
 	"construction_office": {
 		"name": "Construction Office", "category": "civic",
 		"description": "Your headquarters. Everything on the island is built from here.",
@@ -8,7 +8,7 @@
 	"small_house": {
 		"name": "Small House", "category": "residential", "menu_tab": "housing",
 		"description": "A cosy home. People move in over time.",
-		"build_cost": 150, "buildable": false, "build_time": 5, "workers": 0,
+		"build_cost": 150, "buildable": true, "build_time": 5, "workers": 0,
 		"population_capacity": 10
 	},
 	"wheat_farm": {
