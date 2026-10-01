@@ -14,6 +14,7 @@ uniform vec2 shadow_px = vec2(0.9, 0.11);  // where shadows fall, per px of heig
 uniform vec2 sun_dir = vec2(-0.86, 0.51);  // toward the sun, in grid directions (set from Iso.SHADOW)
 uniform float cliff_px = 40.0;  // how high rocky coast stands above the sea (set from island_map.gd)
 uniform float beach_px = 7.0;   // how high sandy coast stands above the sea (set from island_map.gd)
+uniform bool detail = true;     // the "Water detail" setting: false skips ripples and wave marks
 
 const vec3 DEEP = vec3(0.05, 0.22, 0.36);
 const vec3 MID = vec3(0.08, 0.38, 0.55);
@@ -141,14 +142,17 @@ vec3 water_color(vec2 px, vec2 cell, float foot, float lift_px, float beach, flo
 	c = mix(c, MID, smoothstep(0.7, 3.0, depth));
 	c = mix(c, DEEP, smoothstep(2.5, 8.0, depth));
 
-	// Two drifting layers of ripples, plus little wave marks out at sea.
-	float r1 = noise_at(cell * 0.09 + TIME * vec2(0.010, 0.004), 0.09 / CELL_PX, blur);
-	float r2 = noise_at(cell * 0.13 + vec2(0.5) - TIME * vec2(0.004, 0.009), 0.13 / CELL_PX, blur);
-	float ripple = r1 + r2 - 1.0;
-	c *= 1.0 + ripple * 0.05;
-	c += vec3(0.04, 0.06, 0.07) * smoothstep(0.1, 0.5, ripple);
-	if (foot > 0.8) {  // not in the surf, where foam covers them anyway
-		c = mix(c, vec3(0.85, 0.95, 1.0), wave_marks(px, blur) * 0.35 * smoothstep(0.8, 2.5, foot));
+	// Two drifting layers of ripples, plus little wave marks out at sea (skipped on "Low" water
+	// detail, which saves work on slow phones).
+	if (detail) {
+		float r1 = noise_at(cell * 0.09 + TIME * vec2(0.010, 0.004), 0.09 / CELL_PX, blur);
+		float r2 = noise_at(cell * 0.13 + vec2(0.5) - TIME * vec2(0.004, 0.009), 0.13 / CELL_PX, blur);
+		float ripple = r1 + r2 - 1.0;
+		c *= 1.0 + ripple * 0.05;
+		c += vec3(0.04, 0.06, 0.07) * smoothstep(0.1, 0.5, ripple);
+		if (foot > 0.8) {  // not in the surf, where foam covers them anyway
+			c = mix(c, vec3(0.85, 0.95, 1.0), wave_marks(px, blur) * 0.35 * smoothstep(0.8, 2.5, foot));
+		}
 	}
 
 	if (foot > 3.0) {

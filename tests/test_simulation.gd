@@ -13,6 +13,11 @@ var _failures := 0
 
 
 func _initialize() -> void:
+	var sim_script: Script = Sim
+	if not sim_script.can_instantiate():  # the rules script has an error: don't report "0 failed"
+		print("FAIL: scripts/sim/simulation.gd doesn't compile (see the error above)")
+		quit(1)
+		return
 	for method in get_method_list():
 		if String(method.name).begins_with("test_"):
 			call(method.name)
@@ -33,9 +38,17 @@ func _data() -> Dictionary:
 				"recipes": [{"id": "grow", "inputs": {}, "outputs": {"wheat": 10}, "duration": 60}]},
 			"mill": {"category": "processor", "build_cost": 200, "buildable": true, "storage_cap": 16, "queue_size": 4,
 				"recipes": [{"id": "mill", "inputs": {"wheat": 10}, "outputs": {"flour": 8}, "duration": 90}]},
+			# Same as farm / mill, but they take time to build (the ones above are instant, to keep
+			# the other tests simple). The cabin is a home that takes a long time to build.
+			"slow_farm": {"category": "extractor", "build_cost": 100, "buildable": true, "build_time": 5, "storage_cap": 100,
+				"recipes": [{"id": "grow", "inputs": {}, "outputs": {"wheat": 10}, "duration": 60}]},
+			"slow_mill": {"category": "processor", "build_cost": 200, "buildable": true, "build_time": 5, "storage_cap": 16, "queue_size": 4,
+				"recipes": [{"id": "mill", "inputs": {"wheat": 10}, "outputs": {"flour": 8}, "duration": 90}]},
+			"cabin": {"category": "residential", "build_cost": 0, "buildable": true, "build_time": 200, "population_capacity": 5},
 		},
 		"config": {"starting_cash": 500, "population_growth_seconds": 10, "warehouse_cap": 1000,
 			"grid_size": [10, 10],
+			"cancel_refund_in_progress": 0.5, "cancel_refund_waiting": 1.0, "demolish_refund": 0.5,
 			"starting_buildings": [{"type": "office", "position": [0, 0]}, {"type": "house", "position": [1, 0]}]},
 	}
 
@@ -62,7 +75,7 @@ func test_new_game() -> void:
 	var state := Sim.new_game(data, T0)
 	_check(state.profile.currency == 500, "starting cash")
 	_check(state.buildings.size() == 2, "starter buildings placed")
-	_check(Sim.population_capacity(state, data) == 10, "house gives population capacity")
+	_check(Sim.population_capacity(state, data, T0) == 10, "house gives population capacity")
 	_check(state.save_version == Sim.SAVE_VERSION, "save version set")
 
 
@@ -170,6 +183,25 @@ func test_processor_queue() -> void:
 	_check(mill.storage.get("flour", 0) == 16 and mill.queue.is_empty(), "job 4 done at 1090s")
 
 
+func test_can_enqueue_matches_enqueue() -> void:
+	var s: Array = _setup("mill")
+	var state: Dictionary = s[0]
+	var data: Dictionary = s[1]
+	var mill: Dictionary = s[2]
+	var no_wheat: Dictionary = Sim.can_enqueue(state, data, mill.id, "mill", T0)
+	_check(not no_wheat.ok and no_wheat.error == "Not enough Wheat.", "can_enqueue explains missing inputs")
+	state.inventory["wheat"] = 10
+	_check(Sim.can_enqueue(state, data, mill.id, "mill", T0).ok, "can_enqueue says yes with enough wheat")
+	_check(state.inventory.wheat == 10 and mill.queue.is_empty(), "can_enqueue changes nothing")
+	var farm_id: String = Sim.build(state, data, "farm", Vector2i(6, 6), T0).building_id
+	_check(not Sim.can_enqueue(state, data, farm_id, "grow", T0).ok, "extractors don't take orders")
+	state.inventory["wheat"] = 40
+	for i in 4:
+		Sim.enqueue(state, data, mill.id, "mill", T0)
+	state.inventory["wheat"] = 10
+	_check(not Sim.can_enqueue(state, data, mill.id, "mill", T0).ok, "can_enqueue sees a full queue")
+
+
 func test_idle_processor_starts_fresh() -> void:
 	var s: Array = _setup("mill")
 	var state: Dictionary = s[0]
@@ -205,6 +237,95 @@ func test_sell() -> void:
 	_check(state.profile.currency == 506 and not state.inventory.has("wheat"), "money in, wheat out")
 
 
+func test_cancel_job() -> void:
+	var s: Array = _setup("mill")
+	var state: Dictionary = s[0]
+	var data: Dictionary = s[1]
+	var mill: Dictionary = s[2]
+	state.inventory["wheat"] = 30
+	for i in 3:
+		Sim.enqueue(state, data, mill.id, "mill", T0)
+	_check(not Sim.cancel_job(state, data, mill.id, 5, T0).ok, "can't cancel an empty slot")
+	var preview: Dictionary = Sim.can_cancel_job(state, data, mill.id, 2)
+	_check(preview.ok and preview.refund.wheat == 10 and mill.queue.size() == 3, "preview shows refund, changes nothing")
+	var waiting := Sim.cancel_job(state, data, mill.id, 2, T0 + 30)
+	_check(waiting.ok and state.inventory.get("wheat", 0) == 10, "waiting job refunds all its wheat")
+	var active := Sim.cancel_job(state, data, mill.id, 0, T0 + 30)
+	_check(active.ok and active.in_progress and state.inventory.wheat == 15, "job in progress refunds half")
+	_check(mill.queue.size() == 1, "one job left")
+	Sim.settle(state, data, T0 + 119)
+	_check(mill.storage.is_empty(), "next job starts fresh from the cancel (not done at 119s)")
+	Sim.settle(state, data, T0 + 120)
+	_check(mill.storage.get("flour", 0) == 8, "next job done 90s after the cancel")
+
+
+func test_cancel_finished_or_full() -> void:
+	var s: Array = _setup("mill")
+	var state: Dictionary = s[0]
+	var data: Dictionary = s[1]
+	var mill: Dictionary = s[2]
+	state.inventory["wheat"] = 40
+	for i in 4:
+		Sim.enqueue(state, data, mill.id, "mill", T0)
+	Sim.settle(state, data, T0 + 1000)  # 2 jobs fill storage, job 3 finished but waiting
+	_check(not Sim.cancel_job(state, data, mill.id, 0, T0 + 1000).ok, "a finished batch can't be cancelled")
+	state.inventory["flour"] = 1000  # warehouse full
+	var full: Dictionary = Sim.cancel_job(state, data, mill.id, 1, T0 + 1000)
+	_check(not full.ok and mill.queue.size() == 2, "no cancel when the refund won't fit")
+
+
+func test_demolish() -> void:
+	var s: Array = _setup("mill")
+	var state: Dictionary = s[0]
+	var data: Dictionary = s[1]
+	var mill: Dictionary = s[2]
+	state.inventory["wheat"] = 20
+	Sim.enqueue(state, data, mill.id, "mill", T0)
+	Sim.enqueue(state, data, mill.id, "mill", T0)
+	Sim.settle(state, data, T0 + 90)  # job 1 done (8 flour inside), job 2 just started
+	var cash: int = state.profile.currency
+	var result := Sim.demolish(state, data, mill.id, T0 + 90)
+	_check(result.ok and Sim.find_building(state, mill.id).is_empty(), "mill is gone")
+	_check(state.profile.currency == cash + 100, "half the 200 build cost back")
+	_check(state.inventory.get("flour", 0) == 8 and state.inventory.get("wheat", 0) == 5, "goods inside + half of the job in progress")
+	_check(Sim.can_build(state, data, "farm", Vector2i(5, 5)).ok, "the spot is free again")
+	_check(not Sim.demolish(state, data, "b1", T0).ok, "starter buildings can't be demolished")
+
+
+func test_move() -> void:
+	var s: Array = _setup("farm")
+	var state: Dictionary = s[0]
+	var data: Dictionary = s[1]
+	var farm: Dictionary = s[2]
+	_check(not Sim.move(state, farm.id, Vector2i(0, 0)).ok, "can't move onto another building")
+	_check(not Sim.move(state, farm.id, Vector2i(10, 3)).ok, "can't move outside the land")
+	_check(Sim.can_move(state, farm.id, Vector2i(5, 5)).ok, "dropping it back on its own tile is fine")
+	Sim.settle(state, data, T0 + 30)  # half way through a cycle
+	_check(Sim.move(state, farm.id, Vector2i(7, 2)).ok, "can move to a free tile")
+	_check(Sim.building_at(state, Vector2i(7, 2)).id == farm.id, "farm is on its new tile")
+	_check(Sim.can_build(state, data, "farm", Vector2i(5, 5)).ok, "old tile is free again")
+	Sim.settle(state, data, T0 + 60)
+	_check(farm.storage.get("wheat", 0) == 10, "production carries on through a move")
+	_check(Sim.move(state, "b1", Vector2i(8, 8)).ok, "starter buildings can move too")
+
+
+func test_fill_queue() -> void:
+	var s: Array = _setup("mill")
+	var state: Dictionary = s[0]
+	var data: Dictionary = s[1]
+	var mill: Dictionary = s[2]
+	_check(Sim.batches_possible(state, data, mill.id, "mill", T0) == 0, "no wheat: 0 batches")
+	_check(not Sim.fill_queue(state, data, mill.id, "mill", T0).ok, "fill refuses with nothing to add")
+	state.inventory["wheat"] = 25
+	_check(Sim.batches_possible(state, data, mill.id, "mill", T0) == 2, "25 wheat = 2 batches of 10")
+	var result := Sim.fill_queue(state, data, mill.id, "mill", T0)
+	_check(result.ok and result.added == 2 and result.used.wheat == 20, "fills 2, uses 20 wheat")
+	_check(mill.queue.size() == 2 and state.inventory.wheat == 5, "queue has 2, 5 wheat left over")
+	state.inventory["wheat"] = 100
+	_check(Sim.fill_queue(state, data, mill.id, "mill", T0).added == 2, "stops at the queue size (4)")
+	_check(state.inventory.wheat == 80, "only used what fitted")
+
+
 func test_population_growth() -> void:
 	var data := _data()
 	var state := Sim.new_game(data, T0)
@@ -213,6 +334,37 @@ func test_population_growth() -> void:
 	var report := Sim.settle(state, data, T0 + 5000)
 	_check(state.population.current == 10, "stops at house capacity")
 	_check(report.get("population", 0) == 5, "report counts growth")
+
+
+func test_construction_time() -> void:
+	var data := _data()
+	var state := Sim.new_game(data, T0)
+	_check(Sim.is_built(state.buildings[0], T0 - 100), "starting buildings are already built (even if the clock jumps back)")
+	var farm := Sim.find_building(state, Sim.build(state, data, "slow_farm", Vector2i(3, 3), T0).building_id)
+	_check(not Sim.is_built(farm, T0 + 4), "still under construction after 4s")
+	_check(is_equal_approx(Sim.construction_progress(farm, data, T0 + 2.5), 0.5), "construction progress halfway at 2.5s")
+	Sim.settle(state, data, T0 + 64)
+	_check(farm.storage.is_empty(), "nothing grows while being built (first cycle starts when built)")
+	Sim.settle(state, data, T0 + 65)
+	_check(Sim.is_built(farm, T0 + 5) and int(farm.storage.get("wheat", 0)) == 10, "first batch 60s after construction ends")
+	state.inventory["wheat"] = 50
+	var mill := Sim.find_building(state, Sim.build(state, data, "slow_mill", Vector2i(4, 4), T0 + 100).building_id)
+	var early: Dictionary = Sim.enqueue(state, data, mill.id, "mill", T0 + 101)
+	_check(not early.ok and early.error == "Still under construction.", "can't queue jobs during construction")
+	_check(int(state.inventory.wheat) == 50, "a refused job takes no ingredients")
+	_check(Sim.enqueue(state, data, mill.id, "mill", T0 + 105).ok, "jobs can be queued once built")
+
+
+func test_home_under_construction() -> void:
+	var data := _data()
+	var state := Sim.new_game(data, T0)
+	Sim.build(state, data, "cabin", Vector2i(3, 3), T0)  # +5 room, finished at T0 + 200
+	_check(Sim.population_capacity(state, data, T0 + 199) == 10, "a home being built adds no room yet")
+	_check(Sim.population_capacity(state, data, T0 + 200) == 15, "finished home adds its room")
+	# Town is full (10) from T0+100; growth only resumes when the cabin is done at T0+200.
+	# One settle covering the whole time must give the same answer: 10 + 2 by T0+220, not 15.
+	Sim.settle(state, data, T0 + 220)
+	_check(state.population.current == 12, "growth resumes when the home is finished, not before")
 
 
 func test_offline_report() -> void:
@@ -239,5 +391,12 @@ func test_real_data_files() -> void:
 			_check(def.get("queue_size", 0) > 0, "%s has a queue" % type_id)
 	for entry in config.starting_buildings:
 		_check(buildings.has(entry.type), "starting building '%s' exists" % entry.type)
+	var tabs := {}
+	for tab in GameDataScript.load_json("res://data/build_menu.json").get("tabs", []):
+		tabs[tab.id] = true
+		_check(ResourceLoader.exists("res://assets/ui/icons/%s.svg" % tab.icon), "tab '%s' icon exists" % tab.id)
+	for type_id in buildings:
+		if buildings[type_id].has("menu_tab"):
+			_check(tabs.has(buildings[type_id].menu_tab), "%s's menu_tab is a Build Menu tab" % type_id)
 	var state := Sim.new_game({"resources": resources, "buildings": buildings, "config": config}, T0)
 	_check(state.buildings.size() == config.starting_buildings.size(), "real data starts a game")

@@ -4,6 +4,10 @@
 	"population_growth_seconds": 10,
 	"warehouse_cap": 2000,
 	"grid_size": [20, 20],
+	"_refunds": "Share given back (0-1). cancel_refund_in_progress = cancelling the batch being made; cancel_refund_waiting = cancelling a batch still waiting in the queue; demolish_refund = share of the build cost back when demolishing.",
+	"cancel_refund_in_progress": 0.5,
+	"cancel_refund_waiting": 1.0,
+	"demolish_refund": 0.5,
 	"island": {
 		"_comment": "Land around the buildable plot. margin = tiles of non-buildable land around the plot; coast_roughness / coast_frequency = how wobbly the coastline is; seed picks one fixed coastline (change it for a different shape); beaches = rough share of the coast that is sand instead of rock cliff (0-1); tree_density = how thick the placeholder forests are (0-1).",
 		"margin": 6,

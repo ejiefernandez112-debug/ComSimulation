@@ -28,7 +28,8 @@ static func new_game(data: Dictionary, now: float) -> Dictionary:
 		"population": {"current": 0, "growth_anchor": now},
 	}
 	for entry in config.starting_buildings:
-		_add_building(state, entry.type, Vector2i(int(entry.position[0]), int(entry.position[1])), now)
+		# Starting buildings are already standing: no construction time.
+		_add_building(state, entry.type, Vector2i(int(entry.position[0]), int(entry.position[1])), now, 0.0)
 	return state
 
 
@@ -40,7 +41,18 @@ static func settle(state: Dictionary, data: Dictionary, now: float) -> Dictionar
 	var report := {}
 	for b in state.buildings:
 		_add_to(report, settle_building(b, data, now))
-	var grown := _settle_population(state, data, now)
+	# A home finishing construction raises the population cap partway through the elapsed time,
+	# so grow the population up to each such moment with the cap that applied before it.
+	var grown := 0
+	var finishes: Array[float] = []
+	for b in state.buildings:
+		var t := built_at(b)
+		if t > float(state.population.growth_anchor) and t <= now and int(data.buildings.get(b.type, {}).get("population_capacity", 0)) > 0:
+			finishes.append(t)
+	finishes.sort()
+	for t in finishes:
+		grown += _settle_population(state, data, t, _capacity(state, data, t, false))
+	grown += _settle_population(state, data, now, population_capacity(state, data, now))
 	if grown > 0:
 		report["population"] = grown
 	return report
@@ -104,9 +116,8 @@ static func _settle_processor(b: Dictionary, def: Dictionary, now: float) -> Dic
 	return produced
 
 
-static func _settle_population(state: Dictionary, data: Dictionary, now: float) -> int:
+static func _settle_population(state: Dictionary, data: Dictionary, now: float, cap: int) -> int:
 	var pop: Dictionary = state.population
-	var cap := population_capacity(state, data)
 	var step := float(data.config.population_growth_seconds)
 	if step <= 0.0 or now < pop.growth_anchor:
 		return 0
@@ -130,8 +141,7 @@ static func can_build(state: Dictionary, data: Dictionary, type_id: String, cell
 	var def: Dictionary = data.buildings.get(type_id, {})
 	if def.is_empty() or not def.get("buildable", false):
 		return _fail("This building can't be built.")
-	var grid: Array = state.plot.grid_size
-	if cell.x < 0 or cell.y < 0 or cell.x >= int(grid[0]) or cell.y >= int(grid[1]):
+	if not _in_plot(state, cell):
 		return _fail("That spot is outside your land.")
 	if not building_at(state, cell).is_empty():
 		return _fail("That spot is taken.")
@@ -144,34 +154,100 @@ static func build(state: Dictionary, data: Dictionary, type_id: String, cell: Ve
 	var check := can_build(state, data, type_id, cell)
 	if not check.ok:
 		return check
-	state.profile.currency -= int(data.buildings[type_id].build_cost)
-	var b := _add_building(state, type_id, cell, now)
+	var def: Dictionary = data.buildings[type_id]
+	state.profile.currency -= int(def.build_cost)
+	var b := _add_building(state, type_id, cell, now, now + float(def.get("build_time", 0.0)))
 	return _ok({"building_id": b.id})
 
 
-## Queue a job. Inputs leave the Warehouse now, so a queued job can never stall for inputs.
-static func enqueue(state: Dictionary, data: Dictionary, building_id: String, recipe_id: String, now: float) -> Dictionary:
+## Whether a building could be moved to this cell (changes nothing). Moving is free, any building
+## can move, and everything inside keeps going: production doesn't depend on where it stands.
+## Its own cell counts as free (dropping it back where it was is fine).
+static func can_move(state: Dictionary, building_id: String, cell: Vector2i) -> Dictionary:
+	if find_building(state, building_id).is_empty():
+		return _fail("Building not found.")
+	if not _in_plot(state, cell):
+		return _fail("That spot is outside your land.")
+	var there := building_at(state, cell)
+	if not there.is_empty() and there.id != building_id:
+		return _fail("That spot is taken.")
+	return _ok()
+
+
+static func move(state: Dictionary, building_id: String, cell: Vector2i) -> Dictionary:
+	var check := can_move(state, building_id, cell)
+	if not check.ok:
+		return check
+	find_building(state, building_id).position = [cell.x, cell.y]
+	return _ok()
+
+
+## Whether a job could be queued right now (changes nothing). The UI uses this to grey out its
+## button, and enqueue uses it too, so the button and the real action always agree.
+static func can_enqueue(state: Dictionary, data: Dictionary, building_id: String, recipe_id: String, now: float) -> Dictionary:
 	var b := find_building(state, building_id)
 	if b.is_empty():
 		return _fail("Building not found.")
 	var def: Dictionary = data.buildings.get(b.type, {})
 	if def.get("category", "") != "processor":
 		return _fail("This building doesn't take orders.")
+	if not is_built(b, now):
+		return _fail("Still under construction.")
 	var recipe := _recipe(def, recipe_id)
 	if recipe.is_empty():
 		return _fail("Unknown recipe.")
-	settle_building(b, data, now)
 	if b.queue.size() >= int(def.queue_size):
 		return _fail("The queue is full.")
 	for res in recipe.inputs:
 		if int(state.inventory.get(res, 0)) < int(recipe.inputs[res]):
 			return _fail("Not enough %s." % _resource_name(data, res))
+	return _ok()
+
+
+## Queue a job. Inputs leave the Warehouse now, so a queued job can never stall for inputs.
+static func enqueue(state: Dictionary, data: Dictionary, building_id: String, recipe_id: String, now: float) -> Dictionary:
+	var b := find_building(state, building_id)
+	if not b.is_empty():
+		settle_building(b, data, now)  # a job may have just finished, freeing a queue slot
+	var check := can_enqueue(state, data, building_id, recipe_id, now)
+	if not check.ok:
+		return check
+	var recipe := _recipe(data.buildings[b.type], recipe_id)
 	_remove_from(state.inventory, recipe.inputs)
 	if b.queue.is_empty():
 		b.job_started_at = now
 		b.blocked = false
 	b.queue.append({"recipe_id": recipe_id})
 	return _ok()
+
+
+## How many more batches could be queued right now: limited by free queue slots and by
+## ingredients in the Warehouse. 0 means none (can_enqueue says why).
+static func batches_possible(state: Dictionary, data: Dictionary, building_id: String, recipe_id: String, now: float) -> int:
+	if not can_enqueue(state, data, building_id, recipe_id, now).ok:
+		return 0
+	var b := find_building(state, building_id)
+	var def: Dictionary = data.buildings[b.type]
+	var count: int = int(def.queue_size) - b.queue.size()
+	var inputs: Dictionary = _recipe(def, recipe_id).inputs
+	for res in inputs:
+		if int(inputs[res]) > 0:
+			count = mini(count, floori(float(state.inventory.get(res, 0)) / int(inputs[res])))
+	return count
+
+
+## Queue as many batches as fit (see batches_possible). Returns "added" and the ingredients "used".
+static func fill_queue(state: Dictionary, data: Dictionary, building_id: String, recipe_id: String, now: float) -> Dictionary:
+	var b := find_building(state, building_id)
+	if not b.is_empty():
+		settle_building(b, data, now)  # a job may have just finished, freeing a slot
+	var check := can_enqueue(state, data, building_id, recipe_id, now)
+	if not check.ok:
+		return check
+	var count := batches_possible(state, data, building_id, recipe_id, now)
+	for i in count:
+		enqueue(state, data, building_id, recipe_id, now)
+	return _ok({"added": count, "used": _scaled(_recipe(data.buildings[b.type], recipe_id).inputs, count)})
 
 
 ## Move finished goods from the building into the Warehouse (as much as fits).
@@ -195,6 +271,79 @@ static func collect(state: Dictionary, data: Dictionary, building_id: String, no
 	_add_to(state.inventory, moved)
 	settle_building(b, data, now)  # a job that was waiting for space can finish now
 	return _ok({"moved": moved})
+
+
+## What cancelling job `index` of a processor's queue would give back (changes nothing).
+## Jobs still waiting refund config.cancel_refund_waiting of their inputs; the job being worked on
+## refunds config.cancel_refund_in_progress (rounded down). A finished job can't be cancelled.
+static func can_cancel_job(state: Dictionary, data: Dictionary, building_id: String, index: int) -> Dictionary:
+	var b := find_building(state, building_id)
+	if b.is_empty():
+		return _fail("Building not found.")
+	if index < 0 or index >= b.queue.size():
+		return _fail("There's no job there.")
+	if index == 0 and b.blocked:
+		return _fail("That batch is finished. Collect it instead.")
+	var recipe := _recipe(data.buildings[b.type], b.queue[index].recipe_id)
+	var key := "cancel_refund_in_progress" if index == 0 else "cancel_refund_waiting"
+	var refund := _share(recipe.get("inputs", {}), float(data.config.get(key, 0.0)))
+	if warehouse_total(state) + _total(refund) > warehouse_cap(data):
+		return _fail("Not enough room in the warehouse for the refund.")
+	return _ok({"refund": refund, "in_progress": index == 0})
+
+
+static func cancel_job(state: Dictionary, data: Dictionary, building_id: String, index: int, now: float) -> Dictionary:
+	var b := find_building(state, building_id)
+	if not b.is_empty():
+		settle_building(b, data, now)  # the job may have just finished
+	var check := can_cancel_job(state, data, building_id, index)
+	if not check.ok:
+		return check
+	b.queue.remove_at(index)
+	_add_to(state.inventory, check.refund)
+	if index == 0:
+		b.job_started_at = now  # the next job (if any) starts from scratch now
+	return check
+
+
+## What demolishing a building would give back (changes nothing): config.demolish_refund of its
+## build cost, the goods in its storage, and the inputs of its queued jobs (same rules as
+## cancelling). Only buildings the player can build can be demolished, so starters stay.
+static func can_demolish(state: Dictionary, data: Dictionary, building_id: String) -> Dictionary:
+	var b := find_building(state, building_id)
+	if b.is_empty():
+		return _fail("Building not found.")
+	var def: Dictionary = data.buildings.get(b.type, {})
+	if not def.get("buildable", false):
+		return _fail("This building can't be demolished.")
+	var goods: Dictionary = b.storage.duplicate()
+	for i in b.queue.size():
+		if i == 0 and b.blocked:
+			_add_to(goods, _recipe(def, b.queue[0].recipe_id).get("outputs", {}))  # finished, so it's yours
+			continue
+		var key := "cancel_refund_in_progress" if i == 0 else "cancel_refund_waiting"
+		_add_to(goods, _share(_recipe(def, b.queue[i].recipe_id).get("inputs", {}), float(data.config.get(key, 0.0))))
+	if warehouse_total(state) + _total(goods) > warehouse_cap(data):
+		return _fail("Not enough room in the warehouse for what's inside. Make room first.")
+	var money := int(int(def.get("build_cost", 0)) * float(data.config.get("demolish_refund", 0.0)))
+	return _ok({"money": money, "goods": goods})
+
+
+static func demolish(state: Dictionary, data: Dictionary, building_id: String, now: float) -> Dictionary:
+	var b := find_building(state, building_id)
+	if not b.is_empty():
+		settle_building(b, data, now)
+	var check := can_demolish(state, data, building_id)
+	if not check.ok:
+		return check
+	state.buildings.erase(b)
+	state.profile.currency += int(check.money)
+	_add_to(state.inventory, check.goods)
+	# Fewer homes can mean less room: people over the new capacity move away.
+	var cap := population_capacity(state, data, now)
+	if state.population.current > cap:
+		state.population.current = cap
+	return check
 
 
 ## Sell to the NPC Retailer at its fixed price (plan.md §5.2 channel 1).
@@ -228,11 +377,27 @@ static func building_at(state: Dictionary, cell: Vector2i) -> Dictionary:
 	return {}
 
 
-static func population_capacity(state: Dictionary, data: Dictionary) -> int:
-	var cap := 0
-	for b in state.buildings:
-		cap += int(data.buildings.get(b.type, {}).get("population_capacity", 0))
-	return cap
+## Room for people in finished homes (homes still under construction don't count yet).
+static func population_capacity(state: Dictionary, data: Dictionary, now: float) -> int:
+	return _capacity(state, data, now, true)
+
+
+## When the building is (or was) finished. Saves from before construction time existed have no
+## "built_at", so those buildings count as finished long ago.
+static func built_at(b: Dictionary) -> float:
+	return float(b.get("built_at", 0.0))
+
+
+static func is_built(b: Dictionary, now: float) -> bool:
+	return now >= built_at(b)
+
+
+## 0.0 to 1.0 progress of construction (1.0 = finished), for progress bars.
+static func construction_progress(b: Dictionary, data: Dictionary, now: float) -> float:
+	var build_time := float(data.buildings.get(b.type, {}).get("build_time", 0.0))
+	if is_built(b, now) or build_time <= 0.0:
+		return 1.0
+	return clampf(1.0 - (built_at(b) - now) / build_time, 0.0, 1.0)
 
 
 static func warehouse_cap(data: Dictionary) -> int:
@@ -258,20 +423,39 @@ static func job_progress(b: Dictionary, data: Dictionary, now: float) -> float:
 
 # --- Helpers ------------------------------------------------------------------
 
-static func _add_building(state: Dictionary, type_id: String, cell: Vector2i, now: float) -> Dictionary:
+## `finished_at` = when construction ends. Until then the building makes nothing and takes no orders.
+static func _add_building(state: Dictionary, type_id: String, cell: Vector2i, now: float, finished_at: float) -> Dictionary:
 	var b := {
 		"id": "b%d" % int(state.next_building_id),
 		"type": type_id,
 		"level": 1,
 		"position": [cell.x, cell.y],
+		"built_at": finished_at,
 		"storage": {},
 		"queue": [],  # [{recipe_id}], first entry is the job being worked on
-		"job_started_at": now,  # start of the current cycle (extractor) or current job (processor)
+		# Start of the current cycle (extractor) or job (processor). For a new extractor that's the
+		# moment construction ends: settling waits until then, so nothing grows while it's being built.
+		"job_started_at": maxf(now, finished_at),
 		"blocked": false,  # processor: finished job is waiting for storage space
 	}
 	state.next_building_id = int(state.next_building_id) + 1
 	state.buildings.append(b)
 	return b
+
+
+## Population room from homes finished by time t. inclusive = false leaves out homes finishing
+## exactly at t (the cap that applied just before that moment).
+static func _capacity(state: Dictionary, data: Dictionary, t: float, inclusive: bool) -> int:
+	var cap := 0
+	for b in state.buildings:
+		if built_at(b) < t or (inclusive and built_at(b) == t):
+			cap += int(data.buildings.get(b.type, {}).get("population_capacity", 0))
+	return cap
+
+
+static func _in_plot(state: Dictionary, cell: Vector2i) -> bool:
+	var grid: Array = state.plot.grid_size
+	return cell.x >= 0 and cell.y >= 0 and cell.x < int(grid[0]) and cell.y < int(grid[1])
 
 
 static func _recipe(def: Dictionary, recipe_id: String) -> Dictionary:
@@ -298,6 +482,16 @@ static func _scaled(amounts: Dictionary, times: int) -> Dictionary:
 		return out
 	for k in amounts:
 		out[k] = int(amounts[k]) * times
+	return out
+
+
+## Each amount times `fraction`, rounded down; amounts that round to 0 are left out.
+static func _share(amounts: Dictionary, fraction: float) -> Dictionary:
+	var out := {}
+	for k in amounts:
+		var qty := floori(int(amounts[k]) * fraction)
+		if qty > 0:
+			out[k] = qty
 	return out
 
 

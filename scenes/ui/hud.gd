@@ -1,0 +1,163 @@
+extends Control
+## The always-on HUD, Clash-of-Clans style: resource bars in the top-right corner (cash,
+## population, warehouse) with a chip for each item in the warehouse, and short messages
+## ("toasts") at the top. Shows numbers from Economy; decides nothing itself.
+## (The menu buttons live in the bottom menu bar, menu_bar.gd.)
+
+const ROW_WIDTH := 236.0
+
+var _cash: Label
+var _shown_cash := -1.0  # what the cash label shows; it counts up/down to the real amount
+var _cash_tween: Tween
+var _population: Label
+var _population_bar: ProgressBar
+var _warehouse: Label
+var _warehouse_bar: ProgressBar
+var _items := {}  # resource id -> its Label in the item chips
+var _toast_box: VBoxContainer
+
+
+func _ready() -> void:
+	set_anchors_preset(Control.PRESET_FULL_RECT)
+	mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_build_resources()
+	_toast_box = VBoxContainer.new()
+	_toast_box.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP, Control.PRESET_MODE_MINSIZE, 18)
+	_toast_box.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_toast_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_toast_box)
+	Economy.changed.connect(_refresh)
+	_refresh()
+
+
+## A short message at the top of the screen that fades away. Bad news is tinted red.
+func toast(text: String, bad := false) -> void:
+	var pill := PanelContainer.new()
+	pill.theme_type_variation = "HudPill"
+	pill.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	pill.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	var label := Label.new()
+	label.text = text
+	label.add_theme_font_size_override("font_size", 20)
+	if bad:
+		label.add_theme_color_override("font_color", UITheme.BAD)
+	pill.add_child(label)
+	_toast_box.add_child(pill)
+	if _toast_box.get_child_count() > 3:
+		_toast_box.get_child(0).queue_free()
+	var fade := create_tween()
+	fade.tween_interval(1.8)
+	fade.tween_property(pill, "modulate:a", 0.0, 0.5)
+	fade.tween_callback(pill.queue_free)
+
+
+func _build_resources() -> void:
+	var column := VBoxContainer.new()
+	column.add_theme_constant_override("separation", 6)
+	column.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT, Control.PRESET_MODE_MINSIZE, 14)
+	column.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	column.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(column)
+	var cash := _resource_row(column, "cash", "")
+	_cash = cash.label
+	var pop := _resource_row(column, "population", "BlueBar")
+	_population = pop.label
+	_population_bar = pop.bar
+	var store := _resource_row(column, "warehouse", "BrownBar")
+	_warehouse = store.label
+	_warehouse_bar = store.bar
+	# One chip per item (from data/resources.json), so new resources appear automatically.
+	var chips := HFlowContainer.new()
+	chips.alignment = FlowContainer.ALIGNMENT_END
+	chips.custom_minimum_size.x = ROW_WIDTH
+	chips.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	column.add_child(chips)
+	for resource_id in GameData.resources:
+		var chip := PanelContainer.new()
+		chip.theme_type_variation = "HudPill"
+		chip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		chip.tooltip_text = GameData.resources[resource_id].name
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 4)
+		chip.add_child(row)
+		row.add_child(_icon_rect(UITheme.icon(resource_id), 26))
+		var amount := Label.new()
+		amount.add_theme_font_size_override("font_size", 17)
+		row.add_child(amount)
+		chips.add_child(chip)
+		_items[resource_id] = amount
+
+
+## One HUD row: a dark pill holding the number (and a fill bar), with the icon overlapping its
+## right end. Returns {"label", "bar"}; bar is null when `bar_style` is "".
+func _resource_row(parent: Control, icon_name: String, bar_style: String) -> Dictionary:
+	var row := Control.new()
+	row.custom_minimum_size = Vector2(ROW_WIDTH, 46)
+	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	parent.add_child(row)
+	var pill := PanelContainer.new()
+	pill.theme_type_variation = "HudPill"
+	pill.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	pill.position = Vector2(0, 6)
+	pill.size = Vector2(ROW_WIDTH - 24, 34)
+	row.add_child(pill)
+	var bar: ProgressBar = null
+	if bar_style != "":
+		bar = ProgressBar.new()
+		bar.theme_type_variation = bar_style
+		bar.show_percentage = false
+		bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		bar.position = Vector2(6, 26)
+		bar.size = Vector2(ROW_WIDTH - 52, 9)
+		row.add_child(bar)
+	var label := Label.new()
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	label.position = Vector2(8, 2)
+	label.size = Vector2(ROW_WIDTH - 66, 30 if bar else 40)
+	label.add_theme_font_size_override("font_size", 21 if bar else 24)
+	row.add_child(label)
+	var icon := _icon_rect(UITheme.icon(icon_name), 46)
+	icon.position = Vector2(ROW_WIDTH - 46, 0)
+	row.add_child(icon)
+	return {"label": label, "bar": bar}
+
+
+func _icon_rect(texture: Texture2D, side: float) -> TextureRect:
+	var rect := TextureRect.new()
+	rect.texture = texture
+	rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	rect.custom_minimum_size = Vector2(side, side)
+	rect.size = Vector2(side, side)
+	rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	return rect
+
+
+func _refresh() -> void:
+	var cash := Economy.currency()
+	if _shown_cash < 0.0:
+		_shown_cash = cash
+	if roundi(_shown_cash) != cash:
+		if _cash_tween:
+			_cash_tween.kill()
+		_cash_tween = create_tween()
+		_cash_tween.tween_method(_show_cash, _shown_cash, float(cash), 0.5)
+	else:
+		_show_cash(cash)
+	var pop := Economy.population()
+	var pop_cap := Economy.population_capacity()
+	_population.text = "%d / %d" % [pop, pop_cap]
+	_population_bar.value = 100.0 * pop / maxf(pop_cap, 1)
+	var stored := Economy.warehouse_total()
+	var cap := Economy.warehouse_cap()
+	_warehouse.text = "%s / %s" % [UITheme.number(stored), UITheme.number(cap)]
+	_warehouse_bar.value = 100.0 * stored / maxf(cap, 1)
+	for resource_id in _items:
+		_items[resource_id].text = UITheme.number(int(Economy.state.inventory.get(resource_id, 0)))
+
+
+## Cash counts smoothly towards the new amount, like coins pouring in.
+func _show_cash(value: float) -> void:
+	_shown_cash = value
+	_cash.text = UITheme.number(roundi(value))

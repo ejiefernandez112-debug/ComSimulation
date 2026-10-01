@@ -46,6 +46,22 @@ func collect(building_id: String) -> Dictionary:
 	return _after(Simulation.collect(state, data(), building_id, TimeService.now()))
 
 
+func fill_queue(building_id: String, recipe_id: String) -> Dictionary:
+	return _after(Simulation.fill_queue(state, data(), building_id, recipe_id, TimeService.now()))
+
+
+func move(building_id: String, cell: Vector2i) -> Dictionary:
+	return _after(Simulation.move(state, building_id, cell))
+
+
+func cancel_job(building_id: String, index: int) -> Dictionary:
+	return _after(Simulation.cancel_job(state, data(), building_id, index, TimeService.now()))
+
+
+func demolish(building_id: String) -> Dictionary:
+	return _after(Simulation.demolish(state, data(), building_id, TimeService.now()))
+
+
 func sell(resource_id: String, qty: int) -> Dictionary:
 	return _after(Simulation.sell(state, data(), resource_id, qty))
 
@@ -61,7 +77,7 @@ func population() -> int:
 
 
 func population_capacity() -> int:
-	return Simulation.population_capacity(state, data())
+	return Simulation.population_capacity(state, data(), TimeService.now())
 
 
 func warehouse_total() -> int:
@@ -81,8 +97,53 @@ func building_at(cell: Vector2i) -> Dictionary:
 	return Simulation.building_at(state, cell)
 
 
+## The building with this id, or {} if there is none. Read it; don't change it.
+func building(building_id: String) -> Dictionary:
+	return Simulation.find_building(state, building_id)
+
+
+## Whether a job could be queued right now ({"ok", "error"}); changes nothing.
+func can_enqueue(building_id: String, recipe_id: String) -> Dictionary:
+	return Simulation.can_enqueue(state, data(), building_id, recipe_id, TimeService.now())
+
+
+## How many batches "Fill queue" would add right now (0 = none).
+func batches_possible(building_id: String, recipe_id: String) -> int:
+	return Simulation.batches_possible(state, data(), building_id, recipe_id, TimeService.now())
+
+
+## Whether the building could be moved to cell ({"ok", "error"}); changes nothing.
+func can_move(building_id: String, cell: Vector2i) -> Dictionary:
+	return Simulation.can_move(state, building_id, cell)
+
+
+## What cancelling that queued job would refund ({"ok", "error", "refund", "in_progress"}); changes nothing.
+func can_cancel_job(building_id: String, index: int) -> Dictionary:
+	return Simulation.can_cancel_job(state, data(), building_id, index)
+
+
+## What demolishing would give back ({"ok", "error", "money", "goods"}); changes nothing.
+func can_demolish(building_id: String) -> Dictionary:
+	return Simulation.can_demolish(state, data(), building_id)
+
+
 func job_progress(building: Dictionary) -> float:
 	return Simulation.job_progress(building, data(), TimeService.now())
+
+
+## False while the building is still under construction.
+func is_built(building: Dictionary) -> bool:
+	return Simulation.is_built(building, TimeService.now())
+
+
+## 0.0 to 1.0 progress of construction (1.0 = finished).
+func construction_progress(building: Dictionary) -> float:
+	return Simulation.construction_progress(building, data(), TimeService.now())
+
+
+## Seconds until construction ends (0 when finished).
+func construction_left(building: Dictionary) -> float:
+	return maxf(Simulation.built_at(building) - TimeService.now(), 0.0)
 
 
 func _after(result: Dictionary) -> Dictionary:

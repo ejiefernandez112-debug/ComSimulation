@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <!-- Loaf of bread. -->
+  <defs>
+    <linearGradient id="crust" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#F7BE68"/><stop offset="1" stop-color="#B5601C"/></linearGradient>
+  </defs>
+  <path d="M12 86 C12 50 38 32 64 32 C90 32 116 50 116 86 C116 100 106 106 94 106 L34 106 C22 106 12 100 12 86 Z" fill="url(#crust)" stroke="#45260C" stroke-width="6" stroke-linejoin="round"/>
+  <path d="M24 92 C24 98 30 100 36 100 L92 100 C98 100 104 98 104 92" fill="none" stroke="#8E4512" stroke-width="5" stroke-linecap="round"/>
+  <g fill="none" stroke="#FFDCA0" stroke-width="7" stroke-linecap="round">
+    <path d="M38 60 C42 52 48 47 54 45"/>
+    <path d="M56 66 C60 56 68 50 76 47"/>
+    <path d="M76 70 C80 62 86 57 92 55"/>
+  </g>
+  <ellipse cx="40" cy="48" rx="13" ry="6" fill="#fff" fill-opacity="0.5" transform="rotate(-24 40 48)"/>
+</svg>

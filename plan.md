@@ -57,7 +57,7 @@ These are cheap now and very expensive to retrofit later. Include them in instru
 - **Target look:** `ChatGPT Image Sep 30, 2026, 07_51_57 PM.png` (repo root) — lush island, rock cliffs, beaches, mountain, dense trees. A mood reference only, never game art: AI images can't keep one camera angle, light direction and scale across many pieces, so placed side by side they look like a collage.
 - **Pipeline — decided 2026-10-01: 3D models "photographed" into 2D sprites** (CoC's approach)
   - A small Godot "photo studio" tool scene (built and run by Claude Code, never shipped) places each 3D model under the game's exact camera angle and the same sun, and saves a PNG with its shadow. The game itself stays 2D — fast on low-end Android and Web.
-  - Start with free CC0 low-poly model libraries (Kenney, Quaternius, KayKit); upgrade to paid or commissioned models later by re-running the studio. Blender is not required.
+  - ~~Start with free CC0 low-poly model libraries (Kenney, Quaternius, KayKit); Blender is not required.~~ **Changed 2026-10-01: we make our own models in Blender** (5.2, installed), because free kits have no real farm/mill/bakery and don't match each other. Each model is a Python script in `art/blender/models/` that Blender runs in the background (no Blender skills needed), all sharing one style kit (`art/blender/kit.py`: palette, 1 tile = 5 units, rounded edges). Style: "a bit more detailed, closer to Clash of Clans": shingled roofs, trim, props, not just blocks. The studio still takes the final photo, so lighting stays identical to the game. Paid or commissioned models can still replace any of them later. How-to: `art/README.md`
   - Rejected: AI-generated images as game art (see above); a truly 3D game (costs phone battery/performance, and the Compatibility renderer's lighting is simpler than a pre-rendered picture).
 - **Look rules (every asset follows these):**
   - One sun, from the upper left of the screen; shadows fall to the right (`Iso.SHADOW` in code)
@@ -68,9 +68,10 @@ These are cheap now and very expensive to retrofit later. Include them in instru
 - **Visual roadmap:**
   1. ✅ **Stage setup** (code only, placeholder art; done 2026-10-01) — animated water with depth colour and shoreline foam, smooth coast, rock cliffs and sandy beaches, grid lines only in Placement Mode, soft ground shadows, y-sorted objects, placeholder trees. Lives in `scenes/village/` (`island.gdshader` paints the island; `island_map.gd` decides where land, beaches and trees are)
   2. **Photo studio + first real art** — Construction Office, Small House, Wheat Farm, Flour Mill, Bakery, trees, rocks. Buildings grow to 2×2/3×3 footprints (a game-rule change, with tests).
-     - ✅ Studio built (`tools/sprite_studio.gd`, 2026-10-01): two photos per model (the building, then its shadow alone) combined into one transparent PNG with a baked shadow; also makes a contact sheet of a whole kit to choose from. All 5 buildings use **temporary** models from Kenney City Kit (Commercial) — a city kit, so the farm and mill are stand-in office blocks. **Expect these sprites to be swapped:** changing art = edit `tools/sprite_studio.json` and re-run the studio; no game code changes
+	 - ✅ Studio built (`tools/sprite_studio.gd`, 2026-10-01): two photos per model (the building, then its shadow alone) combined into one transparent PNG with a baked shadow; also makes a contact sheet of a whole kit to choose from. All 5 buildings use **temporary** models from Kenney City Kit (Commercial) — a city kit, so the farm and mill are stand-in office blocks. **Expect these sprites to be swapped:** changing art = edit `tools/sprite_studio.json` and re-run the studio; no game code changes
 	 - Raw model kits live in `Sprites kit/` but are **not committed** (big, re-downloadable, likely to change; sources noted in `tools/sprite_studio.json`); only the small generated sprites are. So Git LFS isn't needed yet — turn it on before the step-3 island picture (several MB)
-	 - Still to do: farm/mill/bakery-style models (e.g. a Kenney farm or nature kit), trees and rocks as sprites, bigger footprints
+	 - ✅ **Wheat Farm** made in Blender (2026-10-01): red gambrel barn with cupola, silo, fenced wheat field with scarecrow, yard with hay bales, sacks and a cart. Designed for **2×2**, but shown on 1 tile until footprints grow (the studio's `tiles` setting in `tools/sprite_studio.json` goes 1 → 2 then)
+	 - Still to do: Flour Mill, Bakery, Small House, Construction Office in Blender (same style kit); trees and rocks as sprites; bigger footprints (decided: 2×2)
   3. **The island itself** — 3D terrain built in the studio from the same coastline seed (flat plot in the middle, cliffs and beaches around it, mountain and forest at the back), baked once into a background picture cut into chunks for phones
   4. **Life** — spinning mill sails, bakery smoke, swaying trees, drifting cloud shadows, birds, boats
 - **Audio** — not yet planned (see Open Questions); placeholder SFX for collect/sell/build go a long way for game feel even in Phase 1.
@@ -177,15 +178,26 @@ _Rescaled 2026-10-01 for the ~1–2h offline window: batches ×4 and timers ×4,
 **Phase 1 screens:**
 - **Village View** — main isometric view, tap/click a building to interact, pan/zoom camera. Starts on the whole-island view (re-framed if the window changes size before the player moves); zooming out stops at that view and panning stops at the island's edges
 - **Build Menu + Placement Mode** — list of buildable buildings with cost, then place on the grid (needed in Phase 1a: the player's first action is building a Wheat Farm)
+  - ✅ Redesigned 2026-10-01 (Tropico-style, tabs on the right): a window with category tabs down its right edge (the open tab joins the page), a title banner, a grid of building cards (picture + name; lock badge = not available, coin badge = can't afford yet), and a details strip (name, cost or "Need X more", description, what it makes, storage, Build button). Tap a card to see its details, tap it again or press Build to place it; on PC, pointing at a card previews it. Tabs are listed in `data/build_menu.json`; each building picks its tab with `menu_tab` in `buildings.json` (buildings with `buildable: false` show locked; tabs with nothing in them are hidden). Wide screens: a window nudged clear of the money bar; tall screens: a bottom sheet. File: `scenes/ui/build_menu.gd`
 - **Building Panel** — current recipe, timer progress, job queue, collect button, upgrade button (upgrade button from Phase 2)
+  - ✅ Built 2026-10-01, Clash-of-Clans style: tapping a building selects it (bounce + glow + ring) and shows an action bar (Info / Collect / Produce / Build); tapping a building with goods waiting also collects; "ready" bubbles float over buildings; "+32"/"-40" numbers rise on collect/produce. Info opens the full panel (recipe, progress, queue slots, storage, Collect / Make). Files: `scenes/ui/building_bar.gd`, `building_panel.gd`
+  - Industrial buildings (extractor/processor) skip the bar: tapping opens the panel straight away
+  - **Cancel a batch:** tap a queue slot. A waiting batch refunds 100% of its ingredients at once; the batch being made refunds 50% after an "are you sure?" (`cancel_refund_waiting` / `cancel_refund_in_progress` in `game_config.json`). A finished batch can't be cancelled (collect it). No "pause": with no upkeep costs, pausing would gain nothing over cancelling
+  - **Demolish:** red button at the bottom of the panel, with a confirm window showing what comes back: 50% of the build cost (`demolish_refund`), goods inside, and queued ingredients (same refund rules). Only buildings the player can build can be demolished (starters stay). Refused if the warehouse can't hold what comes back
+  - **Move:** blue button in the panel (or the action bar for the Construction Office / Small House). Uses Placement Mode: the building fades where it stands, a preview follows the pointer, tap a free tile. Free, works for every building, and production carries on through the move
+  - **Fill queue:** "Fill xN" beside the Now heading queues as many batches as there are free slots and ingredients for. The Now box shows status, progress and the queue together (its first slot is the batch being made)
 - **Recipe Select** — sub-panel of Building Panel (once 2+ recipes unlocked)
 - **Inventory/Warehouse** — all resources held, quantities, storage caps
 - **Retailer/Sell Screen** — sellable resources, current NPC price, quantity selector, sell button
 - **Offline Summary** — "While you were away…" popup listing what was produced (and, from Phase 2/3, wages paid)
 - **Settings** — sound/music volume, save reset, language (if localized)
+  - ✅ Built 2026-10-01 (the "Menu" card in the bottom menu bar): Music, Sound effects, Building names, Water detail (High/Low, for slow phones), Full screen (PC), About, Quit (PC). Saved in `user://settings.json` by the `Settings` autoload, separate from the game save. Still to add: save reset (needs the save system), language (if localized). Music/Sound switches mute the "Music"/"SFX" audio buses, ready for when the game has sound
 - **Quest Log** (Phase 1b) — active tutorial + daily/weekly quests, progress, claim-reward button
 - **Profile** (Phase 1b) — XP/level, badges earned (Phase 4 adds rating)
 - **Persistent HUD** — currency balance, XP bar, active quest progress (compact), Population (current/capacity), notification icons
+  - ✅ Phase 1a part built 2026-10-01: top-right resource bars (cash with count-up, population, warehouse fill) plus a chip per item; short messages ("toasts") at the top. XP/quests arrive with Phase 1b. File: `scenes/ui/hud.gd`
+  - ✅ **Bottom menu bar** (2026-10-01, Tropico-style), bottom centre: paper cards with an icon, clipped onto blue folders with the name underneath; pointing at a card lifts it. Cards: Build, Warehouse, Market, Menu (Settings). Warehouse and Market are greyed with a lock until those screens exist (tapping says "coming soon"). It slides away while a building's action bar, Placement Mode or the Build window is using the bottom of the screen. The card list is at the top of `scenes/ui/menu_bar.gd`; art in `assets/ui/menu_tile.svg` / `menu_card.svg`
+- **UI look** — one theme for everything (`scenes/ui/ui_theme.gd`): chunky glossy buttons in 5 colours, cream windows, bold white outlined text; all art is SVG in `assets/ui/` (easy to restyle). Pop-up windows share `scenes/ui/modal_window.gd` (centred on wide screens, bottom sheet on tall ones)
 
 **Phase 4 additions:**
 - **Market/Exchange** — live AMM-style buy/sell interface
@@ -284,7 +296,7 @@ A hidden dev menu (key combo on PC, secret tap sequence on mobile) for testing t
 - [x] Do Extractors (Wheat Farm) run continuously until storage is full (CoC-collector style) or only through a job queue like Processors? → **Run continuously until storage is full** (decided 2026-10-01)
 - [x] Target offline window → **~1–2 hours** (decided 2026-10-01); Phase 1a numbers in 5.4 rescaled to match
 - [x] Confirm the proposed resource-flow rules in 5.1 → **Confirmed as written** (decided 2026-10-01); Warehouse cap placeholder 2000 total units
-- [x] Construction timers for new buildings → **Instant in Phase 1a** (decided 2026-10-01); timers/builder limits may return in a later phase
+- [x] Construction timers for new buildings → **5 seconds for every building** (`build_time` in `data/buildings.json`, changed from instant on 2026-10-01). While being built a building is faded with a countdown bar, makes nothing, takes no orders and adds no housing; starting buildings come already built. Builder limits (one construction at a time, etc.) may come in a later phase
 - [ ] Soft and premium currency names (₱ is a placeholder)
 
 **Later phases:**
@@ -340,6 +352,15 @@ A hidden dev menu (key combo on PC, secret tap sequence on mobile) for testing t
 Both are functional, self-contained HTML/JS artifacts used to validate the trading-mechanic math and UX before porting logic into Godot.
 
 ## 15. Revision Log
+
+**2026-10-01 (Blender art pipeline):**
+- Building art is now modelled in Blender from Python scripts (`art/blender/`), replacing "use free kits, no Blender" (Section 4). Style: more detailed, closer to Clash of Clans. Footprints for the pack: 2×2
+- First model: Wheat Farm. The sprite studio can now read a building's model from its own folder (`kit_folder` per entry)
+
+**2026-10-01 (HUD, building interaction, settings):**
+- Clash-of-Clans-style HUD, building selection/action bar/info panel, Settings window, and a shared UI theme with SVG art (see Section 6)
+- New game rule `can_enqueue` (read-only check shared by the UI and `enqueue`, like `can_build`), with tests; buildings got a `description` in `data/buildings.json`
+- The temporary test panel is down to Sell buttons and Skip-time until the Retailer screen exists
 
 **2026-10-01 (camera framing):**
 - Starting view fits the whole island including cliffs, and re-frames when the window settles to its real size (the editor's stretched game panel, phones); zoom-out is capped at the whole-island view and panning stays within the island

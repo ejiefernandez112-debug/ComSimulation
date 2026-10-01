@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <!-- Fallback icon for items that don't have their own icon yet. -->
+  <rect x="20" y="24" width="88" height="88" rx="10" fill="#D9A15E" stroke="#3A220E" stroke-width="6"/>
+  <path d="M36 44 L92 92 M92 44 L36 92" stroke="#8A521F" stroke-width="9" stroke-linecap="round"/>
+</svg>

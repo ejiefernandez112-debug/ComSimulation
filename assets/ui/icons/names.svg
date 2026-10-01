@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <!-- Name tag (show building names). -->
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFFDF4"/><stop offset="1" stop-color="#E7CF98"/></linearGradient>
+  </defs>
+  <path d="M10 40 L84 40 L118 64 L84 88 L10 88 Z" fill="url(#g)" stroke="#3A2307" stroke-width="6" stroke-linejoin="round"/>
+  <circle cx="86" cy="64" r="7" fill="#C9873E" stroke="#3A2307" stroke-width="4"/>
+  <path d="M24 56 L66 56 M24 72 L56 72" stroke="#8C6A3A" stroke-width="7" stroke-linecap="round"/>
+</svg>

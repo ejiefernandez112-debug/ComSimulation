@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <!-- Chunky right arrow ("turns into"). -->
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#9BE65A"/><stop offset="1" stop-color="#3E9C27"/></linearGradient>
+  </defs>
+  <path d="M12 46 L66 46 L66 20 L118 64 L66 108 L66 82 L12 82 Z" fill="url(#g)" stroke="#17260E" stroke-width="7" stroke-linejoin="round"/>
+</svg>

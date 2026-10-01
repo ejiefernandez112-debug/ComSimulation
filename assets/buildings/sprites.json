@@ -32,10 +32,10 @@
 		},
 		"wheat_farm": {
 			"anchor": [
-				40.0,
-				64.0
+				59.0,
+				55.0
 			],
-			"model": "building-k.glb"
+			"model": "wheat_farm.glb"
 		}
 	}
 }

@@ -16,6 +16,8 @@ script = ExtResource("2")
 [node name="Shadows" type="Node2D" parent="."]
 script = ExtResource("4")
 
+[node name="Marker" type="Node2D" parent="."]
+
 [node name="Objects" type="Node2D" parent="."]
 texture_filter = 4
 y_sort_enabled = true

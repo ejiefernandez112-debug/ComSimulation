@@ -5,12 +5,14 @@ extends Node
 var resources: Dictionary = {}
 var buildings: Dictionary = {}
 var config: Dictionary = {}
+var build_menu: Dictionary = {}  # {"tabs": [{id, name, icon}]}
 
 
 func _ready() -> void:
 	resources = load_json("res://data/resources.json")
 	buildings = load_json("res://data/buildings.json")
 	config = load_json("res://data/game_config.json")
+	build_menu = load_json("res://data/build_menu.json")
 	print("GameData loaded: %d resources, %d buildings" % [resources.size(), buildings.size()])
 
 

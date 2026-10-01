@@ -1,0 +1,283 @@
+extends ModalWindow
+## The building's info window (plan.md §6 Building Panel): what it makes and from what, what
+## it's doing now with its job queue, and its storage, with Collect and Make buttons.
+## Tapping a filled queue slot cancels that batch; Fill queues as many as fit. Move and Demolish
+## sit at the bottom.
+## Shows numbers from Economy only; the buttons ask main.gd to act (signals).
+
+signal collect_requested(building_id: String)
+signal produce_requested(building_id: String)
+signal fill_requested(building_id: String)
+signal cancel_requested(building_id: String, index: int)
+signal move_requested(building_id: String)
+signal demolish_requested(building_id: String)
+
+var building_id := ""
+
+# Parts that change while the window is open (refreshed every Economy tick).
+var _status: Label
+var _progress: ProgressBar
+var _slots: Array[PanelContainer] = []
+var _storage_text: Label
+var _storage_bar: ProgressBar
+var _collect: Button
+var _produce: Button
+var _fill: Button
+
+
+func _ready() -> void:
+	super()
+	Economy.changed.connect(_refresh)
+
+
+func show_building(id: String) -> void:
+	building_id = id
+	var b := Economy.building(id)
+	if b.is_empty():
+		return
+	var def: Dictionary = GameData.buildings[b.type]
+	_build_rows(b, def)
+	open("%s  ·  Level %d" % [def.name, int(b.level)])
+	_refresh()
+
+
+func _build_rows(b: Dictionary, def: Dictionary) -> void:
+	clear_content()
+	_slots.clear()
+	_storage_bar = null
+	_collect = null
+	_produce = null
+	_fill = null
+	var about := _body(def.get("description", ""))
+	about.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	about.custom_minimum_size.x = WIDTH - 70  # wrapped text needs a width, or it measures one word per line
+	content.add_child(about)
+	var r := BuildingInfo.recipe(b.type)
+
+	if def.category in ["extractor", "processor"]:
+		var box := _section("Production")
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 10)
+		box.add_child(row)
+		for res in r.inputs:
+			row.add_child(_item(res, int(r.inputs[res])))
+		if not r.inputs.is_empty():
+			row.add_child(_icon("arrow", 34))
+		for res in r.outputs:
+			row.add_child(_item(res, int(r.outputs[res])))
+		var spacer := Control.new()
+		spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row.add_child(spacer)
+		row.add_child(_icon("clock", 30))
+		row.add_child(_body(UITheme.duration(float(r.duration))))
+
+	# "Now": what it's doing, and for processors the queue too (its first slot is the batch
+	# being made), with a Fill button beside the heading.
+	var now_box := _section("Now")
+	_status = _body("")
+	now_box.add_child(_status)
+	_progress = ProgressBar.new()
+	_progress.show_percentage = false
+	_progress.custom_minimum_size.y = 16
+	now_box.add_child(_progress)
+
+	if def.category == "processor":
+		var header: HBoxContainer = now_box.get_child(0)
+		var hint := _body("tap a batch to cancel")
+		hint.add_theme_font_size_override("font_size", 15)
+		hint.modulate.a = 0.75
+		header.add_child(hint)
+		_fill = Button.new()
+		_fill.theme_type_variation = "YellowButton"
+		_fill.custom_minimum_size = Vector2(110, 40)
+		_fill.add_theme_font_size_override("font_size", 17)
+		_fill.tooltip_text = "Queue as many batches as you have room and ingredients for"
+		_fill.pressed.connect(func(): fill_requested.emit(building_id))
+		header.add_child(_fill)
+		var slots := HBoxContainer.new()
+		slots.add_theme_constant_override("separation", 6)
+		now_box.add_child(slots)
+		for i in int(def.queue_size):
+			slots.add_child(_queue_slot(i, BuildingInfo.output_of(r)))
+
+	if def.has("storage_cap"):
+		var store := _section("Storage")
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 10)
+		store.add_child(row)
+		row.add_child(_icon(BuildingInfo.output_of(r), 34))
+		_storage_bar = ProgressBar.new()
+		_storage_bar.theme_type_variation = "GoldBar"
+		_storage_bar.show_percentage = false
+		_storage_bar.custom_minimum_size.y = 16
+		_storage_bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		_storage_bar.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		row.add_child(_storage_bar)
+		_storage_text = _body("")
+		row.add_child(_storage_text)
+
+	var buttons := HBoxContainer.new()
+	buttons.alignment = BoxContainer.ALIGNMENT_CENTER
+	buttons.add_theme_constant_override("separation", 14)
+	content.add_child(buttons)
+	if def.has("storage_cap"):
+		_collect = Button.new()
+		_collect.icon = UITheme.icon(BuildingInfo.output_of(r))
+		_collect.expand_icon = true
+		_collect.custom_minimum_size = Vector2(190, 60)
+		_collect.pressed.connect(func(): collect_requested.emit(building_id))
+		buttons.add_child(_collect)
+	if def.category == "processor":
+		_produce = Button.new()
+		_produce.theme_type_variation = "YellowButton"
+		_produce.text = "Make %s" % BuildingInfo.amounts(r.outputs)
+		_produce.tooltip_text = "Uses %s from the warehouse" % BuildingInfo.amounts(r.inputs)
+		_produce.custom_minimum_size = Vector2(230, 60)
+		_produce.pressed.connect(func(): produce_requested.emit(building_id))
+		buttons.add_child(_produce)
+
+	# Move and Demolish: smaller, in their own row at the bottom, so they aren't tapped by accident.
+	var tools := HBoxContainer.new()
+	tools.add_theme_constant_override("separation", 14)
+	content.add_child(tools)
+	tools.add_child(_small_button("BlueButton", "Move", "move", func(): move_requested.emit(building_id)))
+	if def.get("buildable", false):  # starter buildings can't be rebuilt, so they can't be demolished
+		var spacer := Control.new()
+		spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		tools.add_child(spacer)
+		tools.add_child(_small_button("RedButton", "Demolish", "demolish", func(): demolish_requested.emit(building_id)))
+
+
+func _small_button(variation: String, text: String, icon_name: String, action: Callable) -> Button:
+	var button := Button.new()
+	button.theme_type_variation = variation
+	button.text = text
+	button.icon = UITheme.icon(icon_name)
+	button.expand_icon = true
+	button.custom_minimum_size = Vector2(160, 44)
+	button.add_theme_font_size_override("font_size", 17)
+	button.pressed.connect(action)
+	return button
+
+
+func _refresh() -> void:
+	if not visible or building_id == "":
+		return
+	var b := Economy.building(building_id)
+	if b.is_empty():
+		close()
+		return
+	var def: Dictionary = GameData.buildings[b.type]
+	var status := BuildingInfo.status(b)
+	_status.text = status.text
+	_progress.visible = status.progress >= 0.0
+	_progress.value = status.progress * 100.0
+	if def.category == "residential":
+		_status.text = "%s · %d living here now" % [status.text, Economy.population()]
+		_progress.visible = true
+		_progress.theme_type_variation = "BlueBar"
+		_progress.value = 100.0 * Economy.population() / maxf(Economy.population_capacity(), 1)
+	for i in _slots.size():
+		var filled: bool = i < b.queue.size()
+		var finished: bool = i == 0 and b.blocked
+		_slots[i].get_child(0).modulate.a = 1.0 if filled else 0.0  # the item icon
+		_slots[i].get_child(1).visible = filled and not finished  # the little red X
+		_slots[i].mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND if filled and not finished else Control.CURSOR_ARROW
+		if not filled:
+			_slots[i].tooltip_text = ""
+		elif finished:
+			_slots[i].tooltip_text = "Finished: collect to make room"
+		elif i == 0:
+			_slots[i].tooltip_text = "Being made now. Cancel to get %d%% of the ingredients back" % _percent("cancel_refund_in_progress")
+		else:
+			_slots[i].tooltip_text = "Waiting. Cancel to get %d%% of the ingredients back" % _percent("cancel_refund_waiting")
+	if _storage_bar:
+		var stored := BuildingInfo.stored(b)
+		_storage_bar.value = 100.0 * stored / float(def.storage_cap)
+		_storage_text.text = "%s / %s" % [UITheme.number(stored), UITheme.number(int(def.storage_cap))]
+	if _collect:
+		var stored := BuildingInfo.stored(b)
+		_collect.text = "Collect %s" % UITheme.number(stored) if stored > 0 else "Collect"
+		_collect.disabled = b.storage.is_empty()
+	if _produce:
+		var check := Economy.can_enqueue(building_id, BuildingInfo.recipe(b.type).id)
+		_produce.theme_type_variation = "YellowButton" if check.ok else "GreyButton"
+	if _fill:
+		var count := Economy.batches_possible(building_id, BuildingInfo.recipe(b.type).id)
+		_fill.text = "Fill x%d" % count if count > 0 else "Fill"
+		# Greyed when nothing fits, but still tappable, so the player is told why.
+		_fill.theme_type_variation = "YellowButton" if count > 0 else "GreyButton"
+
+
+## A titled, sunken box in the window. Returns the column to add rows to; its first child is the
+## header row (the title, which other controls can be added beside).
+func _section(title: String) -> VBoxContainer:
+	var box := PanelContainer.new()
+	box.theme_type_variation = "Inset"
+	content.add_child(box)
+	var column := VBoxContainer.new()
+	column.add_theme_constant_override("separation", 6)
+	box.add_child(column)
+	var header := HBoxContainer.new()
+	header.add_theme_constant_override("separation", 10)
+	column.add_child(header)
+	var heading := Label.new()
+	heading.text = title
+	heading.add_theme_font_size_override("font_size", 19)
+	heading.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	header.add_child(heading)
+	return column
+
+
+func _percent(config_key: String) -> int:
+	return roundi(100.0 * float(GameData.config.get(config_key, 0.0)))
+
+
+## One queue slot: the item being made, with a small red X in the corner when it can be cancelled.
+## Child 0 is the item icon, child 1 the X (_refresh shows and hides them).
+func _queue_slot(index: int, item: String) -> PanelContainer:
+	var slot := PanelContainer.new()
+	slot.theme_type_variation = "HudPill"
+	slot.custom_minimum_size = Vector2(44, 44)
+	slot.add_child(_icon(item, 32))
+	var x := _icon("close", 18)
+	x.size_flags_horizontal = Control.SIZE_SHRINK_END
+	x.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+	x.modulate = UITheme.BAD
+	x.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	slot.add_child(x)
+	slot.gui_input.connect(func(event: InputEvent):
+		if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+			cancel_requested.emit(building_id, index))
+	_slots.append(slot)
+	return slot
+
+
+## An item icon with its amount, e.g. [wheat] 40.
+func _item(resource_id: String, amount: int) -> HBoxContainer:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 2)
+	row.tooltip_text = BuildingInfo.resource_name(resource_id)
+	row.add_child(_icon(resource_id, 38))
+	var label := Label.new()
+	label.text = "x%d" % amount
+	label.add_theme_font_size_override("font_size", 20)
+	row.add_child(label)
+	return row
+
+
+func _icon(icon_name: String, side: float) -> TextureRect:
+	var rect := TextureRect.new()
+	rect.texture = UITheme.icon(icon_name)
+	rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	rect.custom_minimum_size = Vector2(side, side)
+	return rect
+
+
+func _body(text: String) -> Label:
+	var label := Label.new()
+	label.theme_type_variation = "BodyLabel"
+	label.text = text
+	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	return label

@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <!-- Wrecking ball on a chain (demolish). -->
+  <defs>
+    <radialGradient id="ball" cx="0.35" cy="0.3" r="0.75"><stop offset="0" stop-color="#9AA4AE"/><stop offset="1" stop-color="#2F363D"/></radialGradient>
+  </defs>
+  <g stroke="#1A1E22" stroke-width="6" stroke-linejoin="round" stroke-linecap="round">
+    <path d="M30 10 L58 58" fill="none" stroke-width="14"/>
+    <path d="M30 10 L58 58" fill="none" stroke="#C9CFD5" stroke-width="5"/>
+    <rect x="52" y="50" width="16" height="14" rx="3" fill="#C9CFD5"/>
+    <circle cx="74" cy="84" r="34" fill="url(#ball)"/>
+  </g>
+  <ellipse cx="62" cy="70" rx="11" ry="7" fill="#fff" fill-opacity="0.55" transform="rotate(-35 62 70)"/>
+</svg>

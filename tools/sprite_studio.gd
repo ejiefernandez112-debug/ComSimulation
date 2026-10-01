@@ -48,7 +48,7 @@ func _make_sprites() -> void:
 	var manifest := {"_note": "Written by tools/sprite_studio.gd - do not edit by hand.", "pixels_per_tile": PX_PER_TILE, "sprites": {}}
 	for building_id in config.buildings:
 		var entry: Dictionary = config.buildings[building_id]
-		var photo := await _photograph(_kit_path(config, entry.model), int(entry.get("turn", 0)), int(entry.get("tiles", 1)), "")
+		var photo := await _photograph(_kit_path(config, entry), int(entry.get("turn", 0)), int(entry.get("tiles", 1)), "")
 		if photo.is_empty():
 			continue
 		var crop := photo.get_used_rect()
@@ -162,8 +162,11 @@ func _bounds(model: Node3D) -> AABB:
 	return box
 
 
-func _kit_path(config: Dictionary, model: String) -> String:
-	return ProjectSettings.globalize_path("res://" + config.kit_folder).path_join(model)
+## A building's model file: in its own "kit_folder" if it names one (e.g. our Blender models in
+## art/models), otherwise in the shared kit_folder.
+func _kit_path(config: Dictionary, entry: Dictionary) -> String:
+	var folder: String = entry.get("kit_folder", config.kit_folder)
+	return ProjectSettings.globalize_path("res://" + folder).path_join(entry.model)
 
 
 func _build_studio() -> void:
