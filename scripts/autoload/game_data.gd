@@ -8,9 +8,9 @@ var config: Dictionary = {}
 
 
 func _ready() -> void:
-	resources = _load_json("res://data/resources.json")
-	buildings = _load_json("res://data/buildings.json")
-	config = _load_json("res://data/game_config.json")
+	resources = load_json("res://data/resources.json")
+	buildings = load_json("res://data/buildings.json")
+	config = load_json("res://data/game_config.json")
 	print("GameData loaded: %d resources, %d buildings" % [resources.size(), buildings.size()])
 
 
@@ -22,7 +22,8 @@ func get_resource(resource_id: String) -> Dictionary:
 	return resources.get(resource_id, {})
 
 
-func _load_json(path: String) -> Dictionary:
+## Static so tests can load the real data files without the autoload running.
+static func load_json(path: String) -> Dictionary:
 	var text := FileAccess.get_file_as_string(path)
 	if text.is_empty():
 		push_error("GameData: could not read %s" % path)

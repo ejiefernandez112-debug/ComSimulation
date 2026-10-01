@@ -72,7 +72,7 @@ These are cheap now and very expensive to retrofit later. Include them in instru
   - A job cannot complete if the building's output storage is full; the queue pauses until the player collects
   - The **Warehouse** has its own overall cap (number TBD)
 - **Offline/idle production:** included from Phase 1a — elapsed real time simulates completed jobs on reopen, capped by the jobs already queued and by output storage capacity
-- **Design tension to resolve:** with the current numbers, the queue caps offline progress to roughly 5–12 minutes (e.g. 5 Bakery jobs × 150s = 12.5 min). If the game should reward coming back after hours, then extractors auto-repeating until storage is full, longer timers, larger batches, or larger queues are needed — see Open Questions.
+- **Design tension (resolved 2026-10-01):** target offline window is ~1–2 hours. Extractors produce continuously until storage is full; processor batches/timers were scaled ×4 with queues of 8 (see 5.4). Implemented in `scripts/sim/simulation.gd`.
 - **Land/grid:** bounded plot, expandable (spend currency) — details deferred
 - **Building upgrades (Phase 2):** cost currency + time, improve batch size/timer/storage/recipes — capped by Construction Office level (see 5.8)
 
@@ -96,9 +96,11 @@ These are cheap now and very expensive to retrofit later. Include them in instru
 
 | Building | Type | Recipe | Output | Timer | Batch | Storage Cap |
 |---|---|---|---|---|---|---|
-| Wheat Farm | Extractor | (none) | Wheat | 60s | 10 Wheat | 100 |
-| Flour Mill | Processor A | 10 Wheat → | 8 Flour | 90s | 8 Flour | 80 |
-| Bakery | Processor B | 8 Flour → | 6 Bread (Final) | 150s | 6 Bread | 60 |
+| Wheat Farm | Extractor (continuous, no queue) | (none) | Wheat | 60s | 10 Wheat | 900 (90 min) |
+| Flour Mill | Processor A (queue 8 = 48 min) | 40 Wheat → | 32 Flour | 6 min | 32 Flour | 256 |
+| Bakery | Processor B (queue 8 = 80 min) | 32 Flour → | 24 Bread (Final) | 10 min | 24 Bread | 192 |
+
+_Rescaled 2026-10-01 for the ~1–2h offline window: batches ×4 and timers ×4, so the per-minute rates below are unchanged. Live values are in `data/buildings.json`._
 
 **Balance check (per building, running continuously):**
 
@@ -263,10 +265,10 @@ A hidden dev menu (key combo on PC, secret tap sequence on mobile) for testing t
 ## 11. Open Questions
 
 **Design decisions that affect Phase 1a:**
-- [ ] Do Extractors (Wheat Farm) run continuously until storage is full (CoC-collector style) or only through a job queue like Processors?
-- [ ] Target offline window — how long should a player be able to stay away and still return to meaningful progress? (Drives timer, batch, queue and storage numbers; see 5.1 design tension)
-- [ ] Confirm the proposed resource-flow rules in 5.1 (inputs taken at queue time, output held in building until Collect, Warehouse cap)
-- [ ] Construction timers for new buildings — does building take time? Is there a limit on simultaneous constructions (CoC "builders")?
+- [x] Do Extractors (Wheat Farm) run continuously until storage is full (CoC-collector style) or only through a job queue like Processors? → **Run continuously until storage is full** (decided 2026-10-01)
+- [x] Target offline window → **~1–2 hours** (decided 2026-10-01); Phase 1a numbers in 5.4 rescaled to match
+- [x] Confirm the proposed resource-flow rules in 5.1 → **Confirmed as written** (decided 2026-10-01); Warehouse cap placeholder 2000 total units
+- [x] Construction timers for new buildings → **Instant in Phase 1a** (decided 2026-10-01); timers/builder limits may return in a later phase
 - [ ] Soft and premium currency names (₱ is a placeholder)
 
 **Later phases:**
@@ -322,6 +324,11 @@ A hidden dev menu (key combo on PC, secret tap sequence on mobile) for testing t
 Both are functional, self-contained HTML/JS artifacts used to validate the trading-mechanic math and UX before porting logic into Godot.
 
 ## 15. Revision Log
+
+**2026-10-01 (Phase 1a step 2 — game rules):**
+- Resolved four Phase 1a Open Questions (extractor behavior, offline window, resource flow, construction timers)
+- Rescaled Chain 1 batches/timers/storage for the ~1–2h offline window (rates unchanged)
+- Save schema detail: population stores `current` + `growth_anchor` (capacity is calculated from buildings, not stored, so it can't drift); buildings store `job_started_at` + `blocked` instead of per-job timestamps (a job paused for full storage would otherwise invalidate every later timestamp)
 
 **2026-10-01 review:**
 - Split Phase 1 into 1a (pipeline + core chain) and 1b (progression) to keep the first milestone small

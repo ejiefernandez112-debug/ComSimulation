@@ -17,7 +17,12 @@ Godot 4.7 (GDScript, **Compatibility** renderer) business-sim game. Full design 
 - Dev/debug tools go in `scenes/debug/` and load only when `OS.is_debug_build()`.
 - UI panels: Control nodes with anchors, so the same panel works as a mobile bottom sheet and a PC side panel.
 
+## Tests
+Game rules are covered by `tests/test_simulation.gd` (uses its own test data, not `data/*.json`). Run after any change to `scripts/sim/` and add a test for new rules:
+`"C:\Program Files\Godot\Godot.exe.exe" --headless --path . -s tests/test_simulation.gd` — exit code 0 = all passed.
+
 ## Layout
+- `tests/` — headless test scripts
 - `data/` — JSON game content
 - `scripts/autoload/` — global singletons (TimeService, GameData, …)
 - `scripts/sim/` — pure game-rule logic

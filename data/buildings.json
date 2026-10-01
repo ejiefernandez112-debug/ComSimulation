@@ -1,5 +1,5 @@
 {
-	"_note": "Timers in seconds. Build costs and starting values are PLACEHOLDERS (plan.md 5.4 / 5.8).",
+	"_note": "Timers in seconds. Build costs are PLACEHOLDERS. Batches/timers scaled for a ~1-2h offline window; per-minute rates match plan.md 5.4.",
 	"construction_office": {
 		"name": "Construction Office", "category": "civic",
 		"build_cost": 0, "buildable": false
@@ -10,27 +10,30 @@
 		"population_capacity": 10
 	},
 	"wheat_farm": {
+		"_comment": "Extractor: produces on its own until storage is full (900 = 90 min).",
 		"name": "Wheat Farm", "category": "extractor",
 		"build_cost": 100, "buildable": true,
-		"storage_cap": 100, "queue_size": 5,
+		"storage_cap": 900,
 		"recipes": [
 			{ "id": "grow_wheat", "inputs": {}, "outputs": { "wheat": 10 }, "duration": 60 }
 		]
 	},
 	"flour_mill": {
+		"_comment": "8 queued jobs x 6 min = 48 min of work.",
 		"name": "Flour Mill", "category": "processor",
 		"build_cost": 250, "buildable": true,
-		"storage_cap": 80, "queue_size": 5,
+		"storage_cap": 256, "queue_size": 8,
 		"recipes": [
-			{ "id": "mill_flour", "inputs": { "wheat": 10 }, "outputs": { "flour": 8 }, "duration": 90 }
+			{ "id": "mill_flour", "inputs": { "wheat": 40 }, "outputs": { "flour": 32 }, "duration": 360 }
 		]
 	},
 	"bakery": {
+		"_comment": "8 queued jobs x 10 min = 80 min of work.",
 		"name": "Bakery", "category": "processor",
 		"build_cost": 400, "buildable": true,
-		"storage_cap": 60, "queue_size": 5,
+		"storage_cap": 192, "queue_size": 8,
 		"recipes": [
-			{ "id": "bake_bread", "inputs": { "flour": 8 }, "outputs": { "bread": 6 }, "duration": 150 }
+			{ "id": "bake_bread", "inputs": { "flour": 32 }, "outputs": { "bread": 24 }, "duration": 600 }
 		]
 	}
 }
