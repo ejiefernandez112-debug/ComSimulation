@@ -153,7 +153,7 @@ _Rescaled 2026-10-01 for the ~1–2h offline window: batches ×4 and timers ×4,
 
 - **Small House** (Residential) — +10 population capacity, one-time build cost, no recipe. **Included in Phase 1a's starting kit.**
 - **Population** grows automatically toward capacity (e.g. +1/10s), shown on the persistent HUD; offline growth is calculated from `last_saved_at` like production
-- In **Phase 1**, Population is purely a visible/growing number with no mechanical effect yet
+- In **Phase 1**, Population has no mechanical effect yet. Each building offers a number of jobs (`workers` in `data/buildings.json`, PLACEHOLDER: Wheat Farm 4, Flour Mill 3, Bakery 3) and people fill them up to the population, but only as a headcount for the Statistics screen: being short of workers doesn't slow anything down yet (that arrives with Employment Matching below)
 - In **Phase 2/3**, once Employees exist, **Employment Matching** activates: Available = Population − Employed. Understaffed buildings run at reduced capacity/output rather than failing to hire outright.
 
 ### 5.7 Education System (Phase 3+)
@@ -191,6 +191,7 @@ _Rescaled 2026-10-01 for the ~1–2h offline window: batches ×4 and timers ×4,
 - **Retailer/Sell Screen** — sellable resources, current NPC price, quantity selector, sell button
 - **Offline Summary** — "While you were away…" popup listing what was produced (and, from Phase 2/3, wages paid)
 - **Settings** — sound/music volume, save reset, language (if localized)
+- **Statistics** (✅ built 2026-10-01, "Stats" card in the bottom menu) — four tabs: **Production** (made / used / net per minute right now from working buildings, how many buildings are working / idle / full / being built, all-time made / sold / earned per item), **People** (population, employed, unemployed, open jobs, jobs per building type), **Cash flow** (last hour and all-time money in by source and out by category), **Graphs** (cash, cash flow, people, production over 15 min / 1 h / 6 h; rates are 10-minute averages; point at or drag across a graph for values). Counters and the graph history live in the save (`state.stats`, updated by the game rules); a graph point is added every `stats_sample_seconds` (60) and time away becomes one point, never a minute-by-minute replay. Keeps `stats_history_size` (360) points
   - ✅ Built 2026-10-01 (the "Menu" card in the bottom menu bar): Music, Sound effects, Building names, Water detail (High/Low, for slow phones), Full screen (PC), About, Quit (PC). Saved in `user://settings.json` by the `Settings` autoload, separate from the game save. Still to add: save reset (needs the save system), language (if localized). Music/Sound switches mute the "Music"/"SFX" audio buses, ready for when the game has sound
 - **Quest Log** (Phase 1b) — active tutorial + daily/weekly quests, progress, claim-reward button
 - **Profile** (Phase 1b) — XP/level, badges earned (Phase 4 adds rating)

@@ -34,9 +34,9 @@ func _data() -> Dictionary:
 		"buildings": {
 			"office": {"category": "civic", "build_cost": 0, "buildable": false},
 			"house": {"category": "residential", "build_cost": 0, "buildable": false, "population_capacity": 10},
-			"farm": {"category": "extractor", "build_cost": 100, "buildable": true, "storage_cap": 100,
+			"farm": {"category": "extractor", "build_cost": 100, "buildable": true, "workers": 2, "storage_cap": 100,
 				"recipes": [{"id": "grow", "inputs": {}, "outputs": {"wheat": 10}, "duration": 60}]},
-			"mill": {"category": "processor", "build_cost": 200, "buildable": true, "storage_cap": 16, "queue_size": 4,
+			"mill": {"category": "processor", "build_cost": 200, "buildable": true, "workers": 3, "storage_cap": 16, "queue_size": 4,
 				"recipes": [{"id": "mill", "inputs": {"wheat": 10}, "outputs": {"flour": 8}, "duration": 90}]},
 			# Same as farm / mill, but they take time to build (the ones above are instant, to keep
 			# the other tests simple). The cabin is a home that takes a long time to build.
@@ -365,6 +365,85 @@ func test_home_under_construction() -> void:
 	# One settle covering the whole time must give the same answer: 10 + 2 by T0+220, not 15.
 	Sim.settle(state, data, T0 + 220)
 	_check(state.population.current == 12, "growth resumes when the home is finished, not before")
+
+
+func test_statistics_counters() -> void:
+	var s: Array = _setup("farm")  # farm built at T0 for 100
+	var state: Dictionary = s[0]
+	var data: Dictionary = s[1]
+	var farm: Dictionary = s[2]
+	_check(Sim.stats(state).spending.construction == 100, "construction spending counted")
+	Sim.settle(state, data, T0 + 120)
+	_check(int(Sim.stats(state).made.get("wheat", 0)) == 20, "production counted when it happens")
+	Sim.collect(state, data, farm.id, T0 + 125)
+	_check(int(Sim.stats(state).made.get("wheat", 0)) == 20, "collecting doesn't count it twice")
+	Sim.sell(state, data, "wheat", 10)
+	var st := Sim.stats(state)
+	_check(st.income.sales == 20 and int(st.sales_by_item.wheat) == 20 and int(st.sold.wheat) == 10, "sales counted (money, per item, amount)")
+	Sim.demolish(state, data, farm.id, T0 + 130)
+	_check(Sim.stats(state).income.demolish == 50, "demolish refund counted as income")
+	var old_save := Sim.new_game(data, T0)
+	old_save.erase("stats")
+	_check(Sim.stats(old_save).made.is_empty(), "saves without statistics get empty counters")
+
+
+func test_production_rates() -> void:
+	var data := _data()
+	var state := Sim.new_game(data, T0)
+	var farm := Sim.find_building(state, Sim.build(state, data, "farm", Vector2i(3, 3), T0).building_id)
+	var mill := Sim.find_building(state, Sim.build(state, data, "mill", Vector2i(4, 4), T0).building_id)
+	Sim.build(state, data, "slow_farm", Vector2i(5, 5), T0)
+	var rates := Sim.production_rates(state, data, T0 + 1)
+	_check(is_equal_approx(float(rates.made.get("wheat", 0)), 10.0), "farm makes 10 wheat/min (the slow farm is still being built)")
+	_check(rates.buildings.working == 1 and rates.buildings.idle == 1 and rates.buildings.building == 1, "counts working / idle / being built")
+	state.inventory["wheat"] = 10
+	Sim.enqueue(state, data, mill.id, "mill", T0 + 1)
+	rates = Sim.production_rates(state, data, T0 + 2)
+	_check(is_equal_approx(float(rates.used.wheat), 10.0 * 60.0 / 90.0), "mill uses wheat per minute while working")
+	_check(is_equal_approx(float(rates.made.flour), 8.0 * 60.0 / 90.0), "mill makes flour per minute while working")
+	Sim.settle(state, data, T0 + 700)  # both farms fill their storage (100) within 10 minutes
+	rates = Sim.production_rates(state, data, T0 + 700)
+	_check(rates.buildings.full == 2 and not rates.made.has("wheat"), "full farms make nothing")
+	_check(farm.storage.wheat == 100, "farm really is full")
+
+
+func test_employment() -> void:
+	var data := _data()
+	var state := Sim.new_game(data, T0)
+	Sim.build(state, data, "farm", Vector2i(3, 3), T0)  # 2 jobs
+	Sim.build(state, data, "mill", Vector2i(4, 4), T0)  # 3 jobs
+	var e := Sim.employment(state, data, T0)
+	_check(e.jobs == 5 and e.employed == 0 and e.open_jobs == 5, "no people yet: all jobs open")
+	Sim.settle(state, data, T0 + 30)  # 3 people
+	e = Sim.employment(state, data, T0 + 30)
+	_check(e.employed == 3 and e.unemployed == 0 and e.open_jobs == 2, "3 people fill 3 of 5 jobs")
+	Sim.settle(state, data, T0 + 100)  # 10 people
+	e = Sim.employment(state, data, T0 + 100)
+	_check(e.employed == 5 and e.unemployed == 5 and e.open_jobs == 0, "10 people, 5 jobs: 5 unemployed")
+
+
+func test_history_and_cash_flow() -> void:
+	var data := _data()
+	data.config["stats_sample_seconds"] = 60
+	var state := Sim.new_game(data, T0)
+	Sim.settle(state, data, T0)
+	Sim.settle(state, data, T0 + 30)
+	_check(Sim.stats(state).history.size() == 1, "one point per minute, not per settle")
+	Sim.build(state, data, "farm", Vector2i(3, 3), T0 + 40)  # spend 100
+	Sim.settle(state, data, T0 + 60)
+	_check(Sim.stats(state).history.size() == 2, "a new point after a minute")
+	_check(int(Sim.stats(state).history[-1].cash) == 400, "points record cash")
+	Sim.settle(state, data, T0 + 100_000)
+	_check(Sim.stats(state).history.size() == 3, "time away is one point, not one per minute")
+	var flow := Sim.cash_flow(state, 3600, T0 + 100_000)
+	_check(flow.spending == 0 and flow.seconds == 0.0, "nothing spent in the last hour (only the newest point is that recent)")
+	flow = Sim.cash_flow(state, 200_000, T0 + 100_000)
+	_check(flow.spending == 100 and is_equal_approx(flow.seconds, 100_000.0), "the whole history covers the farm purchase")
+	Sim.settle(state, data, T0 + 99_000)
+	_check(Sim.stats(state).history.size() == 3, "a clock that moved backwards adds no point")
+	data.config["stats_history_size"] = 2
+	Sim.settle(state, data, T0 + 101_000)
+	_check(Sim.stats(state).history.size() == 2, "old points are dropped beyond the history size")
 
 
 func test_offline_report() -> void:

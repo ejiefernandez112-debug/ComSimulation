@@ -26,6 +26,7 @@ static func new_game(data: Dictionary, now: float) -> Dictionary:
 		"buildings": [],
 		"inventory": {},  # the Warehouse
 		"population": {"current": 0, "growth_anchor": now},
+		"stats": _new_stats(),
 	}
 	for entry in config.starting_buildings:
 		# Starting buildings are already standing: no construction time.
@@ -40,7 +41,7 @@ static func new_game(data: Dictionary, now: float) -> Dictionary:
 static func settle(state: Dictionary, data: Dictionary, now: float) -> Dictionary:
 	var report := {}
 	for b in state.buildings:
-		_add_to(report, settle_building(b, data, now))
+		_add_to(report, _settle_one(state, b, data, now))
 	# A home finishing construction raises the population cap partway through the elapsed time,
 	# so grow the population up to each such moment with the cap that applied before it.
 	var grown := 0
@@ -55,7 +56,15 @@ static func settle(state: Dictionary, data: Dictionary, now: float) -> Dictionar
 	grown += _settle_population(state, data, now, population_capacity(state, data, now))
 	if grown > 0:
 		report["population"] = grown
+	_record_history(state, data, now)
 	return report
+
+
+## settle_building, plus counting what was made for the statistics. Rules code uses this one.
+static func _settle_one(state: Dictionary, b: Dictionary, data: Dictionary, now: float) -> Dictionary:
+	var produced := settle_building(b, data, now)
+	_add_to(stats(state).made, produced)
+	return produced
 
 
 static func settle_building(b: Dictionary, data: Dictionary, now: float) -> Dictionary:
@@ -156,6 +165,7 @@ static func build(state: Dictionary, data: Dictionary, type_id: String, cell: Ve
 		return check
 	var def: Dictionary = data.buildings[type_id]
 	state.profile.currency -= int(def.build_cost)
+	stats(state).spending.construction += int(def.build_cost)
 	var b := _add_building(state, type_id, cell, now, now + float(def.get("build_time", 0.0)))
 	return _ok({"building_id": b.id})
 
@@ -208,7 +218,7 @@ static func can_enqueue(state: Dictionary, data: Dictionary, building_id: String
 static func enqueue(state: Dictionary, data: Dictionary, building_id: String, recipe_id: String, now: float) -> Dictionary:
 	var b := find_building(state, building_id)
 	if not b.is_empty():
-		settle_building(b, data, now)  # a job may have just finished, freeing a queue slot
+		_settle_one(state, b, data, now)  # a job may have just finished, freeing a queue slot
 	var check := can_enqueue(state, data, building_id, recipe_id, now)
 	if not check.ok:
 		return check
@@ -240,7 +250,7 @@ static func batches_possible(state: Dictionary, data: Dictionary, building_id: S
 static func fill_queue(state: Dictionary, data: Dictionary, building_id: String, recipe_id: String, now: float) -> Dictionary:
 	var b := find_building(state, building_id)
 	if not b.is_empty():
-		settle_building(b, data, now)  # a job may have just finished, freeing a slot
+		_settle_one(state, b, data, now)  # a job may have just finished, freeing a slot
 	var check := can_enqueue(state, data, building_id, recipe_id, now)
 	if not check.ok:
 		return check
@@ -255,7 +265,7 @@ static func collect(state: Dictionary, data: Dictionary, building_id: String, no
 	var b := find_building(state, building_id)
 	if b.is_empty():
 		return _fail("Building not found.")
-	settle_building(b, data, now)
+	_settle_one(state, b, data, now)
 	if b.storage.is_empty():
 		return _fail("Nothing to collect.")
 	var free := warehouse_cap(data) - warehouse_total(state)
@@ -269,7 +279,7 @@ static func collect(state: Dictionary, data: Dictionary, building_id: String, no
 		return _fail("The warehouse is full.")
 	_remove_from(b.storage, moved)
 	_add_to(state.inventory, moved)
-	settle_building(b, data, now)  # a job that was waiting for space can finish now
+	_settle_one(state, b, data, now)  # a job that was waiting for space can finish now
 	return _ok({"moved": moved})
 
 
@@ -295,7 +305,7 @@ static func can_cancel_job(state: Dictionary, data: Dictionary, building_id: Str
 static func cancel_job(state: Dictionary, data: Dictionary, building_id: String, index: int, now: float) -> Dictionary:
 	var b := find_building(state, building_id)
 	if not b.is_empty():
-		settle_building(b, data, now)  # the job may have just finished
+		_settle_one(state, b, data, now)  # the job may have just finished
 	var check := can_cancel_job(state, data, building_id, index)
 	if not check.ok:
 		return check
@@ -332,12 +342,13 @@ static func can_demolish(state: Dictionary, data: Dictionary, building_id: Strin
 static func demolish(state: Dictionary, data: Dictionary, building_id: String, now: float) -> Dictionary:
 	var b := find_building(state, building_id)
 	if not b.is_empty():
-		settle_building(b, data, now)
+		_settle_one(state, b, data, now)
 	var check := can_demolish(state, data, building_id)
 	if not check.ok:
 		return check
 	state.buildings.erase(b)
 	state.profile.currency += int(check.money)
+	stats(state).income.demolish += int(check.money)
 	_add_to(state.inventory, check.goods)
 	# Fewer homes can mean less room: people over the new capacity move away.
 	var cap := population_capacity(state, data, now)
@@ -358,6 +369,10 @@ static func sell(state: Dictionary, data: Dictionary, resource_id: String, qty: 
 	var earned := int(qty * float(res_def.retail_price))
 	_remove_from(state.inventory, {resource_id: qty})
 	state.profile.currency += earned
+	var s := stats(state)
+	s.income.sales += earned
+	_add_to(s.sales_by_item, {resource_id: earned})
+	_add_to(s.sold, {resource_id: qty})
 	return _ok({"earned": earned})
 
 
@@ -419,6 +434,122 @@ static func job_progress(b: Dictionary, data: Dictionary, now: float) -> float:
 	if recipe.is_empty():
 		return 0.0
 	return clampf((now - b.job_started_at) / float(recipe.duration), 0.0, 1.0)
+
+
+# --- Statistics ---------------------------------------------------------------
+# Lifetime counters live in state.stats and are updated by the actions above; rates and
+# employment are worked out from the buildings on the spot, so they never go stale.
+
+## The statistics counters. Saves from before statistics existed get empty ones.
+static func stats(state: Dictionary) -> Dictionary:
+	if not state.has("stats"):
+		state["stats"] = _new_stats()
+	return state.stats
+
+
+## How much each item is being made and used per minute right now, counting only buildings that
+## are actually working, plus how many production buildings are in each state:
+## {"made": {res: per_min}, "used": {res: per_min},
+##  "buildings": {"working", "idle" (empty queue), "full" (storage full), "building" (under construction)}}
+static func production_rates(state: Dictionary, data: Dictionary, now: float) -> Dictionary:
+	var made := {}
+	var used := {}
+	var counts := {"working": 0, "idle": 0, "full": 0, "building": 0}
+	for b in state.buildings:
+		var def: Dictionary = data.buildings.get(b.type, {})
+		var category: String = def.get("category", "")
+		if category not in ["extractor", "processor"]:
+			continue
+		if not is_built(b, now):
+			counts.building += 1
+			continue
+		var recipe := {}
+		if category == "extractor":
+			recipe = def.recipes[0]
+			if int(def.storage_cap) - _total(b.storage) < _total(recipe.outputs):
+				counts.full += 1
+				continue
+		elif b.blocked:
+			counts.full += 1
+			continue
+		elif b.queue.is_empty():
+			counts.idle += 1
+			continue
+		else:
+			recipe = _recipe(def, b.queue[0].recipe_id)
+		counts.working += 1
+		var per_minute := 60.0 / float(recipe.duration)
+		for res in recipe.outputs:
+			made[res] = float(made.get(res, 0.0)) + int(recipe.outputs[res]) * per_minute
+		for res in recipe.get("inputs", {}):
+			used[res] = float(used.get(res, 0.0)) + int(recipe.inputs[res]) * per_minute
+	return {"made": made, "used": used, "buildings": counts}
+
+
+## Jobs come from finished buildings ("workers" in buildings.json); people fill them up to the
+## population. Headcount only for now: being short of workers doesn't slow anything down yet.
+## {"population", "jobs", "employed", "unemployed", "open_jobs"}
+static func employment(state: Dictionary, data: Dictionary, now: float) -> Dictionary:
+	var jobs := 0
+	for b in state.buildings:
+		if is_built(b, now):
+			jobs += int(data.buildings.get(b.type, {}).get("workers", 0))
+	var people := int(state.population.current)
+	var employed := mini(people, jobs)
+	return {"population": people, "jobs": jobs, "employed": employed, "unemployed": people - employed, "open_jobs": jobs - employed}
+
+
+## Money in and out over (up to) the last `window` seconds, from the history points:
+## {"income", "spending", "seconds" (how much time that really covers; 0 = no history yet)}.
+static func cash_flow(state: Dictionary, window: float, now: float) -> Dictionary:
+	var s := stats(state)
+	var from := {}
+	for point in s.history:
+		if float(point.t) >= now - window:
+			from = point
+			break
+	if from.is_empty():
+		return {"income": 0, "spending": 0, "seconds": 0.0}
+	return {
+		"income": _total(s.income) - int(from.income),
+		"spending": _total(s.spending) - int(from.spending),
+		"seconds": maxf(now - float(from.t), 0.0),
+	}
+
+
+## Adds a point to the graphs' history if config.stats_sample_seconds have passed since the
+## last one. Time spent away becomes a single point, not one per minute.
+static func _record_history(state: Dictionary, data: Dictionary, now: float) -> void:
+	var s := stats(state)
+	var history: Array = s.history
+	var every := float(data.config.get("stats_sample_seconds", 60))
+	if not history.is_empty() and now < float(history[-1].t) + every:
+		return  # too soon (also covers a clock that moved backwards)
+	var e := employment(state, data, now)
+	history.append({
+		"t": now,
+		"cash": int(state.profile.currency),
+		"income": _total(s.income),
+		"spending": _total(s.spending),
+		"population": e.population,
+		"employed": e.employed,
+		"jobs": e.jobs,
+		"made": s.made.duplicate(),
+	})
+	var keep := int(data.config.get("stats_history_size", 360))
+	while history.size() > keep:
+		history.pop_front()
+
+
+static func _new_stats() -> Dictionary:
+	return {
+		"income": {"sales": 0, "demolish": 0},  # money in, by where it came from
+		"spending": {"construction": 0},  # money out, by what it went on
+		"sales_by_item": {},  # resource -> money earned selling it
+		"made": {},  # resource -> amount ever produced
+		"sold": {},  # resource -> amount ever sold
+		"history": [],  # graph points: {t, cash, income, spending, population, employed, jobs, made}
+	}
 
 
 # --- Helpers ------------------------------------------------------------------

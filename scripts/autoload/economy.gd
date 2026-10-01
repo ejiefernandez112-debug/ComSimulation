@@ -141,6 +141,26 @@ func construction_progress(building: Dictionary) -> float:
 	return Simulation.construction_progress(building, data(), TimeService.now())
 
 
+## Lifetime counters and graph history (see Simulation.stats). Read it; don't change it.
+func stats() -> Dictionary:
+	return Simulation.stats(state)
+
+
+## Per-minute rates of what's being made and used right now (see Simulation.production_rates).
+func production_rates() -> Dictionary:
+	return Simulation.production_rates(state, data(), TimeService.now())
+
+
+## {"population", "jobs", "employed", "unemployed", "open_jobs"}
+func employment() -> Dictionary:
+	return Simulation.employment(state, data(), TimeService.now())
+
+
+## Money in and out over (up to) the last `window` seconds: {"income", "spending", "seconds"}.
+func cash_flow(window: float) -> Dictionary:
+	return Simulation.cash_flow(state, window, TimeService.now())
+
+
 ## Seconds until construction ends (0 when finished).
 func construction_left(building: Dictionary) -> float:
 	return maxf(Simulation.built_at(building) - TimeService.now(), 0.0)

@@ -8,6 +8,9 @@
 	"cancel_refund_in_progress": 0.5,
 	"cancel_refund_waiting": 1.0,
 	"demolish_refund": 0.5,
+	"_stats": "Statistics graphs: a point is recorded every stats_sample_seconds while playing (one point covers time spent away), keeping the latest stats_history_size points (360 x 60s = 6 hours).",
+	"stats_sample_seconds": 60,
+	"stats_history_size": 360,
 	"island": {
 		"_comment": "Land around the buildable plot. margin = tiles of non-buildable land around the plot; coast_roughness / coast_frequency = how wobbly the coastline is; seed picks one fixed coastline (change it for a different shape); beaches = rough share of the coast that is sand instead of rock cliff (0-1); tree_density = how thick the placeholder forests are (0-1).",
 		"margin": 6,

@@ -11,6 +11,7 @@ extends Node
 @onready var build_menu: Control = $UI/Root/BuildMenu
 @onready var building_panel: ModalWindow = $UI/Root/BuildingPanel
 @onready var settings_panel: ModalWindow = $UI/Root/SettingsPanel
+@onready var stats_panel: ModalWindow = $UI/Root/StatsPanel
 @onready var confirm_dialog: ModalWindow = $UI/Root/ConfirmDialog
 @onready var test_panel: Control = $UI/Root/TestPanel
 
@@ -51,6 +52,8 @@ func _on_menu_tile(id: String) -> void:
 			build_menu.open()
 		"settings":
 			settings_panel.show_settings()
+		"stats":
+			stats_panel.show_stats()
 
 
 func _unhandled_input(event: InputEvent) -> void:

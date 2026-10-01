@@ -13,6 +13,7 @@ const TILES := [
 	{"id": "build", "title": "Build", "icon": "build"},
 	{"id": "warehouse", "title": "Warehouse", "icon": "warehouse", "soon": true},
 	{"id": "market", "title": "Market", "icon": "market", "soon": true},
+	{"id": "stats", "title": "Stats", "icon": "stats"},
 	{"id": "settings", "title": "Menu", "icon": "gear"},
 ]
 const TILE_SIZE := Vector2(104, 124)

@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <!-- Bar chart with a rising line (statistics). -->
+  <defs>
+    <linearGradient id="blue" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#7FD6FF"/><stop offset="1" stop-color="#2C82D6"/></linearGradient>
+    <linearGradient id="gold" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFE27A"/><stop offset="1" stop-color="#E9A21C"/></linearGradient>
+    <linearGradient id="green" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#B6F07A"/><stop offset="1" stop-color="#4FA82A"/></linearGradient>
+  </defs>
+  <rect x="12" y="14" width="104" height="100" rx="12" fill="#FFFDF4" stroke="#3A220E" stroke-width="6"/>
+  <rect x="26" y="68" width="20" height="34" rx="4" fill="url(#gold)" stroke="#3A220E" stroke-width="5"/>
+  <rect x="54" y="52" width="20" height="50" rx="4" fill="url(#green)" stroke="#3A220E" stroke-width="5"/>
+  <rect x="82" y="36" width="20" height="66" rx="4" fill="url(#blue)" stroke="#3A220E" stroke-width="5"/>
+  <path d="M28 54 L58 38 L74 44 L102 22" fill="none" stroke="#E0402E" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="20" y="18" width="58" height="5" rx="2.5" fill="#fff" fill-opacity="0.6"/>
+</svg>
