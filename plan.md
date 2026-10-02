@@ -373,7 +373,14 @@ The first **utility** (electricity, §5.5, will work the same way and reuse the 
 - **Only while producing**, the same rule as wages and power: a halted, idle or suspended building uses none. A building at part speed (short of workers) uses that share (6 of 8 workers = 75% of its water)
 - **Unlimited supply, heavy users pay more** (decided 2026-10-02): nobody is ever cut off, so water never slows a building down. The price per m³ is tiered on the company's total use, like the tax brackets: the first **100 m³/h** at the base price, anything above at **+25%** (`water` in `game_config.json`)
 - **Base price ~$2 per m³** (PLACEHOLDER). Later it can drift slowly (market mood), like the electricity price
-- **Paid like wages:** settled over time, also while away, into debt if cash runs out; parts of a cent carry over. Shows as **Water** under money out (Stats → Cash flow) and in the Welcome back window
+- **Paid like wages:** settled over time, also while away, into debt if cash runs out; parts of a cent carry over. Shows as **Water** under money out (Stats → Cash flow) and in the Welcome back window. *(Built this way 2026-10-02; to be replaced by the billing cycle below)*
+- **Billing cycle (decided 2026-10-02, not built yet):** utilities are billed like in the real world. Applies to water now and electricity later; **wages stay continuous** (no payday)
+  - **One cycle = 12 real hours** (one game day, matching the 12-hour day/night cycle in §5.5.4); bills fall due at fixed moments, so time away still settles in one calculation
+  - **A meter runs all the time** (also while away): each m³ is recorded at the price in effect when it was used, so a price change mid-cycle only affects use after it
+  - **Charged all at once at the end of the cycle.** Not enough cash: it goes into **debt**, like wages; buildings keep running. **No late fee**
+  - **Heavy users pay more per cycle:** the first **1,200 m³ per cycle** at the base price, anything above **+25%** (the same 100 m³/h limit as before, over 12 hours)
+  - **Always visible:** "Water bill so far: $412 · due in 3h 20m" (HUD or Stats); a message when it's charged ("Water bill paid: $718 for 359 m³"); bills paid while away in the Welcome back window; a short bill history in Stats
+  - Cost per unit (building window) still uses the current price per m³: the bill changes *when* you pay, not *what* it costs
 - **In prices (§5.12):** a batch's water (at the base price) is one more cost line, so a water price change flows down the chain. Farm: 30 m³/h × $2 = $60/h → Wheat **$0.53 → $0.64**, Flour $2.60 → $2.75, Bread $9.92 → $10.14
 
 ## 6. UI/UX Screens
@@ -526,6 +533,8 @@ A hidden dev menu (key combo on PC, secret tap sequence on mobile) for testing t
 - [ ] Retail building: instant sale, pre-built, no workers? (proposed 2026-10-02; selling in whole batches)
 - [x] Water → **public government supply only, a flow (m³/h), unlimited, heavy users pay more (+25% above 100 m³/h)**; Wheat Farm 30 m³/h (decided 2026-10-02, 5.13)
 - [ ] Does the Bakery use water (e.g. 5 m³/h for dough)? (5.13, user decides later)
+- [x] Utility billing → **a bill every 12 real hours (one game day), metered at the price when used, unpaid = debt, no late fee; wages stay continuous** (decided 2026-10-02, 5.13)
+- [ ] Cost per unit shown in each production building (proposed 2026-10-02): running costs only (ingredients + wages + water + electricity) per batch ÷ units; selling price = cost + building-share profit + tax. Still to decide: ingredients at their current price or at what they cost you; your numbers (bonus, water rate) or standard ones; breakdown always visible or on tap
 - [ ] Cost per unit: include a building-cost share (5.12, 12-hour payback) or running costs only (5.11 Dock says "not the construction cost")? The two sections disagree
 - [ ] Land/grid size and expansion cost curve — and whether premium currency may buy land (see Section 7 caution)
 - [ ] Quest content — specific tutorial quest list and daily/weekly quest pool
