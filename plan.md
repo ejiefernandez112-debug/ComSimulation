@@ -340,13 +340,15 @@ A coastal building, inspired by Tropico's docks. Unlocked later in the game (whe
 
 **Why:** the first fixed prices (Wheat $2, Flour $4, Bread $8) made raw wheat the best business: the Farm paid for itself in 1.9 hours, the Mill in 14 and the Bakery in 30, so processing didn't pay. Prices now follow a rule, so every building pays off the same way, and later costs (power, water) flow into prices by themselves.
 
+> **This is the SELLING price, not the player's cost** (clarified 2026-10-02). It is the designer's price, built from **standard numbers** in the data files (minimum wage, base water price, a standard crew), so a player's own choices never move it. What it actually cost *you* to make something is the **cost per unit** (§5.14): running costs only, no building share. Selling price − cost per unit − tax at the sale = your profit. (Same split as Sim Companies: research report `C:Program FilesProject_AIMYSIMSeportsSim Companies production cost.md`.)
+
 **The formula** (Retail price of one unit; for the building that makes it, at full staff):
 
 > **Price = (ingredients + wages + building share + later power/water) ÷ units made ÷ (1 − typical tax rate)**
 
 1. **Ingredients** at their own price (flour's cost includes the wheat you could have sold instead)
 2. **Wages** for a standard crew: `max_workers` at the **minimum wage**. A player's own bonuses never raise prices: they cut that player's profit, so they stay a real choice
-3. **Building share** = build cost ÷ **payback time**, for the batch's duration. **Payback = 12 hours of production** (one game day, `pricing.payback_hours`): every production building pays for itself in 12 hours at full staff
+3. **Building share** = build cost ÷ **payback time**, for the batch's duration. **Payback = 12 hours of production** (one game day, `pricing.payback_hours`): every production building pays for itself in 12 hours at full staff. This is the **profit margin** built into the price, never part of the cost per unit
 4. **Power and water** (Phase 2/3): their cost per batch is added the same way, so a rise in the electricity price raises every product that uses power
 5. **Tax**: divided by (1 − **10%**, `pricing.typical_tax_rate`), so a typical company keeps that profit after sales tax; big companies in higher brackets keep less (the tax's job)
 
@@ -354,13 +356,13 @@ A coastal building, inspired by Tropico's docks. Unlocked later in the game (whe
 
 **Cents (decided 2026-10-02):** only **prices and costs per unit** show cents ("$0.53 each"). Everything else shows **whole dollars, rounded**: cash in the HUD ("$1,876"), building costs ("$8,000"), totals, wages and statistics. Internally the game rules still count money in whole **cents** (575000 = $5,750), so adding and subtracting never drifts; it just isn't shown. Unit prices are rounded to the cent; a sale's total is units × unit price (shown rounded to the dollar).
 
-**Today's numbers** (PLACEHOLDERS, from the formula):
+**Today's numbers** (PLACEHOLDERS, from the formula; water added 2026-10-02, §5.13):
 
 | Product | Built from | Price | Building's profit / hour |
 |---|---|---|---|
-| Wheat | ($120 wages + $166.67 building share) ÷ 600 wheat, ÷ 0.9 | **$0.53** | Farm ≈ $167 (pays back $2,000 in 12 h) |
-| Flour | (400 wheat at $0.53 + $120 + $416.67) ÷ 320 flour, ÷ 0.9 | **$2.60** | Mill ≈ $417 ($5,000 in 12 h) |
-| Bread | (192 flour at $2.60 + $120 + $666.67) ÷ 144 bread, ÷ 0.9 | **$9.92** | Bakery ≈ $667 ($8,000 in 12 h) |
+| Wheat | ($120 wages + $60 water + $166.67 building share) ÷ 600 wheat, ÷ 0.9 | **$0.64** | Farm ≈ $167 (pays back $2,000 in 12 h) |
+| Flour | (400 wheat at $0.64 + $120 + $416.67) ÷ 320 flour, ÷ 0.9 | **$2.75** | Mill ≈ $417 ($5,000 in 12 h) |
+| Bread | (192 flour at $2.75 + $120 + $666.67) ÷ 144 bread, ÷ 0.9 | **$10.14** | Bakery ≈ $667 ($8,000 in 12 h) |
 
 **Selling** (the Retail building, next): you sell **whole batches** (e.g. 24 bread), with the price shown per batch, to keep it simple.
 
@@ -382,6 +384,64 @@ The first **utility** (electricity, §5.5, will work the same way and reuse the 
   - **Always visible:** "Water bill so far: $412 · due in 3h 20m" (HUD or Stats); a message when it's charged ("Water bill paid: $718 for 359 m³"); bills paid while away in the Welcome back window; a short bill history in Stats
   - Cost per unit (building window) still uses the current price per m³: the bill changes *when* you pay, not *what* it costs
 - **In prices (§5.12):** a batch's water (at the base price) is one more cost line, so a water price change flows down the chain. Farm: 30 m³/h × $2 = $60/h → Wheat **$0.53 → $0.64**, Flour $2.60 → $2.75, Bread $9.92 → $10.14
+
+### 5.14 Cost per unit (decided 2026-10-02, not built yet)
+
+**What it costs YOU to make one unit**, shown in each production building's window. It is a fact about your company, separate from the selling price (§5.12, the designer's price). Same approach as Sim Companies (research report in `C:\Program Files\Project_AI\MYSIMS\reports\Sim Companies production cost.md`).
+
+**Cost per unit = (ingredients + wages + water + later electricity) for one batch ÷ units the batch makes**
+
+| Line | Counted at | Changes when… |
+|---|---|---|
+| **Ingredients** | the **cost tag** of the units used (what they actually cost you), not today's market price | the cost of what went in changes |
+| **Wages** | **your** workers' wage: minimum wage + **your bonus** | you change the bonus, or the minimum wage changes |
+| **Water** | the m³ the batch used × the price when it was used (metered, §5.13) | the water price changes |
+| **Electricity** (Phase 2/3) | MW × batch time × the power price | the power price changes |
+
+**Never part of cost per unit:** the building's construction cost (its payback is the profit margin inside the selling price), the sales tax and the market fee (they're charged **at the sale** and shown there), and transport if it's added later.
+
+**Cost tags in the warehouse:**
+- Every item in stock carries an **average cost per unit**. Made goods carry what making them cost; bought goods carry what you paid
+- **Mixing averages them:** 32 own flour at $0.75 + 32 bought flour at $2.75 = 64 flour at **$1.75** each. Using some keeps that average
+- A batch's ingredients take their cost tag with them into the batch, and the output goes into storage with its new tag
+
+**Staffing doesn't change the cost per unit:** half the workers means half the wages per hour, but each batch takes twice as long, so each unit costs the same. Only the **bonus** raises wages per unit.
+
+**Worked example** (today's numbers: full staff, no bonus, water $2/m³, everything made by your own company):
+
+| Step | Batch | Costs of one batch | Cost per unit |
+|---|---|---|---|
+| Wheat Farm | 1 min → 10 wheat | wages 8 × $15/h × 1 min = $2.00 · water 0.5 m³ × $2 = $1.00 → **$3.00** | **$0.30** per wheat |
+| Flour Mill | 6 min, 40 wheat → 32 flour | wheat 40 × $0.30 = $12.00 · wages $12.00 → **$24.00** | **$0.75** per flour |
+| Bakery | 10 min, 32 flour → 24 bread | flour 32 × $0.75 = $24.00 · wages $20.00 → **$44.00** | **$1.83** per bread |
+
+Selling the 24 bread: **sold for $243.36** (24 × $10.14) − **made for $44.00** − **sales tax $0** (first $5,000 in 24 h; $19.47 in the 8% bracket) = **profit $199.36**.
+
+| What happens | Bread's cost per unit |
+|---|---|
+| Normal (above) | $1.83 |
+| Bakery bonus **+40%** (wages $20 → $28) | ($24 + $28) ÷ 24 = **$2.17** |
+| Water price doubles to $4/m³ (wheat $0.40, flour $0.875) | about **$2.00** |
+| All flour **bought** at $2.75 | ($88 + $20) ÷ 24 = **$4.50** |
+| Half own flour, half bought (average $1.75) | ($56 + $20) ÷ 24 = **$3.17** |
+| Half the workers | still **$1.83** |
+
+**The water bill** (§5.13): each batch's water goes into its cost tag when it's used (the farm's $1.00 above); the 12-hour bill only collects the money (12 h of the farm = 360 m³ = $720). The bill changes *when* you pay, not what anything cost.
+
+**In the building window** (draft):
+```
+Cost per unit                    Bread  $1.83
+   Flour    1.33 × $0.75         $1.00
+   Wages    8 × $15/h, 10 min    $0.83
+   Water                         $0.00
+Sells for $10.14 · about $8.31 profit each (before tax)
+If you sold the flour instead: 32 × $2.75 = $88 → baking earns $135 more
+```
+- **Your numbers** (your bonus, your water costs, your ingredients' tags); the selling price stays on standard numbers
+- The "if you sold the inputs instead" line uses today's selling prices: it answers "is this building worth running?"
+- Still to decide (Section 11): breakdown always visible or opened with a tap; a ▲ / ▼ showing the change since an hour ago
+
+**How the rules can keep the tags exact** (for building it): per unit, wages = `max_workers` × wage per worker × batch time ÷ units (the same whatever the staffing, see above), and water = `water_per_hour` × batch time × price ÷ units. So a finished batch's cost can be worked out the moment it finishes, without tracking every second; the save stores each stock's **total cost** next to its amount (average = total ÷ amount).
 
 ## 6. UI/UX Screens
 
@@ -534,8 +594,9 @@ A hidden dev menu (key combo on PC, secret tap sequence on mobile) for testing t
 - [x] Water → **public government supply only, a flow (m³/h), unlimited, heavy users pay more (+25% above 100 m³/h)**; Wheat Farm 30 m³/h (decided 2026-10-02, 5.13)
 - [ ] Does the Bakery use water (e.g. 5 m³/h for dough)? (5.13, user decides later)
 - [x] Utility billing → **a bill every 12 real hours (one game day), metered at the price when used, unpaid = debt, no late fee; wages stay continuous** (decided 2026-10-02, 5.13)
-- [ ] Cost per unit shown in each production building (proposed 2026-10-02): running costs only (ingredients + wages + water + electricity) per batch ÷ units; selling price = cost + building-share profit + tax. Still to decide: ingredients at their current price or at what they cost you; your numbers (bonus, water rate) or standard ones; breakdown always visible or on tap
-- [ ] Cost per unit: include a building-cost share (5.12, 12-hour payback) or running costs only (5.11 Dock says "not the construction cost")? The two sections disagree
+- [x] Cost per unit → **running costs only (ingredients at their cost tag + your wages incl. bonus + metered water + later electricity) per batch ÷ units; shown in each production building with the selling price, profit each and an "if you sold the inputs instead" line** (decided 2026-10-02, 5.14)
+- [x] Building share in cost per unit? → **No: it is the profit margin inside the selling price (5.12)**; ingredients at what they actually cost you, not market price (decided 2026-10-02, 5.14; resolves the 5.11 Dock vs 5.12 Prices disagreement)
+- [ ] Cost per unit display (5.14): breakdown always visible or opened with a tap? A ▲ / ▼ for the change since an hour ago?
 - [ ] Land/grid size and expansion cost curve — and whether premium currency may buy land (see Section 7 caution)
 - [ ] Quest content — specific tutorial quest list and daily/weekly quest pool
 - [ ] Onboarding/tutorial flow (concrete first-5-minutes script)
@@ -595,6 +656,10 @@ A hidden dev menu (key combo on PC, secret tap sequence on mobile) for testing t
 Both are functional, self-contained HTML/JS artifacts used to validate the trading-mechanic math and UX before porting logic into Godot.
 
 ## 15. Revision Log
+
+**2026-10-02 (cost per unit planned):**
+- New 5.14 Cost per unit: running costs only (ingredients at their cost tag, your wages incl. bonus, metered water, later electricity) per batch ÷ units, with warehouse cost tags (averaged when mixed) and a worked wheat → flour → bread example ($0.30 / $0.75 / $1.83)
+- 5.12 clarified: its formula is the designer's **selling** price on standard numbers, with the building share as profit margin; resolves the 5.11 vs 5.12 disagreement. Based on research into Sim Companies (report in `C:\Program Files\Project_AI\MYSIMS\reports\`)
 
 **2026-10-02 (Dock planned):**
 - New planned building, the Dock (5.11): stores goods like a warehouse, fixed workers, one at first; exports through direct contracts (no 3% market fee) and imports any goods; prices follow the cost per unit. Ships, coast placement and unlock parked (Section 11). Not built
