@@ -107,6 +107,8 @@ static func settle(state: Dictionary, data: Dictionary, now: float) -> Dictionar
 ## current job's start is moved later by the other 30%, so at t1 it is exactly as far along as
 ## that work allows.
 static func _settle_span(state: Dictionary, b: Dictionary, data: Dictionary, t0: float, t1: float, speed: float) -> Dictionary:
+	if data.buildings.get(b.type, {}).get("category", "") == "retail":
+		return _settle_retail(state, data, b, t0, t1, speed)  # sells, makes nothing
 	if speed >= 1.0 or float(b.job_started_at) > t0:
 		return _settle_one(state, b, data, t1)  # full speed (or not started yet, e.g. being built)
 	var span := t1 - t0
@@ -181,7 +183,8 @@ static func _settle_one(state: Dictionary, b: Dictionary, data: Dictionary, now:
 
 
 ## Moves a building's work forward to `now`. With `state`, finished batches also get their cost
-## tags (ingredients + wages + water, plan.md §5.14).
+## tags (ingredients + wages + water, plan.md §5.14). Supermarkets only move inside settle(),
+## which knows where each stretch of time starts (_settle_retail).
 static func settle_building(b: Dictionary, data: Dictionary, now: float, state: Dictionary = {}) -> Dictionary:
 	if is_suspended(b):
 		return {}  # switched off: nothing moves (resume starts its work afresh)
@@ -546,6 +549,9 @@ static func _goods_inside(data: Dictionary, b: Dictionary) -> Dictionary:
 			continue
 		var key := "cancel_refund_in_progress" if i == 0 else "cancel_refund_waiting"
 		_add_to(goods, _share(_recipe(def, b.queue[i].recipe_id).get("inputs", {}), float(data.config.get(key, 0.0))))
+	for shelf in b.get("shelves", []):  # a Supermarket: what's still unsold on its shelves
+		if not shelf.is_empty() and _unsold(shelf) > 0:
+			_add_to(goods, {shelf.res: _unsold(shelf)})
 	return goods
 
 
@@ -564,6 +570,9 @@ static func _goods_inside_cost(state: Dictionary, data: Dictionary, b: Dictionar
 			continue
 		var key := "cancel_refund_in_progress" if i == 0 else "cancel_refund_waiting"
 		_put_cost(costs, _refund_cost(b.queue[i], recipe, _share(recipe.get("inputs", {}), float(data.config.get(key, 0.0)))))
+	for shelf in b.get("shelves", []):
+		if not shelf.is_empty() and _unsold(shelf) > 0:
+			_put_cost(costs, {shelf.res: float(shelf.get("cost", 0.0)) * _unsold(shelf) / int(shelf.qty)})
 	return costs
 
 
@@ -605,6 +614,7 @@ static func suspend(state: Dictionary, data: Dictionary, building_id: String, no
 	if not check.ok:
 		return check
 	var costs := _goods_inside_cost(state, data, b)  # the goods keep their cost tags
+	_take_down_all_shelves(state, data, b, now)  # a Supermarket is paid for what it sold so far
 	b.storage = {}
 	b.queue = []
 	b.blocked = false
@@ -657,6 +667,7 @@ static func demolish(state: Dictionary, data: Dictionary, building_id: String, n
 	if not check.ok:
 		return check
 	var costs := _goods_inside_cost(state, data, b)
+	_take_down_all_shelves(state, data, b, now)  # a Supermarket is paid for what it sold so far
 	state.buildings.erase(b)
 	state.profile.currency += int(check.money)
 	stats(state).income.demolish += int(check.money)
@@ -683,11 +694,19 @@ static func sell(state: Dictionary, data: Dictionary, resource_id: String, qty: 
 	if int(state.inventory.get(resource_id, 0)) < qty:
 		return _fail("You don't have that many.")
 	var gross := qty * unit_price(data, resource_id)
-	var tax := sales_tax(state, data, gross, now)
-	var earned := gross - tax
 	# What the sold goods cost to make (their cost tags), so the sale can show the profit.
 	var made_for := float(_take_cost(state.inventory, _costs(state, "inventory_cost"), {resource_id: qty}).get(resource_id, 0.0))
 	_remove_from(state.inventory, {resource_id: qty})
+	return _ok(_record_sale(state, data, resource_id, qty, gross, made_for, now))
+
+
+## Books a sale of `qty` × `resource_id` worth `gross` cents at time `now`, wherever it was sold
+## (the Retailer, a Supermarket shelf): sales tax (§5.9) comes off, the rest goes to cash, and the
+## tax window and statistics remember it. `made_for` = what the goods cost to make (cents, their
+## cost tags). Returns, in cents: {"earned", "gross", "tax", "rate", "cost", "profit"}.
+static func _record_sale(state: Dictionary, data: Dictionary, resource_id: String, qty: int, gross: int, made_for: float, now: float) -> Dictionary:
+	var tax := sales_tax(state, data, gross, now)
+	var earned := gross - tax
 	state.profile.currency += earned
 	# Remember this sale for the 24-hour tax window, and forget sales that have left it.
 	var window := float(data.config.get("sales_tax_window_hours", 24)) * 3600.0
@@ -701,8 +720,8 @@ static func sell(state: Dictionary, data: Dictionary, resource_id: String, qty: 
 	s.spending["tax"] = int(s.spending.get("tax", 0)) + tax
 	_add_to(s.sales_by_item, {resource_id: gross})
 	_add_to(s.sold, {resource_id: qty})
-	return _ok({"earned": earned, "gross": gross, "tax": tax, "rate": float(tax) / gross if gross > 0 else 0.0,
-		"cost": roundi(made_for), "profit": earned - roundi(made_for)})
+	return {"earned": earned, "gross": gross, "tax": tax, "rate": float(tax) / gross if gross > 0 else 0.0,
+		"cost": roundi(made_for), "profit": earned - roundi(made_for)}
 
 
 ## Sales tax, in cents, on a sale worth `gross` cents (changes nothing). Progressive, like
@@ -742,6 +761,290 @@ static func tax_bracket(state: Dictionary, data: Dictionary, now: float) -> Dict
 			result.rate = float(brackets[i].rate)
 			result.next_at = cents(float(brackets[i + 1].from)) if i + 1 < brackets.size() else -1
 	return result
+
+
+# --- Supermarket (plan.md §5.16) -------------------------------------------------
+# A retail building sells finished food to the village from its shelves: one product per shelf,
+# several shelves at once, and each product on only one shelf in the whole village (the village
+# has one appetite for it). When goods go on a shelf, their price and "rate" are fixed:
+#   price = the normal price (§5.12) × the price tag's price (Sale 0.9, Premium 1.1, ...)
+#   rate  = people × the item's appetite × the price tag's speed   (units per hour)
+# While selling, a shelf sells rate × shoppers × speed per hour: shoppers = +10% for each other
+# product on the store's shelves ("one-stop shop"), speed = its workers (3 of 4 = 75%). Those only
+# change at a few moments (a shelf sells out, workers come or go) and settling splits time there,
+# so each stretch is one calculation. A shelf is paid for when it sells out, minus sales tax.
+
+## How many of this item one villager buys per hour at the Normal price (0 = shops don't sell it).
+static func appetite(data: Dictionary, resource_id: String) -> float:
+	return float(data.resources.get(resource_id, {}).get("appetite", 0.0))
+
+
+## The items shops can sell (finished food: they have an appetite), in resources.json order.
+static func shop_products(data: Dictionary) -> Array[String]:
+	var out: Array[String] = []
+	for res in data.resources:
+		if appetite(data, res) > 0.0:
+			out.append(res)
+	return out
+
+
+## The price tags, cheapest first: {tag: {"name", "price" (share of the normal price), "speed"}}.
+static func price_tags(data: Dictionary) -> Dictionary:
+	return data.config.get("retail", {}).get("price_tags", {"normal": {"name": "Normal", "price": 1.0, "speed": 1.0}})
+
+
+## The store's shelves, one entry per shelf ({} = empty). A copy of the list: read it, don't change it.
+static func shelves(data: Dictionary, b: Dictionary) -> Array:
+	var out: Array = b.get("shelves", []).duplicate()
+	while out.size() < int(data.buildings.get(b.type, {}).get("shelves", 0)):
+		out.append({})
+	return out
+
+
+## How many different products are on the store's shelves.
+static func products_on_shelves(b: Dictionary) -> int:
+	var seen := {}
+	for shelf in b.get("shelves", []):
+		if not shelf.is_empty():
+			seen[shelf.res] = true
+	return seen.size()
+
+
+## Shoppers: 1.0, plus retail.variety_bonus (+10%) for each different product beyond the first.
+## `extra_products` counts products about to go on a shelf (for previews).
+static func shoppers(data: Dictionary, b: Dictionary, extra_products: int = 0) -> float:
+	var products := products_on_shelves(b) + extra_products
+	return 1.0 + float(data.config.get("retail", {}).get("variety_bonus", 0.0)) * maxi(products - 1, 0)
+
+
+## Where `resource_id` is on sale right now: {"building_id", "index"}, or {} if on no shelf.
+static func shelf_selling(state: Dictionary, resource_id: String) -> Dictionary:
+	for b in state.buildings:
+		var list: Array = b.get("shelves", [])
+		for i in list.size():
+			if not list[i].is_empty() and list[i].res == resource_id:
+				return {"building_id": b.id, "index": i}
+	return {}
+
+
+## What a shelf of this item at price tag `tag` would get right now: {"price" (cents each), "rate"
+## (units per hour at full staff, before the shoppers bonus)}.
+static func shelf_offer(state: Dictionary, data: Dictionary, resource_id: String, tag: String) -> Dictionary:
+	var t: Dictionary = price_tags(data).get(tag, {})
+	return {
+		"price": roundi(unit_price(data, resource_id) * float(t.get("price", 1.0))),
+		"rate": int(state.population.current) * appetite(data, resource_id) * float(t.get("speed", 1.0)),
+	}
+
+
+## Whether `qty` × `resource_id` could go on a free shelf at price tag `tag` (changes nothing).
+## The UI uses this to grey out its button, and stock_shelf uses it too.
+static func can_stock_shelf(state: Dictionary, data: Dictionary, building_id: String, resource_id: String, qty: int, tag: String, now: float) -> Dictionary:
+	var b := find_building(state, building_id)
+	if b.is_empty():
+		return _fail("Building not found.")
+	if data.buildings.get(b.type, {}).get("category", "") != "retail":
+		return _fail("This building doesn't sell goods.")
+	if not is_built(b, now):
+		return _fail("Still under construction.")
+	if is_suspended(b):
+		return _fail("It's suspended. Resume it first.")
+	if appetite(data, resource_id) <= 0.0:
+		return _fail("Shops don't sell %s: people only buy finished food." % _resource_name(data, resource_id))
+	if not price_tags(data).has(tag):
+		return _fail("Unknown price tag.")
+	if qty <= 0:
+		return _fail("Choose how many to put on the shelf.")
+	if int(state.inventory.get(resource_id, 0)) < qty:
+		return _fail("You don't have that many.")
+	if not shelf_selling(state, resource_id).is_empty():
+		return _fail("%s is already on a shelf. Each product sells on one shelf at a time." % _resource_name(data, resource_id))
+	if _free_shelf(data, b) < 0:
+		return _fail("Every shelf is full. Wait for one to sell out.")
+	if int(state.population.current) <= 0:
+		return _fail("Nobody lives in your village yet, so nobody would buy it.")
+	return _ok()
+
+
+## Put goods on a free shelf. They leave the warehouse now (with their cost tags), and their price
+## and rate are fixed now (see shelf_offer). Returns "shelf" (its index) and "price" (cents each).
+static func stock_shelf(state: Dictionary, data: Dictionary, building_id: String, resource_id: String, qty: int, tag: String, now: float) -> Dictionary:
+	var b := find_building(state, building_id)
+	if not b.is_empty():
+		settle(state, data, now)  # a shelf may have just sold out, freeing it
+	var check := can_stock_shelf(state, data, building_id, resource_id, qty, tag, now)
+	if not check.ok:
+		return check
+	var offer := shelf_offer(state, data, resource_id, tag)
+	var cost := float(_take_cost(state.inventory, _costs(state, "inventory_cost"), {resource_id: qty}).get(resource_id, 0.0))
+	_remove_from(state.inventory, {resource_id: qty})
+	var list := shelves(data, b)
+	var index := _free_shelf(data, b)
+	list[index] = {"res": resource_id, "qty": qty, "sold": 0.0, "price": int(offer.price), "tag": tag,
+		"rate": float(offer.rate), "cost": cost}
+	b["shelves"] = list
+	b.job_started_at = maxf(float(b.job_started_at), now)  # an empty store starts selling from now
+	return _ok({"shelf": index, "price": int(offer.price)})
+
+
+## What taking shelf `index` down would do (changes nothing): what's sold so far is paid for
+## ("sold" units, "paid" cents before tax), the rest goes back to the warehouse ("back").
+static func can_clear_shelf(state: Dictionary, data: Dictionary, building_id: String, index: int) -> Dictionary:
+	var b := find_building(state, building_id)
+	if b.is_empty():
+		return _fail("Building not found.")
+	var list := shelves(data, b)
+	if index < 0 or index >= list.size() or list[index].is_empty():
+		return _fail("That shelf is empty.")
+	var shelf: Dictionary = list[index]
+	var back := {}
+	if _unsold(shelf) > 0:
+		back[shelf.res] = _unsold(shelf)
+	if warehouse_total(state) + _total(back) > warehouse_cap(state, data):
+		return _fail("Not enough room in the warehouse to take them back.")
+	var sold := int(shelf.qty) - _unsold(shelf)
+	return _ok({"sold": sold, "paid": sold * int(shelf.price), "back": back})
+
+
+## Take a shelf's goods down: what's sold so far is paid for, the rest goes back to the warehouse.
+## Returns can_clear_shelf's answer plus "earned" (cents, after tax).
+static func clear_shelf(state: Dictionary, data: Dictionary, building_id: String, index: int, now: float) -> Dictionary:
+	var b := find_building(state, building_id)
+	if not b.is_empty():
+		settle(state, data, now)  # it may have just sold out
+	var check := can_clear_shelf(state, data, building_id, index)
+	if not check.ok:
+		return check
+	var taken := _take_down_shelf(state, data, b, index, now)
+	_add_to(state.inventory, taken.back)
+	_put_cost(_costs(state, "inventory_cost"), taken.back_cost)
+	check["earned"] = int(taken.earned)
+	return check
+
+
+## What putting `qty` × `resource_id` on a shelf at tag `tag` would bring (changes nothing):
+## {"price" (cents each), "gross", "cost" (their cost tags), "tax" (at today's bracket), "profit"
+## (cents), "per_hour" (how many the village would buy per hour, with this store's workers and
+## shoppers), "seconds" (to sell them all; INF when nobody would buy)}.
+static func stock_preview(state: Dictionary, data: Dictionary, building_id: String, resource_id: String, qty: int, tag: String, now: float) -> Dictionary:
+	var b := find_building(state, building_id)
+	var offer := shelf_offer(state, data, resource_id, tag)
+	var gross := maxi(qty, 0) * int(offer.price)
+	var cost := roundi(average_cost(state, resource_id) * maxi(qty, 0))
+	var tax := sales_tax(state, data, gross, now)
+	var per_hour := 0.0
+	if not b.is_empty():
+		var new_product := 1 if shelf_selling(state, resource_id).is_empty() else 0
+		per_hour = float(offer.rate) * shoppers(data, b, new_product) * _staffed_share(data, b)
+	return {"price": int(offer.price), "gross": gross, "cost": cost, "tax": tax, "profit": gross - tax - cost,
+		"per_hour": per_hour, "seconds": qty / per_hour * 3600.0 if per_hour > 0.0 else INF}
+
+
+## Units of shelf `index` sold by `now` (time since the last settle counts at today's pace).
+static func shelf_sold_now(state: Dictionary, data: Dictionary, b: Dictionary, index: int, now: float) -> float:
+	var shelf: Dictionary = shelves(data, b)[index]
+	if shelf.is_empty():
+		return 0.0
+	var since := maxf(now - float(state.get("settled_at", now)), 0.0)
+	return minf(float(shelf.sold) + _shelf_pace(state, data, b, shelf, now) * since, float(shelf.qty))
+
+
+## Seconds until shelf `index` sells out at today's pace (INF while it isn't selling).
+static func shelf_time_left(state: Dictionary, data: Dictionary, b: Dictionary, index: int, now: float) -> float:
+	var shelf: Dictionary = shelves(data, b)[index]
+	var pace := 0.0 if shelf.is_empty() else _shelf_pace(state, data, b, shelf, now)
+	if pace <= 0.0:
+		return INF
+	return (float(shelf.qty) - shelf_sold_now(state, data, b, index, now)) / pace
+
+
+## Units per second this shelf sells right now: rate × shoppers × the store's speed.
+static func _shelf_pace(state: Dictionary, data: Dictionary, b: Dictionary, shelf: Dictionary, now: float) -> float:
+	return float(shelf.rate) * shoppers(data, b) * building_speed(state, data, b, now) / 3600.0
+
+
+## The next moment a shelf sells out at `speed`, from `t` (INF if none is selling).
+static func _next_sell_out(data: Dictionary, b: Dictionary, t: float, speed: float) -> float:
+	var per_second := shoppers(data, b) * speed / 3600.0
+	var next := INF
+	for shelf in b.get("shelves", []):
+		if not shelf.is_empty() and float(shelf.rate) > 0.0:
+			next = minf(next, t + (float(shelf.qty) - float(shelf.sold)) / (float(shelf.rate) * per_second))
+	return next + 0.000001
+
+
+## Sells from the shelves over [t0, t1] at the store's `speed`, with the shoppers bonus as it was
+## at t0 (settling splits time when a shelf sells out, so it can't change midway). A shelf that
+## sells out is paid for at t1. Returns {"store_sales": cents earned, "sold:<item>": units}.
+static func _settle_retail(state: Dictionary, data: Dictionary, b: Dictionary, t0: float, t1: float, speed: float) -> Dictionary:
+	var report := {}
+	if is_suspended(b):
+		return report
+	var from := maxf(t0, float(b.job_started_at))
+	if t1 <= from:
+		return report  # still being built, or the clock moved backwards: never go back in time
+	var per_hour := shoppers(data, b) * speed
+	var list: Array = b.get("shelves", [])
+	for i in list.size():
+		var shelf: Dictionary = list[i]
+		if shelf.is_empty():
+			continue
+		shelf.sold = minf(float(shelf.sold) + float(shelf.rate) * per_hour * (t1 - from) / 3600.0, float(shelf.qty))
+		if float(shelf.sold) >= float(shelf.qty) - 0.0001:
+			shelf.sold = float(shelf.qty)  # sold out (the tiny allowance covers rounding)
+			var taken := _take_down_shelf(state, data, b, i, t1)
+			_add_to(report, {"store_sales": int(taken.earned), "sold:%s" % shelf.res: int(shelf.qty)})
+	b.job_started_at = t1
+	return report
+
+
+## Takes shelf `index` down at time `now`: what's sold is paid for (minus sales tax), the rest is
+## handed back with its share of the cost tag. Returns {"earned" (cents), "back", "back_cost"}.
+static func _take_down_shelf(state: Dictionary, data: Dictionary, b: Dictionary, index: int, now: float) -> Dictionary:
+	var shelf: Dictionary = b.shelves[index]
+	var qty := int(shelf.qty)
+	var sold := qty - _unsold(shelf)
+	var cost := float(shelf.get("cost", 0.0))
+	var earned := 0
+	if sold > 0:
+		earned = int(_record_sale(state, data, shelf.res, sold, sold * int(shelf.price), cost * sold / qty, now).earned)
+	var back := {}
+	var back_cost := {}
+	if qty > sold:
+		back[shelf.res] = qty - sold
+		back_cost[shelf.res] = cost * (qty - sold) / qty
+	b.shelves[index] = {}
+	return {"earned": earned, "back": back, "back_cost": back_cost}
+
+
+## Demolish / suspend: every shelf is paid for what it sold so far and emptied (the unsold goods
+## are already counted in _goods_inside, which hands them to the warehouse).
+static func _take_down_all_shelves(state: Dictionary, data: Dictionary, b: Dictionary, now: float) -> void:
+	var list: Array = b.get("shelves", [])
+	for i in list.size():
+		if not list[i].is_empty():
+			_take_down_shelf(state, data, b, i, now)
+
+
+## Units still unsold on a shelf (whole units: a part-sold unit isn't paid for yet).
+static func _unsold(shelf: Dictionary) -> int:
+	return int(shelf.qty) - mini(floori(float(shelf.sold) + 0.000001), int(shelf.qty))
+
+
+## The first empty shelf, or -1 when every shelf is in use.
+static func _free_shelf(data: Dictionary, b: Dictionary) -> int:
+	var list := shelves(data, b)
+	for i in list.size():
+		if list[i].is_empty():
+			return i
+	return -1
+
+
+## Share of its workers the store has (3 of 4 = 0.75), working or waiting: how fast it would sell.
+static func _staffed_share(data: Dictionary, b: Dictionary) -> float:
+	if max_workers(data, b) <= 0:
+		return 1.0
+	return float(hired(b)) / max_workers(data, b)
 
 
 # --- Prices (plan.md §5.12) ------------------------------------------------------
@@ -1027,10 +1330,15 @@ static func is_suspended(b: Dictionary) -> bool:
 	return bool(b.get("suspended", false))
 
 
-## Idle: a Mill or Bakery with no jobs queued. Like a halted building, it pays no wages; its
-## workers stay tied to it, waiting unpaid for the next job.
+## Idle: a Mill or Bakery with no jobs queued, or a Supermarket with empty shelves. Like a halted
+## building, it pays no wages; its workers stay tied to it, waiting unpaid for the next job.
 static func is_idle(data: Dictionary, b: Dictionary) -> bool:
-	return data.buildings.get(b.type, {}).get("category", "") == "processor" and b.queue.is_empty()
+	match data.buildings.get(b.type, {}).get("category", ""):
+		"processor":
+			return b.queue.is_empty()
+		"retail":
+			return products_on_shelves(b) == 0
+	return false
 
 
 ## Halted: its storage is full (a farm with no room for the next batch, or a finished batch
@@ -1047,17 +1355,20 @@ static func is_halted(data: Dictionary, b: Dictionary) -> bool:
 
 
 ## When a producing building will stop if nothing changes, at its current speed: its storage
-## fills (halted) or its last queued job is done (idle). INF if it won't. Settling splits time at
-## this moment so wages stop exactly then, even while the player is away.
+## fills (halted) or its last queued job is done (idle); for a Supermarket, the next shelf to sell
+## out (its shoppers bonus changes then, and it may go idle). INF if it won't. Settling splits time
+## at this moment so wages stop exactly then, even while the player is away.
 static func _stop_time(state: Dictionary, data: Dictionary, b: Dictionary, t: float) -> float:
 	var def: Dictionary = data.buildings.get(b.type, {})
 	if max_workers(data, b) <= 0 or not is_built(b, t) or not is_producing(data, b) or float(b.job_started_at) > t:
 		return INF
-	if def.get("category", "") not in ["extractor", "processor"]:
+	if def.get("category", "") not in ["extractor", "processor", "retail"]:
 		return INF  # a warehouse never stops by itself
 	var speed := building_speed(state, data, b, t)
 	if speed <= 0.0:
 		return INF
+	if def.get("category", "") == "retail":
+		return _next_sell_out(data, b, t, speed)
 	var space := int(def.get("storage_cap", 0)) - _total(b.storage)
 	var done := t - float(b.job_started_at)  # work already done on the current cycle / job
 	if def.get("category", "") == "extractor":

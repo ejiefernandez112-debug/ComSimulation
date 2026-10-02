@@ -7,6 +7,9 @@ signal changed
 ## A water bill was just charged while playing (cents, m³). Bills charged while the game was
 ## closed are in offline_report instead (the Welcome back window).
 signal water_bill_paid(cost: int, m3: float)
+## Supermarket shelves sold out while playing: `earned` = cents after tax, `sold` = {item: units}.
+## Sales while the game was closed are in offline_report instead.
+signal shelves_sold(earned: int, sold: Dictionary)
 
 const Simulation = preload("res://scripts/sim/simulation.gd")
 const SaveFormat = preload("res://scripts/sim/save_format.gd")
@@ -68,6 +71,10 @@ func tick() -> Dictionary:
 	if int(report.get("water", 0)) > 0 and not water_bills().is_empty():
 		water_bill_paid.emit(int(report.water), float(water_bills()[-1].m3))
 		_dirty = true  # save soon after a bill
+	var sold := sold_in(report)
+	if not sold.is_empty():
+		shelves_sold.emit(int(report.get("store_sales", 0)), sold)
+		_dirty = true
 	if _dirty:
 		save_game()  # once per second at most, so a burst of taps is one write
 	changed.emit()
@@ -249,6 +256,72 @@ func set_bonus(building_id: String, level: String) -> Dictionary:
 
 func sell(resource_id: String, qty: int) -> Dictionary:
 	return _after(Simulation.sell(state, data(), resource_id, qty, TimeService.now()))
+
+
+# --- Supermarket (plan.md §5.16) ---
+
+## Put `qty` × `resource_id` on a free shelf at price tag `tag` ("normal", "sale", ...).
+func stock_shelf(building_id: String, resource_id: String, qty: int, tag: String) -> Dictionary:
+	return _after(Simulation.stock_shelf(state, data(), building_id, resource_id, qty, tag, TimeService.now()))
+
+
+## Take shelf `index` down: what's sold is paid for, the rest goes back to the warehouse.
+func clear_shelf(building_id: String, index: int) -> Dictionary:
+	return _after(Simulation.clear_shelf(state, data(), building_id, index, TimeService.now()))
+
+
+## Whether those goods could go on a shelf ({"ok", "error"}); changes nothing.
+func can_stock_shelf(building_id: String, resource_id: String, qty: int, tag: String) -> Dictionary:
+	return Simulation.can_stock_shelf(state, data(), building_id, resource_id, qty, tag, TimeService.now())
+
+
+## What taking that shelf down would do ({"ok", "error", "sold", "paid", "back"}); changes nothing.
+func can_clear_shelf(building_id: String, index: int) -> Dictionary:
+	return Simulation.can_clear_shelf(state, data(), building_id, index)
+
+
+## What putting those goods on a shelf would bring (see Simulation.stock_preview; cents).
+func stock_preview(building_id: String, resource_id: String, qty: int, tag: String) -> Dictionary:
+	return Simulation.stock_preview(state, data(), building_id, resource_id, qty, tag, TimeService.now())
+
+
+## The store's shelves, one entry per shelf ({} = empty; else "res", "qty", "price", "tag", ...).
+func shelves(building: Dictionary) -> Array:
+	return Simulation.shelves(data(), building)
+
+
+## Units of that shelf sold so far (counting up between ticks).
+func shelf_sold_now(building: Dictionary, index: int) -> float:
+	return Simulation.shelf_sold_now(state, data(), building, index, TimeService.now())
+
+
+## Seconds until that shelf sells out at today's pace (INF while it isn't selling).
+func shelf_time_left(building: Dictionary, index: int) -> float:
+	return Simulation.shelf_time_left(state, data(), building, index, TimeService.now())
+
+
+## The store's shoppers: 1.0, +10% for each different product on its shelves beyond the first.
+func shoppers(building: Dictionary) -> float:
+	return Simulation.shoppers(data(), building)
+
+
+## The goods shops can sell (finished food), in resources.json order.
+func shop_products() -> Array[String]:
+	return Simulation.shop_products(data())
+
+
+## Where that item is on sale ({"building_id", "index"}), or {} if on no shelf.
+func shelf_selling(resource_id: String) -> Dictionary:
+	return Simulation.shelf_selling(state, resource_id)
+
+
+## {"item": units} sold out on shelves, from a settle report (its "sold:<item>" entries).
+static func sold_in(report: Dictionary) -> Dictionary:
+	var sold := {}
+	for key in report:
+		if str(key).begins_with("sold:"):
+			sold[str(key).trim_prefix("sold:")] = int(report[key])
+	return sold
 
 
 # --- Read-only questions for the UI ---

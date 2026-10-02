@@ -47,5 +47,12 @@
 		"recipes": [
 			{ "id": "bake_bread", "inputs": { "flour": 32 }, "outputs": { "bread": 24 }, "duration": 600 }
 		]
+	},
+	"supermarket": {
+		"_comment": "Retail (plan.md 5.16): sells finished food to the village, one product per shelf, several shelves at once. How fast a shelf sells comes from the village (population x the item's appetite in resources.json), its price tag and how many different products are on the shelves (game_config.json retail). Workers set the pace like any building: 3 of 4 = 75%. Paid when a shelf sells out. Build cost is a PLACEHOLDER kept low enough that $10,000 starting cash covers a Wheat Farm + Flour Mill + Supermarket.",
+		"name": "Supermarket", "category": "retail", "menu_tab": "shops",
+		"description": "Sells your food to the people of your village, several products at once. Pick a price tag for each shelf.",
+		"build_cost": 2500, "buildable": true, "build_time": 5, "max_workers": 4, "worker_type": "low_skilled",
+		"shelves": 4
 	}
 }

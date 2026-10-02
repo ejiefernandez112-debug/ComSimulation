@@ -92,6 +92,20 @@ static func status(b: Dictionary) -> Dictionary:
 				return _no_workers(p)
 			var left: float = ((1.0 - p) * float(r.duration) + (b.queue.size() - 1) * float(r.duration)) / speed
 			return _with_speed(b, "Making %s · %s left" % [resource_name(output_of(r)), UITheme.duration(left)], p, speed)
+		"retail":
+			var selling := 0
+			var soonest := INF  # seconds until the first shelf sells out
+			var list := Economy.shelves(b)
+			for i in list.size():
+				if not list[i].is_empty():
+					selling += 1
+					soonest = minf(soonest, Economy.shelf_time_left(b, i))
+			if selling == 0:
+				return {"text": "Shelves empty: put food on a shelf to sell it (no wages meanwhile)", "progress": -1.0, "good": false}
+			var speed := Economy.building_speed(b)
+			if speed <= 0.0:
+				return _no_workers(-1.0)
+			return _with_speed(b, "Selling %d product%s · next sells out in %s" % [selling, "" if selling == 1 else "s", UITheme.duration(soonest)], -1.0, speed)
 		"residential":
 			return {"text": "Home for %d people" % int(def.get("population_capacity", 0)), "progress": -1.0, "good": true}
 	return {"text": "Your headquarters", "progress": -1.0, "good": true}

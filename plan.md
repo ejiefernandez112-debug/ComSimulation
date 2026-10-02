@@ -252,7 +252,7 @@ Everything stays **one calculation**, never a replay. Anything that changes powe
   - Construction Office — pre-built, Level 1, already placed
   - Small House (Residential) — pre-built, already placed → Population growth begins immediately
   - Warehouse — pre-built (added 2026-10-02, §5.10), room for 10,000 goods with its 4 workers
-  - Starting cash — **$10,000** (`starting_cash` in `game_config.json`; raised from $5,750 on 2026-10-02 so a new player can afford the basic buildings, including their first Grocery Store, §5.16; still tunable)
+  - Starting cash — **$10,000** (`starting_cash` in `game_config.json`; raised from $5,750 on 2026-10-02 so a new player can afford the basic buildings, including their first Supermarket, §5.16; still tunable)
   - Wheat Farm — **not** pre-built; building it is the player's first tutorial action
 
 ### 5.9 Taxes & Fees (sales tax built 2026-10-02)
@@ -401,7 +401,7 @@ A coastal building, inspired by Tropico's docks. Unlocked later in the game (whe
 | Flour | (400 wheat at $0.64 + $120 + $416.67) ÷ 320 flour, ÷ 0.9 | **$2.75** | Mill ≈ $417 ($5,000 in 12 h) |
 | Bread | (192 flour at $2.75 + $120 + $666.67) ÷ 144 bread, ÷ 0.9 | **$10.14** | Bakery ≈ $667 ($8,000 in 12 h) |
 
-**Selling** (the Retail building, next; now the **Grocery Store**, §5.16): you sell **whole batches** (e.g. 24 bread), with the price shown per batch, to keep it simple.
+**Selling** happens in the **Supermarket** (§5.16): the player puts any amount on a shelf at a price tag, and the shelf sells over time.
 
 ### 5.13 Water: the public water supply (decided 2026-10-02)
 
@@ -517,21 +517,36 @@ If you sold the flour instead: 32 × $2.75 = $88 → baking earns $135 more
 - Reliability can feed Rating/Reputation (§5.3)
 - Before Phase 4 there are no other players, so an **in-game contractor** could fill the same role (pricier than your own crew)
 
-### 5.16 Grocery Store — the Retail building (planned 2026-10-02; not built)
+### 5.16 Supermarket — the Retail building, with village demand (built 2026-10-02, on trial)
 
-The Retail building (selling to town customers) is a **Grocery Store** (also "food market"). It replaces the temporary Sell test buttons once built.
-- **The player builds it** (not pre-built, decided 2026-10-02). Starting cash was raised to **$10,000** so a new player can afford the basic buildings (§5.8). Its build cost must leave room for that: e.g. Wheat Farm $2,000 + Flour Mill $5,000 + Grocery Store ≤ ~$3,000 lets a player sell Flour before affording a Bakery
-- **Sells finished goods to customers:** Flour and Bread; fruits and other foods **later** (fruits need a new building, e.g. an Orchard)
-- **Raw Wheat can't be sold** at any store (decided 2026-10-02): it is only an ingredient, so the first income needs a Flour Mill + Grocery Store. Players process their wheat instead of selling it raw
-- **Works like a production building:** input = goods from the warehouse; a "job" = selling one batch over a set time (e.g. 24 Bread in 10 minutes); output = **cash** at the cost-based price (§5.12), minus Company Tax (§5.9.1). Reuses the existing queue, timers, offline catch-up, wages and halt rules
-- **Selling speed is the demand cap:** a store can only sell so fast; to sell more, build another store (or upgrade it later, §5.15)
-- **Workers** like other buildings; **electricity** once power exists (Phase 2/3, 0 MW until then)
+The Retail building (selling to the village) is the **Supermarket** (`supermarket` in `buildings.json`, category `retail`, Build Menu tab "Shops"). It replaced the temporary Sell test buttons. **On trial:** built in its own Git commit so it can be undone if the design doesn't feel right.
+- **The player builds it** (not pre-built). $2,500 (PLACEHOLDER), so the $10,000 start covers a Wheat Farm + Flour Mill + Supermarket (§5.8)
+- **Sells finished food only:** Flour and Bread now; fruits later (§5.17). **Raw Wheat can't be sold** (decided 2026-10-02): only items with an `appetite` in `resources.json` go on shelves
+- **Shelves:** 4 per store (`shelves`). Each shelf sells one product; **several shelves sell at once**. A product can be on **only one shelf in the whole village** at a time (the village has one appetite for it), so extra stores let you sell more *different* products, not more of the same
+- **Putting food on a shelf:** choose the food, the amount (slider or All) and a **price tag**. The goods leave the warehouse at once (with their cost tags, §5.14); the window first shows the price, how many the village buys per hour, the time to sell out, sales, cost to make, sales tax and profit
+- **Price tags** (our own idea instead of typing a price; `retail.price_tags` in `game_config.json`, PLACEHOLDERS from a demand curve speed = 1 ÷ price³):
+
+| Tag | Price | Sells |
+|---|---|---|
+| Big Sale | −20% | 1.95× as fast |
+| Sale | −10% | 1.37× |
+| Normal | cost-based price (§5.12) | 1× |
+| Premium | +10% | 0.75× |
+| Luxury | +20% | 0.58× |
+
+- **Village demand:** a shelf sells **people × the item's appetite × the tag's speed** per hour (appetite PLACEHOLDERS: Bread 3.6, Flour 3.2 per person per hour, tuned so ~40 people buy what one Farm + Mill + Bakery make; the game only shows village totals). The rate and price are fixed when the goods go on the shelf, so more people help the *next* shelf
+- **Variety brings shoppers ("one-stop shop", our own idea):** +10% for each different product on the store's shelves beyond the first (`retail.variety_bonus`). It changes the moment a shelf sells out, so keeping shelves full keeps shoppers coming
+- **Workers:** 4 (Low / Medium / High staffing, wage bonus). Fewer workers = shelves sell slower (3 of 4 = 75%). Paid per hour **only while a shelf is selling**; empty shelves = idle, no wages. Electricity later (0 MW for now)
+- **Paid at the end of each shelf batch** (decided 2026-10-02): when a shelf sells out, its sales minus sales tax (§5.9; Company Tax when that's built) reach cash. Taking a shelf down early (red X, asks first) pays for what's sold so far and returns the rest to the warehouse; demolish and suspend do the same
+- **Offline:** exact, one calculation per stretch: settling splits time at each sell-out (the shoppers bonus changes then) and at worker changes. The Welcome back window lists what sold and what it earned; while playing, a message says "Sold out: 1,000 Bread. +$9,331"
+- **Why demand limits volume (re-assessed 2026-10-02):** a price-only "demand meter" (±30%) was rejected: dumping goods at −30% still made a profit, and holding stock back to sell at +30% could be gamed. Here more goods simply take longer to sell, and lowering the price is the player's choice
 - **More store types later** (decided 2026-10-02), each selling its own category, e.g. a **Hardware Store** for Planks, Bricks and Cement once construction materials exist
+- Rules: `Simulation.can_stock_shelf`, `stock_shelf`, `can_clear_shelf`, `clear_shelf`, `stock_preview`, `_settle_retail`; window: `building_panel.gd` (Shelves + "Put on a shelf"). The Retailer's instant `sell` stays in the rules (tests use it) but no screen calls it
 
 ### 5.17 Plantation & Fruits (planned 2026-10-02, later; not built)
 
 - **Plantation**: an extractor like the Wheat Farm, where the **player chooses the crop** per building: **Banana, Mango, Lemon, Pineapple, Papaya, Coconut** (that's all for now). Each fruit has its own timer, batch and price in the data files
-- **Fresh fruit is a finished product:** sold straight to customers at the Grocery Store (§5.16) for local consumption. **Processing is optional, never forced** (decided 2026-10-02); unlike raw Wheat, fruit doesn't need a processor to earn money
+- **Fresh fruit is a finished product:** sold straight to customers at the Supermarket (§5.16) for local consumption. **Processing is optional, never forced** (decided 2026-10-02); unlike raw Wheat, fruit doesn't need a processor to earn money
 - **Fruit vs. wheat is balanced by demand** (decided 2026-10-02): fruit needs one building to earn, wheat needs a Farm + Mill. If everyone grows fruit, fruit floods and Flour/Bread get scarce, so their prices and demand rise. Needs demand in the game: dynamic pricing (Section 11) and, from Phase 4, other companies buying
 - **Processing ideas for later** (optional extra value, not needed to sell): Juice Factory (Mango/Pineapple juice, Lemonade), Banana Bread (a second Bakery recipe: Flour + Banana), Coconut Oil and Coconut Vinegar (Oil Mill / Vinegar Plant), Banana Chips (Banana + Coconut Oil), Dried Mango, Pickled Papaya (Papaya + Vinegar), Canned Pineapple (needs cans from Steel)
 
@@ -551,6 +566,7 @@ The Retail building (selling to town customers) is a **Grocery Store** (also "fo
 - **Recipe Select** — sub-panel of Building Panel (once 2+ recipes unlocked)
 - **Inventory/Warehouse** — all resources held, quantities, storage caps
 - **Retailer/Sell Screen** — sellable resources, current NPC price, quantity selector, sell button
+  - ✅ Built 2026-10-02 as the **Supermarket** window (§5.16): shelves with progress and a take-down X, then "Put on a shelf" (food, amount slider + All, five price tags, a preview of price / speed / time / profit). The temporary Sell test buttons are gone
 - **Offline Summary** — "While you were away…" popup listing what was produced (and, from Phase 2/3, wages paid)
   - ✅ Built 2026-10-02 as **Welcome back!** (`scenes/ui/welcome_back.gd`): shows at start-up after at least `welcome_back_after_seconds` (120) away. Time away, goods made, people who moved in, wages paid, cash now, plus warnings for full (halted) buildings and debt
 - **Settings** — sound/music volume, save reset, language (if localized)
@@ -687,7 +703,7 @@ A hidden dev menu (key combo on PC, secret tap sequence on mobile) for testing t
 - [ ] Raw goods on the Dock and Market: §5.11 says the Dock exports *any* goods, raw included. Does "raw Wheat not sellable" also cover the Dock/Market, or only stores?
 - [x] Fruits → **later**, from a **Plantation** with a crop choice (Banana, Mango, Lemon, Pineapple, Papaya, Coconut), sold fresh at the Grocery Store; processing optional (decided 2026-10-02, 5.17)
 - [ ] Plantation (5.17): does changing crop lose the growing batch (replanting)? One crop per building, or several plots?
-- [ ] Grocery Store (5.16): build cost, workers, selling speed per batch (PLACEHOLDERS)
+- [ ] Supermarket (5.16): tune the PLACEHOLDERS by playing: build cost $2,500, 4 shelves, 4 workers, appetites (Bread 3.6, Flour 3.2), price tags, +10% variety bonus. Should fruits share one "fruit" appetite (5.17)?
 - [x] Water → **public government supply only, a flow (m³/h), unlimited, heavy users pay more (+25% above 100 m³/h)**; Wheat Farm 30 m³/h (decided 2026-10-02, 5.13)
 - [ ] Does the Bakery use water (e.g. 5 m³/h for dough)? (5.13, user decides later)
 - [x] Utility billing → **a bill every 12 real hours (one game day), metered at the price when used, unpaid = debt, no late fee; wages stay continuous** (decided 2026-10-02, 5.13)
@@ -760,6 +776,11 @@ A hidden dev menu (key combo on PC, secret tap sequence on mobile) for testing t
 Both are functional, self-contained HTML/JS artifacts used to validate the trading-mechanic math and UX before porting logic into Godot.
 
 ## 15. Revision Log
+
+**2026-10-02 (Supermarket built, on trial):**
+- The Retail building is the Supermarket (5.16): 4 shelves selling different foods at once, five price tags (Big Sale → Luxury), village demand from population × appetite, +10% shoppers per extra product, paid when a shelf sells out, wages only while selling. Raw wheat can't be sold. Replaces the Sell test buttons
+- Demand re-assessed: volume is limited by the village, not a ±30% price meter (dumping still paid, and the meter could be gamed). Our own design, compared with Sim Companies' free price entry
+- No save-format change (older saves load as they are; a save with a Supermarket loads in an older build with the Supermarket dropped)
 
 **2026-10-02 (Grocery Store planned, starting cash):**
 - The Retail building is a Grocery Store the player builds (5.16): sells finished goods over time like a production job, with workers and later power; more store types later

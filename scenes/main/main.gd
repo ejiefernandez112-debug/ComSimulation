@@ -42,6 +42,9 @@ func _ready() -> void:
 	building_panel.bonus_requested.connect(_set_bonus)
 	building_panel.suspend_requested.connect(_ask_suspend)
 	building_panel.resume_requested.connect(_resume)
+	building_panel.stock_requested.connect(_stock)
+	building_panel.clear_shelf_requested.connect(_ask_clear_shelf)
+	Economy.shelves_sold.connect(_on_shelves_sold)
 	menu_bar.tile_pressed.connect(_on_menu_tile)
 	menu_bar.coming_soon.connect(func(title): hud.toast("%s is coming soon" % title))
 	# The bottom menu steps aside for anything else that uses the bottom of the screen.
@@ -126,7 +129,7 @@ func _on_building_tapped(building_id: String) -> void:
 	if not b.storage.is_empty():
 		_collect(building_id)
 	village.select(building_id)
-	if GameData.buildings[b.type].category in ["extractor", "processor", "storage"]:
+	if GameData.buildings[b.type].category in ["extractor", "processor", "storage", "retail"]:
 		building_bar.close()
 		building_panel.show_building(building_id)
 	else:
@@ -291,6 +294,45 @@ func _resume(building_id: String) -> void:
 		hud.toast("%s is back to work." % GameData.buildings[Economy.building(building_id).type].name)
 	else:
 		hud.toast(result.error, true)
+
+
+## Supermarket: put food on a shelf at a price tag. It leaves the warehouse now and is paid for
+## when the shelf sells out.
+func _stock(building_id: String, resource_id: String, qty: int, tag: String) -> void:
+	var result := Economy.stock_shelf(building_id, resource_id, qty, tag)
+	if result.ok:
+		village.show_gain(building_id, {resource_id: -qty})
+		hud.toast("%s %s on the shelf at %s each" % [UITheme.number(qty), GameData.resources[resource_id].name, UITheme.price(result.price)])
+		building_panel.choose_defaults()  # the form moves on to the next food not on a shelf yet
+	else:
+		hud.toast(result.error, true)
+
+
+## Taking a shelf down ends its sale early, so ask first and show what comes back.
+func _ask_clear_shelf(building_id: String, index: int) -> void:
+	var check := Economy.can_clear_shelf(building_id, index)
+	if not check.ok:
+		hud.toast(check.error, true)
+		return
+	confirm_dialog.ask("Take it off the shelf?",
+		"The %s already sold are paid for now (minus sales tax). The rest goes back to your warehouse." % UITheme.number(check.sold),
+		check.paid, check.back, "Take it down", _clear_shelf.bind(building_id, index))
+
+
+func _clear_shelf(building_id: String, index: int) -> void:
+	var result := Economy.clear_shelf(building_id, index)
+	if result.ok:
+		village.show_gain(building_id, result.back)
+	else:
+		hud.toast(result.error, true)
+
+
+## A shelf sold out while playing: say what sold and what it earned.
+func _on_shelves_sold(earned: int, sold: Dictionary) -> void:
+	var parts: Array[String] = []
+	for res in sold:
+		parts.append("%s %s" % [UITheme.number(int(sold[res])), GameData.resources.get(res, {}).get("name", res)])
+	hud.toast("Sold out: %s. +%s" % [", ".join(parts), UITheme.money(earned)])
 
 
 ## Wage bonus in the building window: costs more per worker, gets free workers first.

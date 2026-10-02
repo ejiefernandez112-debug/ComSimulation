@@ -27,6 +27,18 @@
 		{ "from": 100000, "rate": 0.22 }
 	],
 	"market_fee": 0.03,
+	"_retail": "Supermarket selling (plan.md 5.16). price_tags: price = share of the normal (cost-based) price; speed = how much faster or slower the village buys at that price (from a demand curve: speed = 1 / price^3). variety_bonus = extra shoppers for each different product on a store's shelves beyond the first (+10% each). All PLACEHOLDERS.",
+	"retail": {
+		"price_tags": {
+			"big_sale": { "name": "Big Sale", "price": 0.8, "speed": 1.95 },
+			"sale": { "name": "Sale", "price": 0.9, "speed": 1.37 },
+			"normal": { "name": "Normal", "price": 1.0, "speed": 1.0 },
+			"premium": { "name": "Premium", "price": 1.1, "speed": 0.75 },
+			"luxury": { "name": "Luxury", "price": 1.2, "speed": 0.58 }
+		},
+		"default_tag": "normal",
+		"variety_bonus": 0.1
+	},
 	"staffing_levels": { "low": 0.5, "medium": 0.75, "high": 1.0 },
 	"default_staffing": "high",
 	"wage_bonuses": { "none": 0.0, "small": 0.2, "good": 0.4, "big": 0.6 },

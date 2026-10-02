@@ -17,6 +17,7 @@ const CATEGORY_COLORS := {
 	"extractor": Color("d6b84a"),
 	"processor": Color("9c7bb5"),
 	"storage": Color("7aa0b8"),
+	"retail": Color("6fb07f"),
 }
 
 static var show_names := false

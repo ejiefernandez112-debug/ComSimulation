@@ -2,7 +2,7 @@ extends ModalWindow
 ## The building's info window (plan.md §6 Building Panel): what it makes and from what, what
 ## it's doing now with its job queue, and its storage, with Collect and Make buttons.
 ## Tapping a filled queue slot cancels that batch; Fill queues as many as fit. Move and Demolish
-## sit at the bottom.
+## sit at the bottom. A Supermarket shows its shelves and a form to put food on one (§5.16).
 ## Shows numbers from Economy only; the buttons ask main.gd to act (signals).
 
 signal collect_requested(building_id: String)
@@ -15,6 +15,8 @@ signal staffing_requested(building_id: String, level: String)
 signal bonus_requested(building_id: String, level: String)
 signal suspend_requested(building_id: String)
 signal resume_requested(building_id: String)
+signal stock_requested(building_id: String, resource_id: String, qty: int, tag: String)
+signal clear_shelf_requested(building_id: String, index: int)
 
 var building_id := ""
 
@@ -43,6 +45,18 @@ var _stock_text: Label  # warehouses: goods stored in all warehouses / their roo
 var _stock_bar: ProgressBar
 var _goods_grid: HFlowContainer  # warehouses: one [icon] amount tile per item in stock
 var _shown_stock := {}  # what the grid shows now, so it's only rebuilt when the stock changes
+# Supermarket (plan.md §5.16): its shelves, and the form that puts food on one.
+var _shelf_rows: Array[Dictionary] = []  # per shelf: {"icon", "title", "bar", "detail", "take_down"}
+var _shoppers_text: Label
+var _item_buttons := {}  # item -> its Button
+var _tag_buttons := {}  # price tag -> its Button
+var _amount_slider: HSlider
+var _amount_label: Label
+var _preview := {}  # "price", "speed", "time", "revenue", "cost", "tax", "profit" -> value Label
+var _stock_button: Button
+var _chosen_item := ""
+var _chosen_tag := ""
+var _chosen_amount := 0
 
 
 func _ready() -> void:
@@ -56,6 +70,8 @@ func show_building(id: String) -> void:
 	if b.is_empty():
 		return
 	var def: Dictionary = GameData.buildings[b.type]
+	if def.category == "retail":
+		choose_defaults()
 	_build_rows(b, def)
 	open("%s  ·  Level %d" % [def.name, int(b.level)])
 	_refresh()
@@ -77,6 +93,11 @@ func _build_rows(b: Dictionary, def: Dictionary) -> void:
 	_suspend = null
 	_stock_bar = null
 	_goods_grid = null
+	_shelf_rows.clear()
+	_item_buttons.clear()
+	_tag_buttons.clear()
+	_preview.clear()
+	_stock_button = null
 	var about := _body(def.get("description", ""))
 	about.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	about.custom_minimum_size.x = WIDTH - 70  # wrapped text needs a width, or it measures one word per line
@@ -171,6 +192,10 @@ func _build_rows(b: Dictionary, def: Dictionary) -> void:
 		stock.add_child(_goods_grid)
 		_shown_stock = {"never shown": 1}  # so the first refresh fills the grid
 
+	if def.category == "retail":
+		_build_shelves(def)
+		_build_stock_form()
+
 	if int(def.get("max_workers", 0)) > 0:
 		_build_workers(def)
 
@@ -248,7 +273,12 @@ func _build_workers(def: Dictionary) -> void:
 	if not def.get("fixed_wage", false):  # warehouses always pay the minimum wage
 		_build_bonus_buttons(box)
 	_workers_text = _figure_row(box, "Workers:")
-	_rate_text = _figure_row(box, "Usable Room:" if def.category == "storage" else "Production Rate:")
+	var rate_title := "Production Rate:"
+	if def.category == "storage":
+		rate_title = "Usable Room:"
+	elif def.category == "retail":
+		rate_title = "Serving Speed:"
+	_rate_text = _figure_row(box, rate_title)
 	_wage_each_text = _figure_row(box, "Wage per worker:")
 	_wages_text = _figure_row(box, "Wage bill:")
 	_water_text = _figure_row(box, "Water:") if float(def.get("water_per_hour", 0.0)) > 0.0 else null
@@ -342,6 +372,8 @@ func _refresh_workers(b: Dictionary, def: Dictionary) -> void:
 	if def.category == "storage":
 		_rate_text.text = "%s of %s" % [UITheme.number(Economy.storage_capacity(b)), UITheme.number(int(def.get("capacity", 0)))]
 		note += " · short of workers = less room"
+	elif def.category == "retail":
+		note += " while a shelf is selling · fewer workers = shelves sell slower"
 	else:
 		var r := BuildingInfo.recipe(b.type)
 		var per_minute := 0.0
@@ -354,6 +386,8 @@ func _refresh_workers(b: Dictionary, def: Dictionary) -> void:
 		note = "Suspended: its workers were freed for other buildings. Resume to hire again. " + note
 	elif Economy.is_halted(b):
 		note = "Halted: storage full. Its workers wait, unpaid, until you collect. " + note
+	elif not producing and def.category == "retail":
+		note = "Idle: shelves empty. Its workers wait, unpaid, until you put food on a shelf. " + note
 	elif not producing:
 		note = "Idle: no jobs queued. Its workers wait, unpaid, for the next job. " + note
 	elif short and def.get("staffed_first", false):
@@ -421,6 +455,10 @@ func _refresh() -> void:
 		_fill_goods_grid()
 	if _cost_button:
 		_refresh_cost(b)
+	if not _shelf_rows.is_empty():
+		_refresh_shelves(b)
+	if _stock_button:
+		_refresh_stock_form()
 	if _storage_bar:
 		var stored := BuildingInfo.stored(b)
 		_storage_bar.value = 100.0 * stored / float(def.storage_cap)
@@ -531,6 +569,206 @@ func _fill_goods_grid() -> void:
 		empty.add_theme_font_size_override("font_size", 16)
 		_goods_grid.add_child(empty)
 	_layout.call_deferred()  # the window may need to grow or shrink for the new rows
+
+
+## Supermarket: one row per shelf with its food, price tag and price, a bar of how much has sold,
+## and a red X to take it down. The heading shows the shoppers bonus.
+func _build_shelves(def: Dictionary) -> void:
+	var box := _section("Shelves")
+	_shoppers_text = _body("")
+	_shoppers_text.add_theme_font_size_override("font_size", 16)
+	box.get_child(0).add_child(_shoppers_text)
+	for i in int(def.get("shelves", 0)):
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 10)
+		box.add_child(row)
+		var icon := _icon("item", 40)
+		row.add_child(icon)
+		var column := VBoxContainer.new()
+		column.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		column.add_theme_constant_override("separation", 2)
+		row.add_child(column)
+		var title := _body("")
+		title.add_theme_font_size_override("font_size", 18)
+		column.add_child(title)
+		var bar := ProgressBar.new()
+		bar.theme_type_variation = "GoldBar"
+		bar.show_percentage = false
+		bar.custom_minimum_size.y = 12
+		column.add_child(bar)
+		var detail := _body("")
+		detail.add_theme_font_size_override("font_size", 15)
+		column.add_child(detail)
+		var take_down := RoundButton.make("red", "close", "", 44)
+		take_down.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		take_down.tooltip_text = "Take it down: what's sold is paid for, the rest goes back to the warehouse"
+		take_down.pressed.connect(func(): clear_shelf_requested.emit(building_id, i))
+		row.add_child(take_down)
+		_shelf_rows.append({"icon": icon, "title": title, "bar": bar, "detail": detail, "take_down": take_down})
+
+
+## "Put on a shelf": choose the food, how much (a slider, or All) and its price tag. The lines
+## under it show what that would bring before the player commits: the price, how fast the
+## village would buy it, how long it takes, and the profit.
+func _build_stock_form() -> void:
+	var box := _section("Put on a shelf")
+	var items := HBoxContainer.new()
+	items.add_theme_constant_override("separation", 6)
+	box.add_child(items)
+	for res in Economy.shop_products():
+		var button := Button.new()
+		button.icon = UITheme.icon(res)
+		button.expand_icon = true
+		button.custom_minimum_size = Vector2(0, 48)
+		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		button.add_theme_font_size_override("font_size", 17)
+		button.pressed.connect(func(): _choose_item(res))
+		items.add_child(button)
+		_item_buttons[res] = button
+
+	var amount_row := HBoxContainer.new()
+	amount_row.add_theme_constant_override("separation", 10)
+	box.add_child(amount_row)
+	amount_row.add_child(_body("Amount:"))
+	_amount_slider = HSlider.new()
+	_amount_slider.min_value = 1
+	_amount_slider.step = 1
+	_amount_slider.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_amount_slider.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	_amount_slider.value_changed.connect(func(value: float):
+		_chosen_amount = int(value)
+		_refresh())
+	amount_row.add_child(_amount_slider)
+	_amount_label = _body("")
+	_amount_label.custom_minimum_size.x = 64
+	_amount_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	amount_row.add_child(_amount_label)
+	var all := Button.new()
+	all.theme_type_variation = "BlueButton"
+	all.text = "All"
+	all.custom_minimum_size = Vector2(70, 42)
+	all.add_theme_font_size_override("font_size", 16)
+	all.pressed.connect(func():
+		_chosen_amount = int(Economy.state.inventory.get(_chosen_item, 0))
+		_refresh())
+	amount_row.add_child(all)
+
+	# Price tags: cheaper sells faster, dearer sells slower (game_config.json retail.price_tags).
+	var tags_row := HBoxContainer.new()
+	tags_row.add_theme_constant_override("separation", 4)
+	box.add_child(tags_row)
+	var tags: Dictionary = GameData.config.get("retail", {}).get("price_tags", {})
+	for tag in tags:
+		var change := roundi((float(tags[tag].price) - 1.0) * 100.0)
+		var button := Button.new()
+		button.text = "%s\n%s" % [tags[tag].name, "price" if change == 0 else "%+d%%" % change]
+		button.tooltip_text = "Price x%.2f: sells %.2fx as fast" % [float(tags[tag].price), float(tags[tag].speed)]
+		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		button.custom_minimum_size.y = 58
+		button.add_theme_font_size_override("font_size", 14)
+		button.pressed.connect(func():
+			_chosen_tag = tag
+			_refresh())
+		tags_row.add_child(button)
+		_tag_buttons[tag] = button
+
+	_preview["price"] = _figure_row(box, "Price each:")
+	_preview["speed"] = _figure_row(box, "The village buys:")
+	_preview["time"] = _figure_row(box, "Sells out in about:")
+	_preview["revenue"] = _figure_row(box, "Sales:")
+	_preview["cost"] = _figure_row(box, "Cost to make them:")
+	_preview["tax"] = _figure_row(box, "Sales tax (today's rate):")
+	_preview["profit"] = _figure_row(box, "Profit:")
+	_stock_button = Button.new()
+	_stock_button.theme_type_variation = "YellowButton"
+	_stock_button.custom_minimum_size = Vector2(300, 56)
+	_stock_button.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	# Greyed when it can't go on a shelf, but still tappable, so the player is told why.
+	_stock_button.pressed.connect(func(): stock_requested.emit(building_id, _chosen_item, _chosen_amount, _chosen_tag))
+	box.add_child(_stock_button)
+
+
+## The form's starting choice: the first food in stock that isn't on a shelf yet (else the first
+## one), all of it, at the default price tag.
+func choose_defaults() -> void:
+	var products := Economy.shop_products()
+	_chosen_item = products[0] if not products.is_empty() else ""
+	for res in products:
+		if int(Economy.state.inventory.get(res, 0)) > 0 and Economy.shelf_selling(res).is_empty():
+			_chosen_item = res
+			break
+	_chosen_amount = int(Economy.state.inventory.get(_chosen_item, 0))
+	_chosen_tag = str(GameData.config.get("retail", {}).get("default_tag", "normal"))
+
+
+func _choose_item(res: String) -> void:
+	_chosen_item = res
+	_chosen_amount = int(Economy.state.inventory.get(res, 0))  # all of it, until the slider says less
+	_refresh()
+
+
+func _refresh_shelves(b: Dictionary) -> void:
+	var list := Economy.shelves(b)
+	var bonus := Economy.shoppers(b) - 1.0
+	_shoppers_text.text = "Shoppers +%d%%" % roundi(bonus * 100.0) if bonus > 0.001 else "More products = more shoppers"
+	var tags: Dictionary = GameData.config.get("retail", {}).get("price_tags", {})
+	for i in _shelf_rows.size():
+		var row: Dictionary = _shelf_rows[i]
+		var shelf: Dictionary = list[i] if i < list.size() else {}
+		row.take_down.visible = not shelf.is_empty()
+		row.bar.visible = not shelf.is_empty()
+		if shelf.is_empty():
+			row.icon.texture = UITheme.icon("item")
+			row.icon.modulate.a = 0.3
+			row.title.text = "Empty shelf"
+			row.detail.text = "Put food on it below."
+			continue
+		row.icon.texture = UITheme.icon(shelf.res)
+		row.icon.modulate.a = 1.0
+		row.title.text = "%s · %s · %s each" % [BuildingInfo.resource_name(shelf.res), tags.get(shelf.tag, {}).get("name", shelf.tag), UITheme.price(int(shelf.price))]
+		var sold := Economy.shelf_sold_now(b, i)
+		row.bar.value = 100.0 * sold / maxf(float(shelf.qty), 1.0)
+		var left := Economy.shelf_time_left(b, i)
+		row.detail.text = "%s of %s sold · %s" % [UITheme.number(floori(sold)), UITheme.number(int(shelf.qty)),
+			"sells out in %s" % UITheme.duration(left) if left < INF else "not selling: no workers"]
+
+
+func _refresh_stock_form() -> void:
+	var stock: Dictionary = Economy.state.inventory
+	for res in _item_buttons:
+		var have := int(stock.get(res, 0))
+		var on_shelf := not Economy.shelf_selling(res).is_empty()
+		_item_buttons[res].text = "%s  %s" % [BuildingInfo.resource_name(res), "on a shelf" if on_shelf else UITheme.number(have)]
+		if res == _chosen_item:
+			_item_buttons[res].theme_type_variation = "YellowButton"
+		else:
+			_item_buttons[res].theme_type_variation = "BlueButton" if have > 0 and not on_shelf else "GreyButton"
+	for tag in _tag_buttons:
+		_tag_buttons[tag].theme_type_variation = "YellowButton" if tag == _chosen_tag else "BlueButton"
+	var have := int(stock.get(_chosen_item, 0))
+	_chosen_amount = clampi(_chosen_amount, mini(1, have), have)
+	_amount_slider.max_value = maxi(have, 1)
+	_amount_slider.editable = have > 1
+	_amount_slider.set_value_no_signal(maxi(_chosen_amount, 1))
+	_amount_label.text = UITheme.number(_chosen_amount)
+	var p := Economy.stock_preview(building_id, _chosen_item, _chosen_amount, _chosen_tag)
+	_preview.price.text = UITheme.price(int(p.price))
+	_preview.speed.text = "%s an hour" % UITheme.number(roundi(p.per_hour))
+	_preview.time.text = UITheme.duration(p.seconds) if p.seconds < INF else "nobody would buy"
+	_preview.revenue.text = UITheme.money(int(p.gross))
+	_preview.cost.text = "-" + UITheme.money(int(p.cost))
+	_preview.tax.text = "-" + UITheme.money(int(p.tax))
+	_preview.profit.text = UITheme.money(int(p.profit))
+	_preview.profit.add_theme_color_override("font_color", UITheme.GOOD.darkened(0.35) if int(p.profit) >= 0 else UITheme.BAD.darkened(0.3))
+	var item := BuildingInfo.resource_name(_chosen_item)
+	if not Economy.shelf_selling(_chosen_item).is_empty():
+		_stock_button.text = "%s is already on a shelf" % item
+	elif have <= 0:
+		_stock_button.text = "No %s in the warehouse" % item
+	else:
+		_stock_button.text = "Put %s %s on a shelf" % [UITheme.number(_chosen_amount), item]
+	var check := Economy.can_stock_shelf(building_id, _chosen_item, _chosen_amount, _chosen_tag)
+	_stock_button.theme_type_variation = "YellowButton" if check.ok else "GreyButton"
 
 
 ## A titled, sunken box in the window. Returns the column to add rows to; its first child is the

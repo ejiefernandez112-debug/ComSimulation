@@ -392,6 +392,11 @@ func _show_details(type_id: String) -> void:
 		"storage":
 			_makes.add_child(_icon("warehouse", 26))
 			_makes.add_child(_body("Room for %s goods (%d workers)" % [UITheme.number(int(def.get("capacity", 0))), int(def.get("max_workers", 0))]))
+		"retail":
+			_makes.add_child(_body("Sells"))
+			for res in Economy.shop_products():
+				_makes.add_child(_icon(res, 26))
+			_makes.add_child(_body("on %d shelves (%d workers)" % [int(def.get("shelves", 0)), int(def.get("max_workers", 0))]))
 	if def.has("storage_cap"):
 		var spacer := Control.new()
 		spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL

@@ -1291,3 +1291,255 @@ func test_real_data_files() -> void:
 			_check(tabs.has(buildings[type_id].menu_tab), "%s's menu_tab is a Build Menu tab" % type_id)
 	var state := Sim.new_game({"resources": resources, "buildings": buildings, "config": config}, T0)
 	_check(state.buildings.size() == config.starting_buildings.size(), "real data starts a game")
+
+
+# --- Supermarket (plan.md §5.16) ------------------------------------------------
+
+## Test data with a Supermarket ("market": 2 shelves, 2 workers at $36/hour). Flour and bread
+## have an appetite (shops sell them), wheat doesn't. Nobody moves in by themselves, and there's
+## no sales tax, so the sums stay simple.
+func _shop_data() -> Dictionary:
+	var data := _data()
+	data.config["population_growth_seconds"] = 0
+	data.config["worker_types"] = {"low_skilled": {"name": "Low-skilled", "wage_per_hour": 36}}
+	data.config["retail"] = {"variety_bonus": 0.5, "price_tags": {
+		"sale": {"name": "Sale", "price": 0.5, "speed": 2.0},
+		"normal": {"name": "Normal", "price": 1.0, "speed": 1.0},
+		"luxury": {"name": "Luxury", "price": 2.0, "speed": 0.5}}}
+	data.resources["flour"]["appetite"] = 1.0  # 10 people buy 10 flour an hour at the Normal price
+	data.resources["bread"] = {"name": "Bread", "price": 5, "appetite": 2.0}  # 10 people: 20 an hour
+	data.resources["cake"] = {"name": "Cake", "price": 9, "appetite": 1.0}
+	data.buildings["market"] = {"category": "retail", "build_cost": 0, "buildable": true, "max_workers": 2,
+		"worker_type": "low_skilled", "shelves": 2}
+	return data
+
+
+## 10 people, a Supermarket with both its workers, 100 each of flour, bread and cake in the
+## warehouse. Returns [state, data, market].
+func _shop_town() -> Array:
+	var data := _shop_data()
+	var state := Sim.new_game(data, T0)
+	state.population.current = 10
+	var market := Sim.find_building(state, Sim.build(state, data, "market", Vector2i(5, 5), T0).building_id)
+	for res in ["flour", "bread", "cake"]:
+		state.inventory[res] = 100
+	return [state, data, market]
+
+
+func test_supermarket_sells_over_time() -> void:
+	var town := _shop_town()
+	var state: Dictionary = town[0]
+	var data: Dictionary = town[1]
+	var market: Dictionary = town[2]
+	var result := Sim.stock_shelf(state, data, market.id, "flour", 10, "normal", T0)
+	_check(result.ok and result.price == 300, "10 flour go on a shelf at the normal price ($3.00)")
+	_check(int(state.inventory.flour) == 90, "they leave the warehouse at once")
+	Sim.settle(state, data, T0 + 1800)
+	_check(is_equal_approx(Sim.shelf_sold_now(state, data, market, 0, T0 + 1800), 5.0), "10 people buy 10 an hour: 5 sold after half an hour")
+	_check(state.profile.currency == 50000 - 3600, "not paid yet, only the wages (2 x $36 for half an hour)")
+	_check(is_equal_approx(Sim.shelf_time_left(state, data, market, 0, T0 + 1800), 1800.0), "half an hour left")
+	Sim.settle(state, data, T0 + 3600)
+	_check(Sim.shelves(data, market)[0].is_empty(), "sold out after an hour: the shelf is free again")
+	_check(state.profile.currency == 50000 - 7200 + 3000, "paid when it sold out: 10 x $3.00")
+	Sim.settle(state, data, T0 + 7200)
+	_check(state.profile.currency == 50000 - 7200 + 3000, "empty shelves: the store is idle and pays no wages")
+	_check(int(Sim.stats(state).sold.get("flour", 0)) == 10 and int(Sim.stats(state).income.sales) == 3000, "the sale is in the statistics")
+
+
+func test_supermarket_price_tags() -> void:
+	var town := _shop_town()
+	var state: Dictionary = town[0]
+	var data: Dictionary = town[1]
+	var market: Dictionary = town[2]
+	var preview := Sim.stock_preview(state, data, market.id, "flour", 10, "luxury", T0)
+	_check(preview.price == 600 and preview.gross == 6000 and is_equal_approx(preview.seconds, 7200.0), "Luxury: twice the price, half the speed (10 flour in 2 hours)")
+	preview = Sim.stock_preview(state, data, market.id, "flour", 10, "sale", T0)
+	_check(preview.price == 150 and is_equal_approx(preview.seconds, 1800.0), "Sale: half the price, twice the speed")
+	_check(Sim.stock_shelf(state, data, market.id, "flour", 10, "luxury", T0).ok, "(setup) flour on a Luxury shelf")
+	Sim.settle(state, data, T0 + 7199)
+	_check(not Sim.shelves(data, market)[0].is_empty(), "not sold out just before 2 hours")
+	Sim.settle(state, data, T0 + 7201)
+	_check(Sim.shelves(data, market)[0].is_empty() and state.profile.currency == 50000 - 14400 + 6000, "sold out at 2 hours for $60 (wages: $72/hour while selling)")
+
+
+func test_supermarket_variety_brings_shoppers() -> void:
+	var town := _shop_town()
+	var state: Dictionary = town[0]
+	var data: Dictionary = town[1]
+	var market: Dictionary = town[2]
+	Sim.stock_shelf(state, data, market.id, "flour", 10, "normal", T0)  # 10 an hour alone
+	Sim.stock_shelf(state, data, market.id, "bread", 10, "normal", T0)  # 20 an hour alone
+	_check(is_equal_approx(Sim.shoppers(data, market), 1.5), "two products: +50% shoppers (this test's bonus)")
+	# Together: flour 15/h, bread 30/h. Bread sells out after 20 minutes (flour: 5 sold); then
+	# flour is alone again (10/h), so its last 5 take 30 minutes more: sold out at 50 minutes.
+	Sim.settle(state, data, T0 + 1201)
+	_check(Sim.shelves(data, market)[1].is_empty(), "bread sold out after 20 minutes")
+	_check(absf(float(Sim.shelves(data, market)[0].sold) - 5.0) < 0.01, "5 flour sold by then")
+	Sim.settle(state, data, T0 + 2999)
+	_check(not Sim.shelves(data, market)[0].is_empty(), "flour slows down once it's alone: still selling at 49:59")
+	Sim.settle(state, data, T0 + 3001)
+	_check(Sim.shelves(data, market)[0].is_empty(), "flour sold out at 50 minutes")
+	_check(state.profile.currency == 50000 - 6000 + 3000 + 5000, "both paid: $30 flour + $50 bread (wages for 50 minutes)")
+
+
+func test_supermarket_rules() -> void:
+	var town := _shop_town()
+	var state: Dictionary = town[0]
+	var data: Dictionary = town[1]
+	var market: Dictionary = town[2]
+	state.inventory["wheat"] = 50
+	var check := Sim.can_stock_shelf(state, data, market.id, "wheat", 10, "normal", T0)
+	_check(not check.ok and check.error.begins_with("Shops don't sell Wheat"), "raw wheat can't be sold in shops")
+	_check(not Sim.can_stock_shelf(state, data, market.id, "flour", 0, "normal", T0).ok, "can't stock zero")
+	_check(not Sim.can_stock_shelf(state, data, market.id, "flour", 101, "normal", T0).ok, "can't stock more than you have")
+	_check(not Sim.can_stock_shelf(state, data, market.id, "flour", 10, "half_price", T0).ok, "unknown price tag")
+	var farm_id: String = Sim.build(state, data, "farm", Vector2i(1, 1), T0).building_id
+	_check(not Sim.can_stock_shelf(state, data, farm_id, "flour", 10, "normal", T0).ok, "only shops have shelves")
+	_check(Sim.can_stock_shelf(state, data, market.id, "flour", 10, "normal", T0).ok, "flour can go on a shelf")
+	_check(state.inventory.flour == 100, "asking changes nothing")
+	Sim.stock_shelf(state, data, market.id, "flour", 10, "normal", T0)
+	check = Sim.can_stock_shelf(state, data, market.id, "flour", 10, "normal", T0)
+	_check(not check.ok and check.error.contains("already on a shelf"), "each product sells on one shelf at a time")
+	Sim.stock_shelf(state, data, market.id, "bread", 10, "normal", T0)
+	check = Sim.can_stock_shelf(state, data, market.id, "cake", 10, "normal", T0)
+	_check(not check.ok and check.error.begins_with("Every shelf is full"), "only as many products as shelves")
+	var second := Sim.find_building(state, Sim.build(state, data, "market", Vector2i(6, 6), T0).building_id)
+	check = Sim.can_stock_shelf(state, data, second.id, "flour", 10, "normal", T0)
+	_check(not check.ok and check.error.contains("already on a shelf"), "...in the whole village, not just this store")
+	_check(Sim.can_stock_shelf(state, data, second.id, "cake", 10, "normal", T0).ok, "another store can sell another product")
+	state.population.current = 0
+	check = Sim.can_stock_shelf(state, data, second.id, "cake", 10, "normal", T0)
+	_check(not check.ok and check.error.begins_with("Nobody lives"), "nobody to buy without people")
+
+
+func test_supermarket_workers() -> void:
+	var town := _shop_town()
+	var state: Dictionary = town[0]
+	var data: Dictionary = town[1]
+	var market: Dictionary = town[2]
+	Sim.set_staffing(state, data, market.id, "low", T0)  # 1 of 2 workers
+	Sim.stock_shelf(state, data, market.id, "flour", 10, "normal", T0)
+	Sim.settle(state, data, T0 + 3601)
+	_check(not Sim.shelves(data, market)[0].is_empty(), "half the workers: half the speed (not sold out after an hour)")
+	Sim.settle(state, data, T0 + 7201)
+	_check(Sim.shelves(data, market)[0].is_empty(), "sold out after 2 hours")
+	_check(state.profile.currency == 50000 - 7200 + 3000, "1 worker paid for 2 hours, $30 earned")
+
+
+func test_supermarket_away_matches_playing() -> void:
+	var played: Dictionary = _shop_town()[0]
+	var away: Dictionary = _shop_town()[0]
+	var data := _shop_data()
+	for state in [played, away]:
+		var market_id: String = state.buildings[-1].id
+		Sim.stock_shelf(state, data, market_id, "flour", 17, "sale", T0)
+		Sim.stock_shelf(state, data, market_id, "bread", 23, "luxury", T0)
+	var t := T0
+	while t < T0 + 9000:
+		t += 7.0
+		Sim.settle(played, data, t)
+	Sim.settle(away, data, t)
+	_check(played.profile.currency == away.profile.currency, "one long absence pays exactly what playing in 7-second steps does")
+	_check(_difference(played.buildings[-1], away.buildings[-1], "") == "", "and the shelves end up the same")
+	var report: Dictionary = Sim.settle(_shop_town()[0], data, T0 + 60)  # nothing on the shelves
+	_check(not report.has("store_sales"), "no sales when nothing is on the shelves")
+
+
+func test_supermarket_report() -> void:
+	var town := _shop_town()
+	var state: Dictionary = town[0]
+	var data: Dictionary = town[1]
+	Sim.stock_shelf(state, data, town[2].id, "bread", 10, "normal", T0)
+	var report: Dictionary = Sim.settle(state, data, T0 + 3600)
+	_check(int(report.get("store_sales", 0)) == 5000 and int(report.get("sold:bread", 0)) == 10, "the settle report says what sold out and what it earned")
+	_check(not report.has("bread") and not Sim.stats(state).made.has("bread"), "selling isn't counted as making")
+
+
+func test_supermarket_clear_shelf() -> void:
+	var town := _shop_town()
+	var state: Dictionary = town[0]
+	var data: Dictionary = town[1]
+	var market: Dictionary = town[2]
+	_check(not Sim.can_clear_shelf(state, data, market.id, 0).ok, "nothing to take down from an empty shelf")
+	Sim.stock_shelf(state, data, market.id, "flour", 10, "normal", T0)
+	Sim.settle(state, data, T0 + 1800)
+	var check := Sim.can_clear_shelf(state, data, market.id, 0)
+	_check(check.ok and check.sold == 5 and check.paid == 1500 and check.back == {"flour": 5}, "half sold: 5 paid for, 5 to come back")
+	var result := Sim.clear_shelf(state, data, market.id, 0, T0 + 1800)
+	_check(result.ok and result.earned == 1500 and int(state.inventory.flour) == 95, "taking it down pays for the 5 sold and brings back the rest")
+	_check(Sim.shelves(data, market)[0].is_empty() and Sim.is_idle(data, market), "the shelf is free and the store idle")
+
+
+func test_supermarket_keeps_cost_tags() -> void:
+	var town := _shop_town()
+	var state: Dictionary = town[0]
+	var data: Dictionary = town[1]
+	var market: Dictionary = town[2]
+	state["inventory_cost"] = {"flour": 2000.0}  # 100 flour that cost $20 to make: 20 cents each
+	Sim.stock_shelf(state, data, market.id, "flour", 10, "normal", T0)
+	_check(is_equal_approx(float(state.inventory_cost.flour), 1800.0), "the shelf takes its goods' cost tags along")
+	Sim.settle(state, data, T0 + 1800)
+	Sim.clear_shelf(state, data, market.id, 0, T0 + 1800)
+	_check(is_equal_approx(float(state.inventory_cost.flour), 1900.0), "the unsold half comes back with its cost")
+
+
+func test_supermarket_demolish_and_suspend() -> void:
+	for action in ["demolish", "suspend"]:
+		var town := _shop_town()
+		var state: Dictionary = town[0]
+		var data: Dictionary = town[1]
+		var market: Dictionary = town[2]
+		Sim.stock_shelf(state, data, market.id, "flour", 10, "normal", T0)
+		Sim.settle(state, data, T0 + 1800)
+		var cash: int = state.profile.currency
+		var result: Dictionary = Sim.demolish(state, data, market.id, T0 + 1800) if action == "demolish" else Sim.suspend(state, data, market.id, T0 + 1800)
+		_check(result.ok and int(state.inventory.flour) == 95, "%s: the unsold flour goes back to the warehouse" % action)
+		var refund := int(result.get("money", 0))
+		_check(state.profile.currency == cash + 1500 + refund, "%s: the 5 already sold are paid for" % action)
+		if action == "suspend":
+			_check(Sim.shelves(data, market)[0].is_empty() and Sim.is_suspended(market), "suspended with empty shelves")
+
+
+func test_supermarket_clock_moved_backwards() -> void:
+	var town := _shop_town()
+	var state: Dictionary = town[0]
+	var data: Dictionary = town[1]
+	var market: Dictionary = town[2]
+	Sim.stock_shelf(state, data, market.id, "flour", 10, "normal", T0)
+	Sim.settle(state, data, T0 + 1800)
+	Sim.settle(state, data, T0 + 100)  # the clock went back
+	_check(is_equal_approx(float(Sim.shelves(data, market)[0].sold), 5.0), "a clock set back never un-sells anything")
+	Sim.settle(state, data, T0 + 3601)
+	_check(Sim.shelves(data, market)[0].is_empty() and int(Sim.stats(state).sold.flour) == 10, "and it still sells out once, paid once")
+
+
+func test_supermarket_save_round_trip() -> void:
+	var town := _shop_town()
+	var state: Dictionary = town[0]
+	var data: Dictionary = town[1]
+	Sim.stock_shelf(state, data, town[2].id, "bread", 10, "luxury", T0)
+	Sim.settle(state, data, T0 + 333.3)
+	var result := SaveFormat.from_text(SaveFormat.to_text(state, T0 + 333.3), data)
+	_check(result.ok, "a save with stocked shelves loads")
+	var loaded: Dictionary = result.state
+	Sim.settle(state, data, T0 + 9000)
+	Sim.settle(loaded, data, T0 + 9000)
+	_check(_difference(state, loaded, "") in ["", "last_saved_at"], "the loaded shelves go on selling exactly the same")
+
+
+## The real data: the Supermarket and the goods it sells make sense.
+func test_real_shop_data() -> void:
+	var data := {"resources": GameDataScript.load_json("res://data/resources.json"),
+		"buildings": GameDataScript.load_json("res://data/buildings.json"),
+		"config": GameDataScript.load_json("res://data/game_config.json")}
+	_check(data.buildings.get("supermarket", {}).get("category", "") == "retail" and int(data.buildings.supermarket.get("shelves", 0)) > 0, "real data: the Supermarket is a shop with shelves")
+	_check(Sim.shop_products(data).has("bread") and Sim.shop_products(data).has("flour") and not Sim.shop_products(data).has("wheat"), "real data: shops sell flour and bread, not raw wheat")
+	var tags := Sim.price_tags(data)
+	_check(tags.has(str(data.config.retail.get("default_tag", ""))), "real data: the default price tag exists")
+	var last_price := 0.0
+	var last_speed := INF
+	for tag in tags:
+		_check(float(tags[tag].price) > last_price and float(tags[tag].speed) < last_speed, "real data: tag '%s' costs more and sells slower than the one before" % tag)
+		last_price = float(tags[tag].price)
+		last_speed = float(tags[tag].speed)
+	_check(int(data.buildings.supermarket.build_cost) + int(data.buildings.wheat_farm.build_cost) + int(data.buildings.flour_mill.build_cost) <= int(data.config.starting_cash), "real data: starting cash covers a Wheat Farm, a Flour Mill and a Supermarket")

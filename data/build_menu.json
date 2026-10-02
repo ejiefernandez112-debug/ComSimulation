@@ -3,6 +3,7 @@
 	"tabs": [
 		{ "id": "farming", "name": "Farming", "icon": "wheat" },
 		{ "id": "industry", "name": "Industry", "icon": "tab_industry" },
+		{ "id": "shops", "name": "Shops", "icon": "market" },
 		{ "id": "storage", "name": "Storage", "icon": "warehouse" },
 		{ "id": "housing", "name": "Housing", "icon": "tab_housing" }
 	]

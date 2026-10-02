@@ -24,6 +24,12 @@ func show_if_away() -> bool:
 		var row := _row("Made")
 		for res in made:
 			row.add_child(_amount(res, "+" + UITheme.number(made[res])))
+	var sold := Economy.sold_in(report)  # Supermarket shelves that sold out
+	if not sold.is_empty():
+		var row := _row("Sold")
+		for res in sold:
+			row.add_child(_amount(res, UITheme.number(int(sold[res]))))
+		row.add_child(_amount("cash", "+" + UITheme.money(int(report.get("store_sales", 0)))))
 	if int(report.get("population", 0)) > 0:
 		_row("Moved in").add_child(_amount("population", "+%d people" % int(report.population)))
 	if roundi(int(report.get("wages", 0)) / 100.0) > 0:  # at least $1 (money is in cents)
