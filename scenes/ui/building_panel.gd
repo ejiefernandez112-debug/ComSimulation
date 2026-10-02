@@ -199,24 +199,20 @@ func _figure_row(parent: Control, title: String) -> Label:
 	return value
 
 
-func _refresh_workers(b: Dictionary, def: Dictionary) -> void:
+func _refresh_workers(b: Dictionary, _def: Dictionary) -> void:
 	var w := Economy.workers(b)
 	for level in _staff_buttons:
 		_staff_buttons[level].theme_type_variation = "YellowButton" if level == w.level else "BlueButton"
 	var working := _count(w.working)
-	var short: bool = Economy.is_built(b) and w.working < w.wanted - 0.01
+	var producing: bool = Economy.is_built(b) and Economy.is_producing(b)
+	# Short of people only counts while it has work: a halted or idle building sends everyone home.
+	var short: bool = producing and w.working < w.wanted - 0.01
 	# Workers employed / most it can employ, e.g. "6/8".
 	_workers_text.text = "%s/%d" % [working, w.max]
 	_workers_text.add_theme_color_override("font_color", UITheme.BAD.darkened(0.3) if short else UITheme.TEXT_DARK)
 	_wages_text.text = "%s / hour" % UITheme.money(roundi(w.wages))
 	var r := BuildingInfo.recipe(b.type)
 	var speed := Economy.building_speed(b)
-	var producing: bool = Economy.is_built(b) and not b.blocked and (def.category == "extractor" or not b.queue.is_empty())
-	if def.category == "extractor":
-		var per_batch := 0
-		for res in r.outputs:
-			per_batch += int(r.outputs[res])
-		producing = producing and int(def.storage_cap) - BuildingInfo.stored(b) >= per_batch
 	var per_minute := 0.0
 	for res in r.outputs:
 		per_minute += int(r.outputs[res]) * 60.0 / float(r.duration) * speed
@@ -231,7 +227,7 @@ func _refresh_workers(b: Dictionary, def: Dictionary) -> void:
 	elif Economy.is_halted(b):
 		note = "Halted: storage full, so the workers went home and cost nothing. Collect to restart. " + note
 	elif not producing:
-		note = "Not producing right now (no jobs queued), but the workers are still paid. " + note
+		note = "Idle: no jobs queued, so the workers went home and cost nothing. Add a job to start. " + note
 	_workers_note.text = note
 
 

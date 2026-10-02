@@ -146,7 +146,7 @@ _Rescaled 2026-10-01 for the ~1–2h offline window: batches ×4 and timers ×4,
 - **Supply order:** your own plants first, then the public grid (5.5.3) fills the gap, up to your connection size
 - **Short of power:** if plants + grid connection can't cover demand, **every** powered building slows down by the same share (30 MW wanted, 24 MW available → all run at 80%)
 - **One speed rule:** `speed = worker share × power share`. Electricity reuses the existing workers math (5.6), so offline catch-up, the speed display and the halt rule keep working
-- **Halted buildings** (storage full) and buildings with nothing to do use **no power**, just as halted buildings pay no wages
+- **Power is only used while a building is producing**, the same rule as wages (decided 2026-10-02): halted buildings (storage full) and idle ones (no jobs queued) use **no power**. Use it in code through `Simulation.is_producing`, so wages and power can never disagree
 - **Power use per building:** Flour Mill **3 MW**, Bakery **4 MW**, Wheat Farm **0 MW** (decided 2026-10-02: farms don't need electricity). The balanced 2 farm / 3 mill / 5 bakery chain needs **29 MW**
 - Changes from the earlier plan: power was "consumed per job start" and players had to be "self-sufficient, can't buy their way out". Both replaced by the flow model and the public grid
 
@@ -221,7 +221,7 @@ Everything stays **one calculation**, never a replay. Anything that changes powe
 
 - **Small House** (Residential) — +10 population capacity, one-time build cost, no recipe. **Included in Phase 1a's starting kit.**
 - **Population** grows automatically toward capacity (e.g. +1/10s), shown on the persistent HUD; offline growth is calculated from `last_saved_at` like production
-- **Workers & wages (built 2026-10-01, pulled forward from Phase 2/3):** each production building can employ up to `max_workers` (8 at level 1; Wheat Farm, Flour Mill, Bakery). The player picks its **Staffing** in the building window: **Low 4 / Medium 6 / High 8** (`staffing_levels` in `game_config.json`, as shares of `max_workers`; new buildings start at High). **Speed = workers actually working ÷ max_workers** (6 of 8 = 75%). People fill the jobs up to the population; when there are fewer people than jobs every building gets the same share of what it asked for (10 people for 14 jobs = 71% each). **Worker types:** only **Low-skilled** can be hired now; High-skilled (high school graduates, e.g. engineers) and Professional (college graduates) are in the data with their wages but switched off until schools exist (§5.7). **Wages** (fixed PLACEHOLDERS, to move to the backend later): Low-skilled 15 / High-skilled 30 / Professional 60 per worker per hour, paid for every worker actually working, also while the game is closed and also when the building is idle. **Cash may go below 0 (debt)**: sales pay it back; nothing can be built while in debt; the HUD shows debt in red. Prices were raised (Flour 4, Bread 8) so each step still pays after wages. The Small House is buildable so players can grow the workforce. Offline catch-up stays one calculation: the time away is split only at the moments staffing changes (a person moves in, a building finishes) and each piece is worked out in one go; part-coins of wages carry over so many short settles cost the same as one long one
+- **Workers & wages (built 2026-10-01, pulled forward from Phase 2/3):** each production building can employ up to `max_workers` (8 at level 1; Wheat Farm, Flour Mill, Bakery). The player picks its **Staffing** in the building window: **Low 4 / Medium 6 / High 8** (`staffing_levels` in `game_config.json`, as shares of `max_workers`; new buildings start at High). **Speed = workers actually working ÷ max_workers** (6 of 8 = 75%). People fill the jobs up to the population; when there are fewer people than jobs every building gets the same share of what it asked for (10 people for 14 jobs = 71% each). **Worker types:** only **Low-skilled** can be hired now; High-skilled (high school graduates, e.g. engineers) and Professional (college graduates) are in the data with their wages but switched off until schools exist (§5.7). **Wages** (fixed PLACEHOLDERS, to move to the backend later): Low-skilled 15 / High-skilled 30 / Professional 60 per worker per hour, paid for every worker actually working, also while the game is closed. **Wages are only paid while a building is producing** (decided 2026-10-02): a halted building (storage full) or an idle Mill/Bakery (no jobs queued) sends its workers home, pays nothing, and frees them for other buildings. **Cash may go below 0 (debt)**: sales pay it back; nothing can be built while in debt; the HUD shows debt in red. Prices were raised (Flour 4, Bread 8) so each step still pays after wages. The Small House is buildable so players can grow the workforce. Offline catch-up stays one calculation: the time away is split only at the moments staffing changes (a person moves in, a building finishes, a building fills up or runs out of jobs) and each piece is worked out in one go; part-coins of wages carry over so many short settles cost the same as one long one
 - In **Phase 2/3**, once Employees exist, **Employment Matching** activates: Available = Population − Employed. Understaffed buildings run at reduced capacity/output rather than failing to hire outright.
 
 ### 5.7 Education System (Phase 3+)
@@ -269,7 +269,7 @@ Everything stays **one calculation**, never a replay. Anything that changes powe
 
 **Building costs raised with the tax** (the balance check found a farm paid for itself in ~6 minutes): Wheat Farm **$2,000**, Flour Mill **$5,000**, Bakery **$8,000**.
 
-**Halt rule (built 2026-10-02):** a building whose storage is full **halts**: it makes nothing, its workers go home (free to work elsewhere) and it pays **no wages** until the player collects. Offline, wages stop at the exact moment storage fills. Open: should an idle Mill/Bakery (empty queue, not full) also stop paying wages? Today it still pays.
+**Halt rule (built 2026-10-02):** a building whose storage is full **halts**: it makes nothing, its workers go home (free to work elsewhere) and it pays **no wages** until the player collects. Offline, wages stop at the exact moment storage fills. The same goes for an **idle** Mill/Bakery (no jobs queued, decided 2026-10-02): no wages until a job is queued, and offline the wages stop the moment the last job is done.
 
 **Balance check** (per day, before the cost raise; PLACEHOLDERS):
 
@@ -475,6 +475,10 @@ A hidden dev menu (key combo on PC, secret tap sequence on mobile) for testing t
 Both are functional, self-contained HTML/JS artifacts used to validate the trading-mechanic math and UX before porting logic into Godot.
 
 ## 15. Revision Log
+
+**2026-10-02 (wages only while producing):**
+- Idle Mills/Bakeries (no jobs queued) now pay no wages and free their workers, like halted ones; power will follow the same rule (5.5.1, 5.6)
+- Fixed the building window calling a halted building "short of workers"
 
 **2026-10-02 (save and load):**
 - The game now saves and loads (Section 8): versioned JSON in `user://`, autosave, safe writing with a backup, damaged-save recovery

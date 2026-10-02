@@ -70,7 +70,7 @@ static func status(b: Dictionary) -> Dictionary:
 			if b.blocked:
 				return {"text": "Halted: done, no room. Collect to restart (no wages meanwhile)", "progress": 1.0, "good": false}
 			if b.queue.is_empty():
-				return {"text": "Idle: add a job to start", "progress": -1.0, "good": false}
+				return {"text": "Idle: add a job to start (no wages meanwhile)", "progress": -1.0, "good": false}
 			var p := Economy.job_progress(b)
 			var speed := Economy.building_speed(b)
 			if speed <= 0.0:

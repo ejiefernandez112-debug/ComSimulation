@@ -30,9 +30,13 @@ func show_if_away() -> bool:
 		_row("Wages paid").add_child(_amount("cash", "-" + UITheme.money(int(report.wages))))
 	_row("Cash now").add_child(_amount("cash", UITheme.money(Economy.currency())))
 
-	var full := int(Economy.production_rates().buildings.get("full", 0))
+	var counts: Dictionary = Economy.production_rates().buildings
+	var full := int(counts.get("full", 0))
 	if full > 0:
 		_text("%d building%s full and stopped. Collect to restart." % [full, " is" if full == 1 else "s are"], true)
+	var idle := int(counts.get("idle", 0))
+	if idle > 0:
+		_text("%d building%s out of jobs. Queue more to put the workers back to work." % [idle, " is" if idle == 1 else "s are"], true)
 	if Economy.currency() < 0:
 		_text("You are in debt: sell goods to pay it back before building again.", true)
 

@@ -420,7 +420,10 @@ func test_employment() -> void:
 	var data := _data()
 	var state := Sim.new_game(data, T0)
 	Sim.build(state, data, "crew_farm", Vector2i(3, 3), T0)  # 2 jobs
-	Sim.build(state, data, "crew_mill", Vector2i(4, 4), T0)  # 3 jobs
+	var mill_id: String = Sim.build(state, data, "crew_mill", Vector2i(4, 4), T0).building_id  # 3 jobs
+	_check(Sim.employment(state, data, T0).jobs == 2, "a mill with nothing queued offers no jobs")
+	state.inventory["wheat"] = 20
+	Sim.fill_queue(state, data, mill_id, "mill", T0)  # 2 batches: busy for the whole test
 	var e := Sim.employment(state, data, T0)
 	_check(e.jobs == 5 and e.employed == 0 and e.open_jobs == 5, "no people yet: all jobs open")
 	Sim.settle(state, data, T0 + 30)  # 3 people
@@ -613,6 +616,43 @@ func test_halted_buildings_pay_no_wages() -> void:
 	var mill := {"type": "x", "blocked": true}
 	data.buildings["x"] = {"category": "processor", "max_workers": 8}
 	_check(Sim.is_halted(data, mill), "a mill with a finished batch and no room is halted too")
+
+
+## A Mill or Bakery with nothing queued pays no wages (plan.md §5.6): workers are only paid while
+## producing. Wages stop the moment the last job is done, even while the player is away.
+func test_idle_buildings_pay_no_wages() -> void:
+	var s := _wage_town()  # $36/hour per worker
+	var state: Dictionary = s[0]
+	var data: Dictionary = s[1]
+	data.buildings["big_mill"] = {"category": "processor", "build_cost": 0, "buildable": true,
+		"max_workers": 8, "worker_type": "low_skilled", "storage_cap": 1000, "queue_size": 8,
+		"recipes": [{"id": "mill", "inputs": {"wheat": 10}, "outputs": {"flour": 8}, "duration": 300}]}
+	state.population.current = 20  # enough for the farm and the mill
+	var mill := Sim.find_building(state, Sim.build(state, data, "big_mill", Vector2i(6, 6), T0).building_id)
+	_check(Sim.is_idle(data, mill) and Sim.workers_working(state, data, mill, T0) == 0.0, "an empty mill is idle: nobody working")
+	Sim.settle(state, data, T0 + 600)  # only the farm works: 8 x $36/h x 600 s = $48
+	_check(int(Sim.stats(state).spending.wages) == 48, "an idle mill pays no wages")
+	state.inventory["wheat"] = 20
+	Sim.fill_queue(state, data, mill.id, "mill", T0 + 600)  # 2 jobs = 600 s of work
+	_check(Sim.workers_working(state, data, mill, T0 + 600) == 8.0, "queuing a job brings the workers in")
+	Sim.settle(state, data, T0 + 3600)  # away; the mill finished at T0 + 1200
+	# farm 3600 s ($288) + mill 600 s ($48)
+	_check(int(Sim.stats(state).spending.wages) == 288 + 48, "wages stopped the moment the last job was done")
+	_check(int(mill.storage.get("flour", 0)) == 16 and Sim.is_idle(data, mill), "both batches made, then idle")
+
+	var t := _wage_town()
+	var steps: Dictionary = t[0]
+	t[1].buildings["big_mill"] = data.buildings.big_mill
+	steps.population.current = 20
+	var mill2: String = Sim.build(steps, t[1], "big_mill", Vector2i(6, 6), T0).building_id
+	steps.inventory["wheat"] = 20
+	Sim.fill_queue(steps, t[1], mill2, "mill", T0 + 600)
+	var at := T0 + 600
+	while at < T0 + 3600:
+		at += 7.0
+		Sim.settle(steps, t[1], at)
+	Sim.settle(steps, t[1], T0 + 3600)
+	_check(int(Sim.stats(steps).spending.wages) == 288 + 48, "same wages when playing in 7-second steps")
 
 
 func test_halted_building_frees_workers() -> void:

@@ -182,6 +182,12 @@ func is_halted(building: Dictionary) -> bool:
 	return Simulation.is_halted(data(), building)
 
 
+## Producing: has work and room for it (not halted, not an idle Mill/Bakery). Only then are
+## its workers working and paid.
+func is_producing(building: Dictionary) -> bool:
+	return Simulation.is_producing(data(), building)
+
+
 ## Sales tax a sale worth `gross` would pay right now (changes nothing).
 func sales_tax(gross: int) -> int:
 	return Simulation.sales_tax(state, data(), gross, TimeService.now())

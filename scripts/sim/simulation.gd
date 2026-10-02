@@ -112,15 +112,16 @@ static func _pay_wages(state: Dictionary, amount: float) -> int:
 
 
 ## The first moment after t (and before `until`) when staffing or wages can change: a building
-## finishing construction (new jobs or new homes), a building halting because its storage
-## filled up (its workers go home), or, while short of workers, the next person moving in.
+## finishing construction (new jobs or new homes), a building stopping because its storage
+## filled up or its last job is done (its workers go home), or, while short of workers, the
+## next person moving in.
 static func _next_staffing_change(state: Dictionary, data: Dictionary, t: float, until: float) -> float:
 	var next := until
 	for b in state.buildings:
 		var finish := built_at(b)
 		if finish > t and finish < next:
 			next = finish
-		next = minf(next, maxf(_halt_time(state, data, b, t), t + 0.000001))
+		next = minf(next, maxf(_stop_time(state, data, b, t), t + 0.000001))
 	var pop: Dictionary = state.population
 	var step := float(data.config.population_growth_seconds)
 	var e := employment(state, data, t)
@@ -644,11 +645,23 @@ static func workers_wanted(data: Dictionary, b: Dictionary) -> int:
 
 ## How many people are actually working there: what it asks for, cut back evenly across all
 ## buildings when there are fewer people than jobs. Can be a fraction (an average over the
-## town); 0 while it's still being built.
+## town); 0 while it's still being built or isn't producing (halted or idle).
 static func workers_working(state: Dictionary, data: Dictionary, b: Dictionary, now: float) -> float:
-	if not is_built(b, now) or is_halted(data, b):
+	if not is_built(b, now) or not is_producing(data, b):
 		return 0.0
 	return workers_wanted(data, b) * staffing(state, data, now)
+
+
+## Producing: has work to do and room for it. Workers are only hired (and paid), and from
+## Phase 2/3 power only used, while a building is producing (plan.md §5.5, §5.6).
+static func is_producing(data: Dictionary, b: Dictionary) -> bool:
+	return not is_halted(data, b) and not is_idle(data, b)
+
+
+## Idle: a Mill or Bakery with no jobs queued. Like a halted building, its workers go home:
+## no wages, and other buildings can use them.
+static func is_idle(data: Dictionary, b: Dictionary) -> bool:
+	return data.buildings.get(b.type, {}).get("category", "") == "processor" and b.queue.is_empty()
 
 
 ## Halted: its storage is full (a farm with no room for the next batch, or a finished batch
@@ -664,12 +677,12 @@ static func is_halted(data: Dictionary, b: Dictionary) -> bool:
 	return false
 
 
-## When a working building will halt (storage full) if nothing changes, at its current speed;
-## INF if it won't. Settling splits time at this moment so wages stop exactly then, even while
-## the player is away.
-static func _halt_time(state: Dictionary, data: Dictionary, b: Dictionary, t: float) -> float:
+## When a producing building will stop if nothing changes, at its current speed: its storage
+## fills (halted) or its last queued job is done (idle). INF if it won't. Settling splits time at
+## this moment so wages stop exactly then, even while the player is away.
+static func _stop_time(state: Dictionary, data: Dictionary, b: Dictionary, t: float) -> float:
 	var def: Dictionary = data.buildings.get(b.type, {})
-	if max_workers(data, b) <= 0 or not is_built(b, t) or is_halted(data, b) or float(b.job_started_at) > t:
+	if max_workers(data, b) <= 0 or not is_built(b, t) or not is_producing(data, b) or float(b.job_started_at) > t:
 		return INF
 	var speed := building_speed(state, data, b, t)
 	if speed <= 0.0:
@@ -688,7 +701,7 @@ static func _halt_time(state: Dictionary, data: Dictionary, b: Dictionary, t: fl
 		if space < out:
 			return t + work / speed + 0.000001  # this batch finishes with nowhere to go
 		space -= out
-	return INF  # the queue runs out first
+	return t + work / speed + 0.000001  # the last job is done: idle from then on
 
 
 ## Wage per hour for one worker of this building's type (game_config.json worker_types).
@@ -775,7 +788,7 @@ static func staffing(state: Dictionary, data: Dictionary, now: float) -> float:
 static func employment(state: Dictionary, data: Dictionary, now: float) -> Dictionary:
 	var jobs := 0
 	for b in state.buildings:
-		if is_built(b, now) and not is_halted(data, b):
+		if is_built(b, now) and is_producing(data, b):
 			jobs += workers_wanted(data, b)
 	var people := int(state.population.current)
 	var employed := mini(people, jobs)
