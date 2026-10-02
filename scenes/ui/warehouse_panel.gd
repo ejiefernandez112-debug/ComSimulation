@@ -85,8 +85,7 @@ func _row(res: String, qty: int) -> PanelContainer:
 	name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	row.add_child(name_label)
 	row.add_child(_label(UITheme.number(qty), 20))
-	var price := float(GameData.resources[res].get("retail_price", 0))
-	var worth := _label("worth %s" % UITheme.money(int(qty * price)), 16)
+	var worth := _label("worth %s" % UITheme.money(qty * Economy.unit_price(res)), 16)
 	worth.theme_type_variation = "BodyLabel"
 	worth.custom_minimum_size.x = 130
 	worth.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT

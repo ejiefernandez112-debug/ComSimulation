@@ -299,10 +299,10 @@ func _refresh_workers(b: Dictionary, def: Dictionary) -> void:
 	_workers_text.add_theme_color_override("font_color", UITheme.BAD.darkened(0.3) if short else UITheme.TEXT_DARK)
 	var bonus_pay: float = w.wage_each - w.minimum
 	if bonus_pay > 0.01:
-		_wage_each_text.text = "%s + %s bonus = %s" % [UITheme.money(roundi(w.minimum)), UITheme.money(roundi(bonus_pay)), UITheme.money(roundi(w.wage_each))]
+		_wage_each_text.text = "%s + %s bonus = %s" % [UITheme.dollars(w.minimum), UITheme.dollars(bonus_pay), UITheme.dollars(w.wage_each)]
 	else:
-		_wage_each_text.text = "%s (minimum)" % UITheme.money(roundi(w.minimum))
-	_wages_text.text = "%s / hour" % UITheme.money(roundi(w.wages))
+		_wage_each_text.text = "%s (minimum)" % UITheme.dollars(w.minimum)
+	_wages_text.text = "%s / hour" % UITheme.dollars(w.wages)
 	var speed := Economy.building_speed(b)
 	_rate_text.text = "%d%%" % floori(speed * 100.0 + 0.001)
 	# The details: why it isn't full speed and what that rate makes.

@@ -259,13 +259,14 @@ func _refresh_graph() -> void:
 		history.append({"t": now, "cash": Economy.currency(), "income": _sum(st.income), "spending": _sum(st.spending),
 			"population": e.population, "employed": e.employed, "jobs": e.jobs, "made": st.made})
 	var lines: Array = []
+	# Money is kept in cents; the graphs show dollars (/ 100).
 	match _graph:
 		"cash":
-			lines.append({"name": "Cash", "color": 0, "points": _points(history, now, func(p): return float(p.cash))})
+			lines.append({"name": "Cash", "color": 0, "points": _points(history, now, func(p): return float(p.cash) / 100.0)})
 			_chart.set_data(lines, -_range, 0.0, "", 0, "$")
 		"flow":
-			lines.append({"name": "In", "color": 0, "points": _per_minute(history, now, func(p): return float(p.income))})
-			lines.append({"name": "Out", "color": 1, "points": _per_minute(history, now, func(p): return float(p.spending))})
+			lines.append({"name": "In", "color": 0, "points": _per_minute(history, now, func(p): return float(p.income) / 100.0)})
+			lines.append({"name": "Out", "color": 1, "points": _per_minute(history, now, func(p): return float(p.spending) / 100.0)})
 			_chart.set_data(lines, -_range, 0.0, "/min", 1, "$")
 		"people":
 			var specs := [["People", "population"], ["Employed", "employed"], ["Jobs", "jobs"]]

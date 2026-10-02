@@ -1,6 +1,9 @@
 extends RefCounted
 ## Pure Phase 1a game rules (plan.md §5). No nodes, no clock, no files:
 ## every function is handed the game state, the content data and "now".
+##
+## Money: the data files use plain dollars (build_cost 2000, wage 15); the state and every
+## function here use whole CENTS (cash 575000 = $5,750.00), so sums never drift (plan.md §5.11).
 ## Keeping it pure makes it testable, and it's the part a Phase 4 server would port (plan.md §3.1).
 ##
 ## `data`  = { "resources": {...}, "buildings": {...}, "config": {...} } from data/*.json
@@ -10,7 +13,8 @@ extends RefCounted
 ## Time model: buildings store when their current cycle/job started (`job_started_at`).
 ## "Settling" turns elapsed time into finished output in one calculation, never tick-by-tick.
 
-const SAVE_VERSION := 3  # 2: warehouses are buildings; 3: buildings keep their own hired workers
+const SAVE_VERSION := 4  # 2: warehouses are buildings; 3: buildings keep their own hired workers;
+# 4: money is stored in cents
 ## Used when game_config.json has no staffing_levels: share of max_workers per level.
 const DEFAULT_STAFFING_LEVELS := {"low": 0.5, "medium": 0.75, "high": 1.0}
 
@@ -22,7 +26,7 @@ static func new_game(data: Dictionary, now: float) -> Dictionary:
 	var state := {
 		"save_version": SAVE_VERSION,
 		"last_saved_at": now,
-		"profile": {"currency": int(config.starting_cash)},
+		"profile": {"currency": cents(float(config.starting_cash))},  # cash, in cents
 		"plot": {"grid_size": [int(config.grid_size[0]), int(config.grid_size[1])]},
 		"next_building_id": 1,
 		"buildings": [],
@@ -100,12 +104,13 @@ static func _settle_span(state: Dictionary, b: Dictionary, data: Dictionary, t0:
 	return produced
 
 
-## Takes wages out of cash. Cash may go below 0 (debt); sales pay it back. Part-coins are kept
-## in "wage_carry" until they add up, so many short settles cost exactly the same as one long one.
-static func _pay_wages(state: Dictionary, amount: float) -> int:
-	if amount <= 0.0:
+## Takes wages (`dollars`) out of cash. Cash may go below 0 (debt); sales pay it back. Parts of a
+## cent are kept in "wage_carry" until they add up, so many short settles cost exactly the same
+## as one long one. Returns the cents paid.
+static func _pay_wages(state: Dictionary, dollars: float) -> int:
+	if dollars <= 0.0:
 		return 0
-	var owed := float(state.get("wage_carry", 0.0)) + amount
+	var owed := float(state.get("wage_carry", 0.0)) + dollars * 100.0  # in cents
 	var whole := floori(owed)
 	state["wage_carry"] = owed - whole
 	state.profile.currency -= whole
@@ -248,7 +253,7 @@ static func can_build(state: Dictionary, data: Dictionary, type_id: String, cell
 		return _fail("That spot is outside your land.")
 	if not building_at(state, cell).is_empty():
 		return _fail("That spot is taken.")
-	if state.profile.currency < int(def.build_cost):
+	if state.profile.currency < cents(float(def.build_cost)):
 		return _fail("Not enough money.")
 	return _ok({})
 
@@ -259,8 +264,8 @@ static func build(state: Dictionary, data: Dictionary, type_id: String, cell: Ve
 		return check
 	settle(state, data, now)  # time so far was worked with the old staffing
 	var def: Dictionary = data.buildings[type_id]
-	state.profile.currency -= int(def.build_cost)
-	stats(state).spending.construction += int(def.build_cost)
+	state.profile.currency -= cents(float(def.build_cost))
+	stats(state).spending.construction += cents(float(def.build_cost))
 	var b := _add_building(state, type_id, cell, now, now + float(def.get("build_time", 0.0)))
 	_hire(state, data, now)  # a building ready at once hires now; others when construction ends
 	return _ok({"building_id": b.id})
@@ -484,7 +489,7 @@ static func can_demolish(state: Dictionary, data: Dictionary, building_id: Strin
 		if def.get("category", "") == "storage":
 			return _fail("The other warehouses don't have room for your goods. Make room first.")
 		return _fail("Not enough room in the warehouse for what's inside. Make room first.")
-	var money := int(int(def.get("build_cost", 0)) * float(data.config.get("demolish_refund", 0.0)))
+	var money := roundi(cents(float(def.get("build_cost", 0))) * float(data.config.get("demolish_refund", 0.0)))
 	return _ok({"money": money, "goods": goods})
 
 
@@ -595,8 +600,9 @@ static func demolish(state: Dictionary, data: Dictionary, building_id: String, n
 	return check
 
 
-## Sell to the NPC Retailer at its fixed price (plan.md §5.2 channel 1), minus sales tax (§5.9).
-## Returns "earned" (what reaches cash), "gross" (before tax), "tax" and "rate" (tax ÷ gross).
+## Sell to the NPC Retailer at its price (plan.md §5.2 channel 1, price §5.11), minus sales tax
+## (§5.9). Returns, in cents: "earned" (what reaches cash), "gross" (before tax), "tax", and
+## "rate" (tax ÷ gross).
 static func sell(state: Dictionary, data: Dictionary, resource_id: String, qty: int, now: float) -> Dictionary:
 	var res_def: Dictionary = data.resources.get(resource_id, {})
 	if res_def.is_empty():
@@ -605,7 +611,7 @@ static func sell(state: Dictionary, data: Dictionary, resource_id: String, qty: 
 		return _fail("Choose how many to sell.")
 	if int(state.inventory.get(resource_id, 0)) < qty:
 		return _fail("You don't have that many.")
-	var gross := int(qty * float(res_def.retail_price))
+	var gross := qty * unit_price(data, resource_id)
 	var tax := sales_tax(state, data, gross, now)
 	var earned := gross - tax
 	_remove_from(state.inventory, {resource_id: qty})
@@ -625,18 +631,18 @@ static func sell(state: Dictionary, data: Dictionary, resource_id: String, qty: 
 	return _ok({"earned": earned, "gross": gross, "tax": tax, "rate": float(tax) / gross if gross > 0 else 0.0})
 
 
-## Sales tax on a sale worth `gross` (changes nothing). Progressive, like income-tax brackets, on
-## the company's Retailer sales over the last sales_tax_window_hours (24): each part of the sale
-## pays the rate of the bracket it falls in (first $5,000 0%, then 8%, 15%, 22%), so selling
-## more never leaves the company with less.
+## Sales tax, in cents, on a sale worth `gross` cents (changes nothing). Progressive, like
+## income-tax brackets, on the company's Retailer sales over the last sales_tax_window_hours (24):
+## each part of the sale pays the rate of the bracket it falls in (first $5,000 0%, then 8%,
+## 15%, 22%; "from" is in dollars in the config), so selling more never leaves you with less.
 static func sales_tax(state: Dictionary, data: Dictionary, gross: int, now: float) -> int:
 	var brackets: Array = data.config.get("sales_tax_brackets", [])
 	var from := float(sales_last_day(state, data, now))
 	var to := from + gross
 	var tax := 0.0
 	for i in brackets.size():
-		var low := float(brackets[i].from)
-		var high: float = float(brackets[i + 1].from) if i + 1 < brackets.size() else INF
+		var low := float(cents(float(brackets[i].from)))
+		var high: float = float(cents(float(brackets[i + 1].from))) if i + 1 < brackets.size() else INF
 		tax += maxf(minf(to, high) - maxf(from, low), 0.0) * float(brackets[i].rate)
 	return roundi(tax)
 
@@ -651,21 +657,74 @@ static func sales_last_day(state: Dictionary, data: Dictionary, now: float) -> i
 	return total
 
 
-## The tax bracket the company's next sale starts in: {"sold" (last 24 h), "rate", "next_at"
-## (sales total where the next bracket starts, or -1 at the top)}.
+## The tax bracket the company's next sale starts in: {"sold" (last 24 h, cents), "rate",
+## "next_at" (sales total in cents where the next bracket starts, or -1 at the top)}.
 static func tax_bracket(state: Dictionary, data: Dictionary, now: float) -> Dictionary:
 	var sold := sales_last_day(state, data, now)
 	var brackets: Array = data.config.get("sales_tax_brackets", [])
 	var result := {"sold": sold, "rate": 0.0, "next_at": -1}
 	for i in brackets.size():
-		if sold >= int(brackets[i].from):
+		if sold >= cents(float(brackets[i].from)):
 			result.rate = float(brackets[i].rate)
-			result.next_at = int(brackets[i + 1].from) if i + 1 < brackets.size() else -1
+			result.next_at = cents(float(brackets[i + 1].from)) if i + 1 < brackets.size() else -1
 	return result
 
 
+# --- Prices (plan.md §5.11) ------------------------------------------------------
+
+## Retail price of one unit, in cents, worked out live from what it costs to make (plan.md
+## §5.11): for the building that makes it, at full staff, one batch costs its ingredients (at
+## their own prices) + wages (max_workers at the minimum wage) + a share of the build cost (so it
+## pays for itself in pricing.payback_hours of production); divided by the units made, then by
+## (1 - pricing.typical_tax_rate) so a typical company keeps that after sales tax. Rounded to the
+## cent. A resource with a fixed "price" (dollars) in resources.json uses that instead.
+static func unit_price(data: Dictionary, resource_id: String) -> int:
+	return _unit_price(data, resource_id, {})
+
+
+static func _unit_price(data: Dictionary, resource_id: String, visiting: Dictionary) -> int:
+	var res_def: Dictionary = data.resources.get(resource_id, {})
+	if res_def.has("price"):
+		return cents(float(res_def.price))
+	if visiting.has(resource_id):
+		return 0  # recipes that go round in a circle: stop instead of looping forever
+	visiting[resource_id] = true
+	var pricing: Dictionary = data.config.get("pricing", {})
+	var payback := maxf(float(pricing.get("payback_hours", 12.0)), 0.01)
+	var keep := 1.0 - clampf(float(pricing.get("typical_tax_rate", 0.0)), 0.0, 0.9)
+	var price := 0
+	for type_id in data.buildings:
+		var def: Dictionary = data.buildings[type_id]
+		for recipe in def.get("recipes", []):
+			if not recipe.outputs.has(resource_id):
+				continue
+			var hours := float(recipe.duration) / 3600.0
+			var cost := 0.0  # dollars per batch
+			for input in recipe.get("inputs", {}):
+				cost += int(recipe.inputs[input]) * _unit_price(data, input, visiting) / 100.0
+			cost += int(def.get("max_workers", 0)) * _minimum_wage_of(data, def) * hours
+			cost += float(def.get("build_cost", 0)) / payback * hours
+			price = cents(cost / maxf(_total(recipe.outputs), 1) / keep)
+			visiting.erase(resource_id)
+			return price
+	visiting.erase(resource_id)
+	return price  # nothing makes it and it has no fixed price: worthless
+
+
+## The minimum wage per hour (dollars) for a building type's workers.
+static func _minimum_wage_of(data: Dictionary, def: Dictionary) -> float:
+	var type: String = def.get("worker_type", "low_skilled")
+	return float(data.config.get("worker_types", {}).get(type, {}).get("wage_per_hour", 0.0))
+
+
+## Dollars to whole cents ($5.30 -> 530).
+static func cents(dollars: float) -> int:
+	return roundi(dollars * 100.0)
+
+
 # --- Developer tools (scenes/debug/, test builds only; plan.md §10) --------------
-# They change cash directly and aren't counted as income or spending in the statistics.
+# They change cash directly (amounts in cents) and aren't counted as income or spending in
+# the statistics.
 
 static func dev_set_cash(state: Dictionary, amount: int) -> Dictionary:
 	state.profile.currency = amount
@@ -940,16 +999,15 @@ static func _stop_time(state: Dictionary, data: Dictionary, b: Dictionary, t: fl
 	return t + work / speed + 0.000001  # the last job is done: idle from then on
 
 
-## Wage per hour for one worker here: the minimum wage for its worker type (game_config.json
+## Wage per hour (dollars) for one worker here: the minimum wage for its worker type (game_config.json
 ## worker_types, set by the game) plus the building's bonus (None 0% / Small 20% / ...).
 static func wage_per_worker(data: Dictionary, b: Dictionary) -> float:
 	return minimum_wage(data, b) * (1.0 + bonus_rate(data, b))
 
 
-## The minimum wage for this building's worker type, before any bonus.
+## The minimum wage per hour (dollars) for this building's worker type, before any bonus.
 static func minimum_wage(data: Dictionary, b: Dictionary) -> float:
-	var type: String = data.buildings.get(b.type, {}).get("worker_type", "low_skilled")
-	return float(data.config.get("worker_types", {}).get(type, {}).get("wage_per_hour", 0.0))
+	return _minimum_wage_of(data, data.buildings.get(b.type, {}))
 
 
 ## The building's chosen wage bonus: "none", "small", "good" or "big" (wage_bonuses in config).
@@ -971,12 +1029,12 @@ static func has_fixed_wage(data: Dictionary, b: Dictionary) -> bool:
 	return bool(data.buildings.get(b.type, {}).get("fixed_wage", false))
 
 
-## What the building's workers cost per hour right now.
+## What the building's workers cost per hour right now (dollars).
 static func building_wages(state: Dictionary, data: Dictionary, b: Dictionary, now: float) -> float:
 	return workers_working(state, data, b, now) * wage_per_worker(data, b)
 
 
-## What all workers in town cost per hour right now.
+## What all workers in town cost per hour right now (dollars).
 static func _wages_per_hour(state: Dictionary, data: Dictionary, now: float) -> float:
 	var total := 0.0
 	for b in state.buildings:
@@ -1105,9 +1163,9 @@ static func _record_history(state: Dictionary, data: Dictionary, now: float) -> 
 
 static func _new_stats() -> Dictionary:
 	return {
-		"income": {"sales": 0, "demolish": 0},  # money in, by where it came from
-		"spending": {"construction": 0, "wages": 0, "tax": 0},  # money out, by what it went on
-		"sales_by_item": {},  # resource -> money earned selling it
+		"income": {"sales": 0, "demolish": 0},  # money in (cents), by where it came from
+		"spending": {"construction": 0, "wages": 0, "tax": 0},  # money out (cents), by what it went on
+		"sales_by_item": {},  # resource -> cents earned selling it
 		"made": {},  # resource -> amount ever produced
 		"sold": {},  # resource -> amount ever sold
 		"history": [],  # graph points: {t, cash, income, spending, population, employed, jobs, made}

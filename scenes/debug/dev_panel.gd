@@ -42,7 +42,7 @@ func _ready() -> void:
 	quick.add_theme_constant_override("separation", 8)
 	box.add_child(quick)
 	for amount in QUICK_ADD:
-		var button := _button("+" + UITheme.money(amount), "YellowButton", _quick_add.bind(amount))
+		var button := _button("+" + UITheme.dollars(amount), "YellowButton", _quick_add.bind(amount))
 		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		quick.add_child(button)
 	quick.add_child(_button("Set $0", "RedButton", func(): _apply(Economy.dev_set_cash(0), "Cash set to $0")))
@@ -82,17 +82,17 @@ func _refresh() -> void:
 func _add() -> void:
 	var amount = _read_amount()  # a number of dollars, or null if the typing wasn't one
 	if amount != null:
-		_apply(Economy.dev_add_cash(amount), "Added %s" % UITheme.money(amount))
+		_apply(Economy.dev_add_cash(amount), "Added %s" % UITheme.dollars(amount))
 
 
 func _set_cash() -> void:
 	var amount = _read_amount()  # a number of dollars, or null if the typing wasn't one
 	if amount != null:
-		_apply(Economy.dev_set_cash(amount), "Cash set to %s" % UITheme.money(amount))
+		_apply(Economy.dev_set_cash(amount), "Cash set to %s" % UITheme.dollars(amount))
 
 
 func _quick_add(amount: int) -> void:
-	_apply(Economy.dev_add_cash(amount), "Added %s" % UITheme.money(amount))
+	_apply(Economy.dev_add_cash(amount), "Added %s" % UITheme.dollars(amount))
 
 
 ## The typed amount as a whole number of dollars ("$5,000" and "5000" both work), or null.

@@ -369,7 +369,7 @@ func _show_details(type_id: String) -> void:
 	_shown = type_id
 	var def: Dictionary = GameData.buildings[type_id]
 	_name.text = def.name
-	_cost.text = UITheme.money(int(def.build_cost))
+	_cost.text = UITheme.money(Economy.build_cost(_shown))
 	_about.text = def.get("description", "")
 	for child in _makes.get_children():
 		_makes.remove_child(child)
@@ -429,7 +429,7 @@ func _can_place(type_id: String) -> bool:
 
 ## How much more money the player needs to build this (0 = can afford it).
 func _shortfall(type_id: String) -> int:
-	return maxi(int(GameData.buildings[type_id].build_cost) - Economy.currency(), 0)
+	return maxi(Economy.build_cost(type_id) - Economy.currency(), 0)
 
 
 func _choose(type_id: String) -> void:

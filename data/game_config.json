@@ -15,6 +15,8 @@
 	"stats_history_size": 360,
 	"_workers": "staffing_levels = share of a building's max_workers the player can choose (8 at level 1 -> Low 4, Medium 6, High 8). New buildings start at default_staffing. worker_types: wage_per_hour = the MINIMUM wage, set by the game; each building adds its wage bonus on top (wage_bonuses: share of the minimum, chosen per building, new ones start at default_bonus; a bigger bonus gets free workers first, plan.md 5.6). Wages are paid for every worker actually working, including while the game is closed, and only while the building is producing (not when full or with no jobs queued); cash may go below 0 (debt). available = false types can't be hired yet (high-skilled = high school graduates, professional = college graduates; they arrive with schools). All PLACEHOLDERS.",
 	"_tax": "Sales tax on Retailer sales (plan.md 5.9): progressive like income-tax brackets, on the company's sales over the last sales_tax_window_hours. Each part of a sale pays the rate of the bracket it falls in, so selling more never leaves you with less. market_fee = the Phase 4 player-market fee per trade, paid by the seller (not used yet). PLACEHOLDERS.",
+	"_pricing": "Retail prices are worked out from costs (plan.md 5.11): per batch, ingredients + max_workers at the minimum wage + build_cost / payback_hours, divided by the units made and by (1 - typical_tax_rate). payback_hours = hours of full-staff production for a building to pay for itself. PLACEHOLDERS.",
+	"pricing": { "payback_hours": 12, "typical_tax_rate": 0.10 },
 	"sales_tax_window_hours": 24,
 	"sales_tax_brackets": [
 		{ "from": 0, "rate": 0.0 },

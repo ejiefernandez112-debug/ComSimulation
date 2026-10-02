@@ -51,8 +51,8 @@ func _initialize() -> void:
 func _data() -> Dictionary:
 	return {
 		"resources": {
-			"wheat": {"name": "Wheat", "retail_price": 2},
-			"flour": {"name": "Flour", "retail_price": 3},
+			"wheat": {"name": "Wheat", "price": 2},
+			"flour": {"name": "Flour", "price": 3},
 		},
 		"buildings": {
 			"office": {"category": "civic", "build_cost": 0, "buildable": false},
@@ -106,7 +106,7 @@ func _setup(type_id: String) -> Array:
 func test_new_game() -> void:
 	var data := _data()
 	var state := Sim.new_game(data, T0)
-	_check(state.profile.currency == 500, "starting cash")
+	_check(state.profile.currency == 50000, "starting cash ($500 = 50000 cents)")
 	_check(state.buildings.size() == 3, "starter buildings placed")
 	_check(Sim.population_capacity(state, data, T0) == 10, "house gives population capacity")
 	_check(state.save_version == Sim.SAVE_VERSION, "save version set")
@@ -116,7 +116,7 @@ func test_build_rules() -> void:
 	var data := _data()
 	var state := Sim.new_game(data, T0)
 	_check(Sim.build(state, data, "farm", Vector2i(3, 3), T0).ok, "can build a farm")
-	_check(state.profile.currency == 400, "farm cost deducted")
+	_check(state.profile.currency == 40000, "farm cost deducted")
 	_check(not Sim.build(state, data, "farm", Vector2i(3, 3), T0).ok, "can't build on a taken spot")
 	_check(not Sim.build(state, data, "farm", Vector2i(10, 0), T0).ok, "can't build outside the land")
 	_check(not Sim.build(state, data, "house", Vector2i(4, 4), T0).ok, "can't build non-buildable types")
@@ -131,7 +131,7 @@ func test_can_build_matches_build() -> void:
 	var state := Sim.new_game(data, T0)
 	var before: int = state.buildings.size()
 	_check(Sim.can_build(state, data, "farm", Vector2i(3, 3)).ok, "can_build says yes on a free spot")
-	_check(state.buildings.size() == before and state.profile.currency == 500, "can_build changes nothing")
+	_check(state.buildings.size() == before and state.profile.currency == 50000, "can_build changes nothing")
 	Sim.build(state, data, "farm", Vector2i(3, 3), T0)
 	var taken: Dictionary = Sim.can_build(state, data, "farm", Vector2i(3, 3))
 	_check(not taken.ok and taken.error == "That spot is taken.", "can_build explains why not")
@@ -266,8 +266,8 @@ func test_sell() -> void:
 	_check(not Sim.sell(state, data, "wheat", 5, T0).ok, "can't sell more than you have")
 	_check(not Sim.sell(state, data, "wheat", 0, T0).ok, "can't sell zero")
 	var result := Sim.sell(state, data, "wheat", 3, T0)
-	_check(result.ok and result.earned == 6, "3 wheat x 2 = 6")
-	_check(state.profile.currency == 506 and not state.inventory.has("wheat"), "money in, wheat out")
+	_check(result.ok and result.earned == 600, "3 wheat x $2 = $6 (600 cents)")
+	_check(state.profile.currency == 50600 and not state.inventory.has("wheat"), "money in, wheat out")
 
 
 func test_cancel_job() -> void:
@@ -319,7 +319,7 @@ func test_demolish() -> void:
 	var cash: int = state.profile.currency
 	var result := Sim.demolish(state, data, mill.id, T0 + 90)
 	_check(result.ok and Sim.find_building(state, mill.id).is_empty(), "mill is gone")
-	_check(state.profile.currency == cash + 100, "half the 200 build cost back")
+	_check(state.profile.currency == cash + 10000, "half the 200 build cost back")
 	_check(state.inventory.get("flour", 0) == 8 and state.inventory.get("wheat", 0) == 5, "goods inside + half of the job in progress")
 	_check(Sim.can_build(state, data, "farm", Vector2i(5, 5)).ok, "the spot is free again")
 	_check(not Sim.demolish(state, data, "b1", T0).ok, "starter buildings can't be demolished")
@@ -405,16 +405,16 @@ func test_statistics_counters() -> void:
 	var state: Dictionary = s[0]
 	var data: Dictionary = s[1]
 	var farm: Dictionary = s[2]
-	_check(Sim.stats(state).spending.construction == 100, "construction spending counted")
+	_check(Sim.stats(state).spending.construction == 10000, "construction spending counted")
 	Sim.settle(state, data, T0 + 120)
 	_check(int(Sim.stats(state).made.get("wheat", 0)) == 20, "production counted when it happens")
 	Sim.collect(state, data, farm.id, T0 + 125)
 	_check(int(Sim.stats(state).made.get("wheat", 0)) == 20, "collecting doesn't count it twice")
 	Sim.sell(state, data, "wheat", 10, T0)
 	var st := Sim.stats(state)
-	_check(st.income.sales == 20 and int(st.sales_by_item.wheat) == 20 and int(st.sold.wheat) == 10, "sales counted (money, per item, amount)")
+	_check(st.income.sales == 2000 and int(st.sales_by_item.wheat) == 2000 and int(st.sold.wheat) == 10, "sales counted (money, per item, amount)")
 	Sim.demolish(state, data, farm.id, T0 + 130)
-	_check(Sim.stats(state).income.demolish == 50, "demolish refund counted as income")
+	_check(Sim.stats(state).income.demolish == 5000, "demolish refund counted as income")
 	var old_save := Sim.new_game(data, T0)
 	old_save.erase("stats")
 	_check(Sim.stats(old_save).made.is_empty(), "saves without statistics get empty counters")
@@ -560,35 +560,35 @@ func test_wages_and_debt() -> void:
 	var state: Dictionary = s[0]
 	var data: Dictionary = s[1]
 	var farm: Dictionary = s[2]
-	state.profile.currency = 50
-	var report := Sim.settle(state, data, T0 + 1000)  # 8 workers x 36/h for 1000 s = 80
-	_check(state.profile.currency == -30, "wages are paid over time and cash can go below 0 (debt)")
-	_check(int(report.get("wages", 0)) == 80 and int(Sim.stats(state).spending.wages) == 80, "wages show in the report and the statistics")
+	state.profile.currency = 5000  # $50 (money is in cents)
+	var report := Sim.settle(state, data, T0 + 1000)  # 8 workers x $36/h for 1000 s = $80
+	_check(state.profile.currency == -3000, "wages are paid over time and cash can go below 0 (debt)")
+	_check(int(report.get("wages", 0)) == 8000 and int(Sim.stats(state).spending.wages) == 8000, "wages show in the report and the statistics")
 	_check(not Sim.build(state, data, "farm", Vector2i(5, 5), T0 + 1000).ok, "can't build while in debt")
 	Sim.set_staffing(state, data, farm.id, "low", T0 + 1000)
-	Sim.settle(state, data, T0 + 2000)  # 4 workers x 36/h for 1000 s = 40
-	_check(state.profile.currency == -70, "Low staffing halves the wages")
+	Sim.settle(state, data, T0 + 2000)  # 4 workers x $36/h for 1000 s = $40
+	_check(state.profile.currency == -7000, "Low staffing halves the wages")
 	state.population.current = 0
 	Sim.settle(state, data, T0 + 3000)
-	_check(state.profile.currency == -70, "nobody working, no wages")
+	_check(state.profile.currency == -7000, "nobody working, no wages")
 
 	var t := _wage_town()
 	var steps: Dictionary = t[0]
 	var at := T0
 	while at < T0 + 1000:
-		at += 0.7
+		at = minf(at + 0.7, T0 + 1000)  # the last step ends exactly at 1000 s
 		Sim.settle(steps, data, at)
-	_check(int(Sim.stats(steps).spending.wages) == 80, "wages in many tiny steps add up to the same 80 (part-coins carried over)")
+	_check(int(Sim.stats(steps).spending.wages) == 8000, "wages in many tiny steps add up to the same $80 (parts of a cent carried over)")
 
 	var u := _wage_town()
 	var building: Dictionary = u[0]
-	building.profile.currency = 100
+	building.profile.currency = 10000
 	Sim.build(building, data, "slow_farm", Vector2i(6, 6), T0)  # no workers needed
 	data.buildings.slow_farm["max_workers"] = 8
 	Sim.find_building(building, building.buildings[-1].id)["built_at"] = T0 + 10_000.0
 	Sim.set_staffing(building, data, u[2].id, "low", T0)  # the big farm: 4 workers
 	Sim.settle(building, data, T0 + 1000)
-	_check(int(Sim.stats(building).spending.wages) == 40, "a building under construction pays no wages")
+	_check(int(Sim.stats(building).spending.wages) == 4000, "a building under construction pays no wages")
 
 
 func test_sales_tax_brackets() -> void:
@@ -597,17 +597,19 @@ func test_sales_tax_brackets() -> void:
 		{"from": 25000, "rate": 0.15}, {"from": 100000, "rate": 0.22}]
 	var state := Sim.new_game(data, T0)
 	state.inventory["wheat"] = 100_000
+	# Money is in cents: $4,000 = 400000.
 	var r: Dictionary = Sim.sell(state, data, "wheat", 2000, T0)  # $4,000: inside the 0% allowance
-	_check(r.tax == 0 and r.earned == 4000 and state.profile.currency == 4500, "first $5,000 a day is tax-free")
+	_check(r.tax == 0 and r.earned == 400000 and state.profile.currency == 450000, "first $5,000 a day is tax-free")
 	r = Sim.sell(state, data, "wheat", 1000, T0 + 10)  # $2,000: $1,000 at 0% + $1,000 at 8%
-	_check(r.tax == 80 and r.earned == 1920, "only the part above $5,000 pays 8%")
+	_check(r.tax == 8000 and r.earned == 192000, "only the part above $5,000 pays 8% ($80 tax)")
 	r = Sim.sell(state, data, "wheat", 15000, T0 + 20)  # $30,000 from $6,000 to $36,000
-	_check(r.tax == 19000 * 8 / 100 + 11000 * 15 / 100, "a big sale is split across brackets (8% then 15%)")
+	_check(r.tax == (19000 * 8 / 100 + 11000 * 15 / 100) * 100, "a big sale is split across brackets (8% then 15%)")
 	var bracket := Sim.tax_bracket(state, data, T0 + 20)
-	_check(bracket.sold == 36000 and is_equal_approx(bracket.rate, 0.15) and bracket.next_at == 100000, "bracket status: sold today, rate, next step")
-	_check(Sim.stats(state).spending.tax == 80 + r.tax and Sim.stats(state).income.sales == 36000, "statistics: sales before tax, tax as money out")
-	_check(Sim.sales_tax(state, data, 1000, T0 + 24 * 3600 + 30) == 0, "sales older than 24 hours no longer count")
-	_check(Sim.sales_tax(state, data, 100, T0 + 30) == 15, "preview of the tax on a sale changes nothing")
+	_check(bracket.sold == 3600000 and is_equal_approx(bracket.rate, 0.15) and bracket.next_at == 10000000, "bracket status: sold today, rate, next step")
+	_check(Sim.stats(state).spending.tax == 8000 + r.tax and Sim.stats(state).income.sales == 3600000, "statistics: sales before tax, tax as money out")
+	_check(Sim.sales_tax(state, data, 100000, T0 + 24 * 3600 + 30) == 0, "sales older than 24 hours no longer count")
+	_check(Sim.sales_tax(state, data, 10000, T0 + 30) == 1500, "preview of the tax on a sale changes nothing")
+	_check(Sim.sales_tax(state, data, 333, T0 + 30) == 50, "tax is rounded to the cent (15% of $3.33 = $0.4995 -> $0.50)")
 
 
 ## A town whose 8-worker farm fills its storage (100) after 600 s at full speed.
@@ -624,7 +626,7 @@ func test_halted_buildings_pay_no_wages() -> void:
 	var farm: Dictionary = s[2]
 	Sim.settle(state, data, T0 + 3600)  # away an hour; the farm filled up after 10 minutes
 	_check(int(farm.storage.wheat) == 100 and Sim.is_halted(data, farm), "full storage halts the farm")
-	_check(int(Sim.stats(state).spending.wages) == 48, "wages stopped the moment it filled (600 s x 8 x $36/h = $48), not after the hour")
+	_check(int(Sim.stats(state).spending.wages) == 4800, "wages stopped the moment it filled (600 s x 8 x $36/h = $48), not after the hour")
 	_check(Sim.workers_working(state, data, farm, T0 + 3600) == 0.0 and Sim.hired(farm) == 8, "a halted building's workers stop working but stay tied to it")
 	Sim.collect(state, data, farm.id, T0 + 3600)
 	Sim.settle(state, data, T0 + 3660)
@@ -634,9 +636,9 @@ func test_halted_buildings_pay_no_wages() -> void:
 	var steps: Dictionary = t[0]
 	var at := T0
 	while at < T0 + 3600:
-		at += 7.0
+		at = minf(at + 7.0, T0 + 3600)
 		Sim.settle(steps, t[1], at)
-	_check(int(Sim.stats(steps).spending.wages) == 48, "same wages when playing in 7-second steps")
+	_check(int(Sim.stats(steps).spending.wages) == 4800, "same wages when playing in 7-second steps")
 
 	var mill := {"type": "x", "blocked": true}
 	data.buildings["x"] = {"category": "processor", "max_workers": 8}
@@ -656,13 +658,13 @@ func test_idle_buildings_pay_no_wages() -> void:
 	var mill := Sim.find_building(state, Sim.build(state, data, "big_mill", Vector2i(6, 6), T0).building_id)
 	_check(Sim.is_idle(data, mill) and Sim.workers_working(state, data, mill, T0) == 0.0, "an empty mill is idle: nobody working")
 	Sim.settle(state, data, T0 + 600)  # only the farm works: 8 x $36/h x 600 s = $48
-	_check(int(Sim.stats(state).spending.wages) == 48, "an idle mill pays no wages")
+	_check(int(Sim.stats(state).spending.wages) == 4800, "an idle mill pays no wages")
 	state.inventory["wheat"] = 20
 	Sim.fill_queue(state, data, mill.id, "mill", T0 + 600)  # 2 jobs = 600 s of work
 	_check(Sim.workers_working(state, data, mill, T0 + 600) == 8.0, "queuing a job brings the workers in")
 	Sim.settle(state, data, T0 + 3600)  # away; the mill finished at T0 + 1200
 	# farm 3600 s ($288) + mill 600 s ($48)
-	_check(int(Sim.stats(state).spending.wages) == 288 + 48, "wages stopped the moment the last job was done")
+	_check(int(Sim.stats(state).spending.wages) == 28800 + 4800, "wages stopped the moment the last job was done")
 	_check(int(mill.storage.get("flour", 0)) == 16 and Sim.is_idle(data, mill), "both batches made, then idle")
 
 	var t := _wage_town()
@@ -674,10 +676,10 @@ func test_idle_buildings_pay_no_wages() -> void:
 	Sim.fill_queue(steps, t[1], mill2, "mill", T0 + 600)
 	var at := T0 + 600
 	while at < T0 + 3600:
-		at += 7.0
+		at = minf(at + 7.0, T0 + 3600)
 		Sim.settle(steps, t[1], at)
 	Sim.settle(steps, t[1], T0 + 3600)
-	_check(int(Sim.stats(steps).spending.wages) == 288 + 48, "same wages when playing in 7-second steps")
+	_check(int(Sim.stats(steps).spending.wages) == 28800 + 4800, "same wages when playing in 7-second steps")
 
 
 func test_halted_building_keeps_workers() -> void:
@@ -703,7 +705,7 @@ func test_dev_cash_tools() -> void:
 	var data := _data()
 	var state := Sim.new_game(data, T0)
 	Sim.dev_add_cash(state, 1000)
-	_check(state.profile.currency == 1500, "dev: add cash")
+	_check(state.profile.currency == 50000 + 1000, "dev: add cash (in cents)")
 	Sim.dev_set_cash(state, -250)
 	_check(state.profile.currency == -250, "dev: set cash (negative to test debt)")
 	_check(Sim.stats(state).income.sales == 0 and Sim.stats(state).spending.construction == 0, "dev cash isn't counted as income or spending")
@@ -738,13 +740,13 @@ func test_history_and_cash_flow() -> void:
 	Sim.build(state, data, "farm", Vector2i(3, 3), T0 + 40)  # spend 100
 	Sim.settle(state, data, T0 + 60)
 	_check(Sim.stats(state).history.size() == 2, "a new point after a minute")
-	_check(int(Sim.stats(state).history[-1].cash) == 400, "points record cash")
+	_check(int(Sim.stats(state).history[-1].cash) == 40000, "points record cash")
 	Sim.settle(state, data, T0 + 100_000)
 	_check(Sim.stats(state).history.size() == 3, "time away is one point, not one per minute")
 	var flow := Sim.cash_flow(state, 3600, T0 + 100_000)
 	_check(flow.spending == 0 and is_equal_approx(flow.seconds, 99_940.0), "\"last hour\" stretches back over the time away (one point), and the farm was bought before that")
 	flow = Sim.cash_flow(state, 200_000, T0 + 100_000)
-	_check(flow.spending == 100 and is_equal_approx(flow.seconds, 100_000.0), "the whole history covers the farm purchase")
+	_check(flow.spending == 10000 and is_equal_approx(flow.seconds, 100_000.0), "the whole history covers the farm purchase")
 	Sim.settle(state, data, T0 + 99_000)
 	_check(Sim.stats(state).history.size() == 3, "a clock that moved backwards adds no point")
 	data.config["stats_history_size"] = 2
@@ -787,7 +789,7 @@ func test_save_round_trip() -> void:
 	Sim.settle(loaded, data, T0 + 5000)
 	var diff := _difference(kept, loaded, "")
 	_check(diff == "" or diff == "last_saved_at", "after an hour more, the loaded game still matches (first difference: %s)" % diff)
-	_check(Sim.sales_last_day(loaded, data, T0 + 5000) == 10, "the tax window remembers sales made before the save")
+	_check(Sim.sales_last_day(loaded, data, T0 + 5000) == 1000, "the tax window remembers sales made before the save")
 
 
 ## Path of the first place two states differ ("" = same). Numbers only need to be equal to 6
@@ -868,8 +870,9 @@ func test_warehouse_buildings() -> void:
 	state.population.current = 2
 	Sim.settle(state, data, T0 + 2)
 	_check(Sim.warehouse_cap(state, data) == 1500, "only 2 people for its 4 jobs: half its room")
+	var paid_before := int(Sim.stats(state).spending.wages)
 	Sim.settle(state, data, T0 + 1002)  # 2 workers x $36/h x 1000 s = $20
-	_check(int(Sim.stats(state).spending.wages) == 20, "warehouse workers are paid even with nothing stored")
+	_check(int(Sim.stats(state).spending.wages) - paid_before == 2000, "warehouse workers are paid even with nothing stored ($20)")
 	state.inventory["wheat"] = 1400
 	state.population.current = 0
 	Sim.settle(state, data, T0 + 1003)
@@ -1062,6 +1065,58 @@ func test_hiring_away_matches_playing() -> void:
 		same = same and Sim.hired(played.buildings[i]) == Sim.hired(away.buildings[i]) and played.buildings[i].storage == away.buildings[i].storage
 	_check(same, "one long absence = playing in 7-second steps (people, hired workers, storage, cash)")
 	_check(Sim.hired(away.buildings[4]) == 2 and Sim.hired(away.buildings[5]) == 2, "the buildings with bonuses were filled")
+
+
+## Retail prices come from costs (plan.md §5.11): ingredients + standard wages + building share
+## (pays back in payback_hours), ÷ units, ÷ (1 - typical tax). In cents, rounded.
+func test_cost_based_prices() -> void:
+	var data := _bonus_data()  # minimum wage $15
+	data.resources.wheat.erase("price")
+	data.resources.flour.erase("price")
+	data.config["pricing"] = {"payback_hours": 10, "typical_tax_rate": 0.2}
+	# crew_farm: 2 workers, build cost 0, 10 wheat per 60 s. Per batch: wages 2 x $15 x 1/60 h
+	# = $0.50; nothing to pay back. $0.50 / 10 = $0.05, / 0.8 = $0.0625 -> 6 cents.
+	data.buildings.erase("farm")
+	data.buildings.erase("slow_farm")
+	_check(Sim.unit_price(data, "wheat") == 6, "wheat: (wages) / units / (1 - tax), rounded to the cent")
+	data.buildings.crew_farm["build_cost"] = 600  # $600 over 10 h = $1 per 60 s batch
+	_check(Sim.unit_price(data, "wheat") == 19, "a building share is added: ($0.50 + $1) / 10 / 0.8 = $0.1875 -> 19 cents")
+	# crew_mill: 3 workers, 10 wheat -> 8 flour in 90 s, build cost 0. Per batch: 10 x $0.19 +
+	# 3 x $15 x 0.025 h = $1.90 + $1.125 = $3.025, / 8 = $0.378, / 0.8 = $0.4727 -> 47 cents.
+	data.buildings.erase("mill")
+	data.buildings.erase("slow_mill")
+	_check(Sim.unit_price(data, "flour") == 47, "flour includes its wheat at wheat's price")
+	data.resources.flour["price"] = 3
+	_check(Sim.unit_price(data, "flour") == 300, "a fixed price in resources.json wins ($3)")
+	var state := Sim.new_game(data, T0)
+	state.inventory["wheat"] = 10
+	_check(int(Sim.sell(state, data, "wheat", 10, T0).gross) == 190, "selling uses the worked-out price (10 x 19 cents)")
+	state.profile.currency = 100000  # $1,000, enough for the $600 farm
+	var farm :=Sim.find_building(state, Sim.build(state, data, "crew_farm", Vector2i(5, 5), T0).building_id)
+	Sim.set_bonus(state, data, farm.id, "big", T0)
+	_check(Sim.unit_price(data, "wheat") == 19, "a player's own bonus never changes the price")
+
+	var real := {"resources": GameDataScript.load_json("res://data/resources.json"),
+		"buildings": GameDataScript.load_json("res://data/buildings.json"),
+		"config": GameDataScript.load_json("res://data/game_config.json")}
+	_check(Sim.unit_price(real, "wheat") > 0 and Sim.unit_price(real, "flour") > Sim.unit_price(real, "wheat") and Sim.unit_price(real, "bread") > Sim.unit_price(real, "flour"), "real data: every product has a price, and processed goods are worth more")
+	print("  (real prices: wheat %d, flour %d, bread %d cents)" % [Sim.unit_price(real, "wheat"), Sim.unit_price(real, "flour"), Sim.unit_price(real, "bread")])
+
+
+## Version 3 saves counted dollars; version 4 counts cents.
+func test_old_save_money_becomes_cents() -> void:
+	var data := _data()
+	var state := Sim.new_game(data, T0)
+	var old := JSON.parse_string(SaveFormat.to_text(state, T0)) as Dictionary
+	old.save_version = 3
+	old.profile.currency = 5750
+	old["sales_log"] = [[T0, 120]]
+	old.stats.spending.wages = 80
+	old.stats.history = [{"t": T0, "cash": 5750, "income": 0, "spending": 80}]
+	var result := SaveFormat.from_text(JSON.stringify(old), data)
+	var s: Dictionary = result.state if result.ok else {}
+	_check(result.ok and int(s.profile.currency) == 575000, "cash: $5,750 becomes 575000 cents")
+	_check(int(s.sales_log[0][1]) == 12000 and int(s.stats.spending.wages) == 8000 and int(s.stats.history[0].cash) == 575000, "the tax window, statistics and graphs too")
 
 
 ## The real data files must be valid: every recipe uses known resources, numbers make sense.

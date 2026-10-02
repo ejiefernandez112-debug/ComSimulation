@@ -153,9 +153,16 @@ static func number(value: int) -> String:
 	return ("-" if value < 0 else "") + digits + out
 
 
-## Money in dollars: "$1,250", or "-$202" when in debt. Use this wherever cash is shown.
-static func money(value: int) -> String:
-	return ("-$" if value < 0 else "$") + number(absi(value))
+## Money, from whole CENTS (how the game rules keep it): 125050 -> "$1,250.50", or "-$202.00"
+## when in debt. Use this wherever cash is shown.
+static func money(cents: int) -> String:
+	var whole := absi(cents)
+	return ("-$" if cents < 0 else "$") + number(whole / 100) + ".%02d" % (whole % 100)
+
+
+## Money from an amount in dollars, like the data files and wages per hour use (15.0 -> "$15.00").
+static func dollars(amount: float) -> String:
+	return money(roundi(amount * 100.0))
 
 
 ## "2m 05s" / "45s" / "1h 20m" / "2d 03h" for time left (or time away).

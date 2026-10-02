@@ -222,13 +222,13 @@ func tax_bracket() -> Dictionary:
 	return Simulation.tax_bracket(state, data(), TimeService.now())
 
 
-## Developer tools only (the dev panel in scenes/debug/, test builds only).
-func dev_set_cash(amount: int) -> Dictionary:
-	return _after(Simulation.dev_set_cash(state, amount))
+## Developer tools only (the dev panel in scenes/debug/, test builds only). Amounts in dollars.
+func dev_set_cash(dollars: float) -> Dictionary:
+	return _after(Simulation.dev_set_cash(state, Simulation.cents(dollars)))
 
 
-func dev_add_cash(amount: int) -> Dictionary:
-	return _after(Simulation.dev_add_cash(state, amount))
+func dev_add_cash(dollars: float) -> Dictionary:
+	return _after(Simulation.dev_add_cash(state, Simulation.cents(dollars)))
 
 
 ## level: "low", "medium" or "high" (see staffing_levels in game_config.json).
@@ -247,8 +247,20 @@ func sell(resource_id: String, qty: int) -> Dictionary:
 
 # --- Read-only questions for the UI ---
 
+## Cash, in cents (UITheme.money shows it as "$5,750.00").
 func currency() -> int:
 	return int(state.profile.currency)
+
+
+## What one unit sells for at the Retailer right now, in cents, worked out from its costs
+## (plan.md §5.11).
+func unit_price(resource_id: String) -> int:
+	return Simulation.unit_price(data(), resource_id)
+
+
+## A building type's price, in cents (buildings.json lists it in dollars).
+func build_cost(type_id: String) -> int:
+	return Simulation.cents(float(GameData.buildings.get(type_id, {}).get("build_cost", 0)))
 
 
 func population() -> int:

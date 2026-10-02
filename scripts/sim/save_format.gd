@@ -54,7 +54,29 @@ static func _migrate(state: Dictionary, version: int, data: Dictionary) -> void:
 			b["hired"] = 0
 		Simulation._hire(state, data, float(state.get("settled_at", 0.0)))
 		version = 3
+	if version < 4:
+		# Version 4: money is kept in whole cents (plan.md §5.11). Older saves counted dollars.
+		_dollars_to_cents(state)
+		version = 4
 	state["save_version"] = version
+
+
+## Every money amount in a version 3 save, from dollars to cents: cash, the part-cent wage
+## carry, the tax window's sales, and the statistics (money in / out, sales by item, graphs).
+static func _dollars_to_cents(state: Dictionary) -> void:
+	state.profile.currency = int(state.profile.currency) * 100
+	state["wage_carry"] = float(state.get("wage_carry", 0.0)) * 100.0
+	for entry in state.get("sales_log", []):
+		entry[1] = int(entry[1]) * 100
+	var stats: Dictionary = state.get("stats", {})
+	for group in ["income", "spending", "sales_by_item"]:
+		var amounts: Dictionary = stats.get(group, {})
+		for key in amounts:
+			amounts[key] = int(amounts[key]) * 100
+	for point in stats.get("history", []):
+		for key in ["cash", "income", "spending"]:
+			if point.has(key):
+				point[key] = int(point[key]) * 100
 
 
 ## Puts the starting kit's warehouse where the kit says, or on the first free tile.

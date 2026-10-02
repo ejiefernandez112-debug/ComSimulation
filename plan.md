@@ -94,7 +94,7 @@ These are cheap now and very expensive to retrofit later. Include them in instru
 
 ### 5.2 Economy / Market — Three Sale Channels
 1. **Retailer (NPC)** — instant sell, set/slow-drifting price, likely demand-capped. **Only channel in Phases 1–3** (apart from Dock export contracts once the Dock unlocks, §5.11).
-2. **Market/Exchange (player-driven)** — real-time AMM pricing (same mechanic as the Currency/Stock Exchange prototypes), **3% fee per trade** paid by the seller (§5.9). **Phase 4.**
+2. **Market/Exchange (player-driven)** — where players buy and sell goods **fast**, with no partner needed; real-time AMM pricing (same mechanic as the Currency/Stock Exchange prototypes), **3% fee per trade** paid by the seller (§5.9). **Phase 4.**
 3. **Contract (player-to-player)** — fixed-price posted offers, **no market fee**; goods go through the **Dock** (§5.11). With in-game buyers once the Dock unlocks; with other players from **Phase 4.**
 - Any resource tier can be sold; price should still increase meaningfully per tier so processing is worth doing.
 
@@ -261,8 +261,9 @@ Everything stays **one calculation**, never a replay. Anything that changes powe
 
 | Charge | What | When | Status |
 |---|---|---|---|
-| **Sales tax** | Progressive tax on Retailer sales, taken from the proceeds; later also Dock export contracts (§5.11) | At each sale | ✅ Built 2026-10-02 (Retailer) |
-| **Market fee** | **3% per trade** on the player market, paid by the seller | At each trade | Phase 4 (`market_fee` already in `game_config.json`, unused) |
+| **Sales tax** | Progressive tax on Retailer sales, taken from the proceeds | At each sale | ✅ Built 2026-10-02 |
+| **Market fee** | **3% per trade** on the player market, paid by the seller; counts as the Market's sales tax | At each trade | Phase 4 (`market_fee` already in `game_config.json`, unused) |
+| **Contract tax** | Flat, below 3% (placeholder 1.5%) on Dock export contracts (§5.11) | At each contract sale | Later, with the Dock |
 
 **Progressive daily-sales tax** (all PLACEHOLDERS, in `game_config.json` → `sales_tax_brackets`, `sales_tax_window_hours`):
 - The rate depends on how much the company sold to the Retailer in the **last 24 hours** (a rolling window, so a quiet day brings the rate back down):
@@ -276,7 +277,7 @@ Everything stays **one calculation**, never a replay. Anything that changes powe
 
 - **Marginal, like income-tax brackets:** each part of a sale pays the rate of the bracket it falls in, so selling more never leaves you with less money
 - **Taxes grow as the company grows** automatically: more buildings → more sales → higher brackets. No separate "company size" count is needed (this replaced the earlier proposal of 5% + 1% per building)
-- **Market trades pay the 3% fee only**, not sales tax as well (one charge per sale keeps it understandable)
+- **Market trades pay the 3% fee only**, not sales tax as well: the fee *is* the Market's sales tax (confirmed 2026-10-02), so each sale is taxed once
 - **No property tax or profit tax** for now
 - **Where it shows:** the sell message ("Sold 100 Bread for $744 ($56 sales tax)"); Stats → Cash flow ("Sales tax" under money out, plus a box with 24 h sales, the current rate and the next bracket)
 - **Rules:** `Simulation.sell`, `sales_tax`, `tax_bracket` in `scripts/sim/simulation.gd`; sales are logged in `state.sales_log` as [time, amount], entries older than the window are dropped
@@ -322,15 +323,46 @@ Still to decide: whether bracket changes are announced in advance once the serve
 ### 5.11 Dock — Export & Import (planned 2026-10-02, later in the game; not built)
 
 A coastal building, inspired by Tropico's docks. Unlocked later in the game (when exactly is TBD).
+
+**Why it exists: to get players dealing with each other.** Selling by direct contract through the Dock is **cheaper** than selling on the Market, so players are rewarded for finding trade partners instead of selling to an anonymous market (decided 2026-10-02). The Market stays the quick, convenient option.
 - **Stores goods like a warehouse:** its room adds to the one shared stock (§5.10)
 - **Fixed workers**, like the warehouse (number TBD)
 - **One dock at first**; more may be allowed later
 - **Export and import any goods:** raw resources, in-between goods (Flour) and finished products
 - **Export = a contract signed directly with the buyer**, so there is **no 3% market fee** (that fee is only for selling on the Market, §5.9). That is the dock's advantage. Before live players exist (Phase 4) the buyers are in-game companies; from Phase 4 they can be other players (Contract channel, §5.2)
-- **Export contracts still pay sales tax** (decided 2026-10-02): like in a real country, all sales are taxable. Same progressive brackets as the Retailer, and contract sales count toward the same 24-hour total (otherwise splitting sales between channels would dodge the higher brackets)
+- **Export contracts pay a flat, low contract tax** (decided 2026-10-02): all sales are taxable, so contracts are too, but at a flat rate **below the Market's 3%** (PLACEHOLDER **1.5%**, later `contract_tax` in `game_config.json`). Not the Retailer's brackets: those reach 8–22% once a company sells more than $5,000 a day, which would make the Dock dearer than the Market for every big company
+- **Contract price limits** (decided 2026-10-02, against cheating): a contract price that is unrealistically low or high is refused, so players can't use contracts to pass money between their own accounts (e.g. "selling" 1 Wheat for $50,000). Where the limits sit is TBD (Section 11)
 - **Prices follow the cost per unit:** what it costs to make a good sets its export and import price, so a finished product is worth more than the raw materials that went into it (respecting the conversion ratios in §5.4)
 - **Cost per unit = the running costs of making it** (decided 2026-10-02): ingredients, wages, and electricity (what the power costs), plus water if a water utility is added later. **Not** the building's construction cost
 - **Parked for later** (see Section 11): ships and their timing, placing it on the coast, when it unlocks
+
+### 5.11 Prices: cost-based, worked out live (decided 2026-10-02)
+
+**Why:** the first fixed prices (Wheat $2, Flour $4, Bread $8) made raw wheat the best business: the Farm paid for itself in 1.9 hours, the Mill in 14 and the Bakery in 30, so processing didn't pay. Prices now follow a rule, so every building pays off the same way, and later costs (power, water) flow into prices by themselves.
+
+**The formula** (Retail price of one unit; for the building that makes it, at full staff):
+
+> **Price = (ingredients + wages + building share + later power/water) ÷ units made ÷ (1 − typical tax rate)**
+
+1. **Ingredients** at their own price (flour's cost includes the wheat you could have sold instead)
+2. **Wages** for a standard crew: `max_workers` at the **minimum wage**. A player's own bonuses never raise prices: they cut that player's profit, so they stay a real choice
+3. **Building share** = build cost ÷ **payback time**, for the batch's duration. **Payback = 12 hours of production** (one game day, `pricing.payback_hours`): every production building pays for itself in 12 hours at full staff
+4. **Power and water** (Phase 2/3): their cost per batch is added the same way, so a rise in the electricity price raises every product that uses power
+5. **Tax**: divided by (1 − **10%**, `pricing.typical_tax_rate`), so a typical company keeps that profit after sales tax; big companies in higher brackets keep less (the tax's job)
+
+**Worked out live** by the game rules from the data (`Simulation.unit_price`), never typed in by hand: change a wage, a build cost or a timer, and prices follow. Later, dynamic prices multiply this by supply and market mood (see Section 11). An item can have a fixed `price` (dollars) in `resources.json`, which wins over the formula: for goods no building makes, and in tests.
+
+**Cents:** prices and all money have cents, like a real bank balance ("$5,750.00"). Internally money is stored as whole **cents** (575000), so adding and subtracting never drifts. Unit prices are rounded to the cent; a sale's total is units × unit price.
+
+**Today's numbers** (PLACEHOLDERS, from the formula):
+
+| Product | Built from | Price | Building's profit / hour |
+|---|---|---|---|
+| Wheat | ($120 wages + $166.67 building share) ÷ 600 wheat, ÷ 0.9 | **$0.53** | Farm ≈ $167 (pays back $2,000 in 12 h) |
+| Flour | (400 wheat at $0.53 + $120 + $416.67) ÷ 320 flour, ÷ 0.9 | **$2.60** | Mill ≈ $417 ($5,000 in 12 h) |
+| Bread | (192 flour at $2.60 + $120 + $666.67) ÷ 144 bread, ÷ 0.9 | **$9.92** | Bakery ≈ $667 ($8,000 in 12 h) |
+
+**Selling** (the Retail building, next): you sell **whole batches** (e.g. 24 bread), with the price shown per batch, to keep it simple.
 
 ## 6. UI/UX Screens
 
@@ -356,7 +388,7 @@ A coastal building, inspired by Tropico's docks. Unlocked later in the game (whe
 - **Quest Log** (Phase 1b) — active tutorial + daily/weekly quests, progress, claim-reward button
 - **Profile** (Phase 1b) — XP/level, badges earned (Phase 4 adds rating)
 - **Persistent HUD** — currency balance, XP bar, active quest progress (compact), Population (current/capacity), notification icons
-  - ✅ Phase 1a part built 2026-10-01: top-right resource bars (cash with count-up, population, warehouse fill) plus a chip per item; short messages ("toasts") at the top. XP/quests arrive with Phase 1b. File: `scenes/ui/hud.gd`
+  - ✅ Phase 1a part built 2026-10-01: top-right resource bars (cash with count-up, workers needed / people — red when there are more jobs than people, tap or point at it for the breakdown incl. room in homes — and warehouse fill) plus a chip per item; short messages ("toasts") at the top. XP/quests arrive with Phase 1b. File: `scenes/ui/hud.gd`
   - ✅ **Bottom menu bar** (2026-10-01, Tropico-style), bottom centre: paper cards with an icon, clipped onto blue folders with the name underneath; pointing at a card lifts it. Cards: Build, Warehouse, Market, Menu (Settings). Market is greyed with a lock until that screen exists (tapping says "coming soon"); Warehouse opens the stock list since 2026-10-02. It slides away while a building's action bar, Placement Mode or the Build window is using the bottom of the screen. The card list is at the top of `scenes/ui/menu_bar.gd`; art in `assets/ui/menu_tile.svg` / `menu_card.svg`
 - **UI look** — one theme for everything (`scenes/ui/ui_theme.gd`): chunky glossy buttons in 5 colours, cream windows, bold white outlined text; all art is SVG in `assets/ui/` (easy to restyle). Pop-up windows share `scenes/ui/modal_window.gd` (centred on wide screens, bottom sheet on tall ones)
 
@@ -478,7 +510,8 @@ A hidden dev menu (key combo on PC, secret tap sequence on mobile) for testing t
 - [ ] Localization — which languages, and from which phase
 - [ ] Firebase vs. Nakama — not needed until Phase 4
 - [ ] Whether Market/Exchange stock-style companies get flavored to match in-game industries, or stay generic
-- [ ] Exact Retailer pricing curve/demand-cap numbers per resource tier (must respect the 5.4 conversion ratios)
+- [x] Retailer prices → **cost-based formula, worked out live, 12-hour payback, cents allowed** (decided 2026-10-02, 5.11)
+- [ ] Retail building: instant sale, pre-built, no workers? (proposed 2026-10-02; selling in whole batches)
 - [ ] Land/grid size and expansion cost curve — and whether premium currency may buy land (see Section 7 caution)
 - [ ] Quest content — specific tutorial quest list and daily/weekly quest pool
 - [ ] Onboarding/tutorial flow (concrete first-5-minutes script)
@@ -503,7 +536,10 @@ A hidden dev menu (key combo on PC, secret tap sequence on mobile) for testing t
 - [ ] Dock (5.11): when it unlocks (player level, Construction Office level, phase), its build cost and number of workers
 - [x] Dock (5.11): how "cost per unit" is worked out → **running costs only: ingredients, wages, electricity (and water if added later); not the construction cost** (decided 2026-10-02)
 - [x] Dock (5.11): do export contracts pay sales tax? → **Yes, all sales are taxable**; same brackets and same 24-hour total as Retailer sales (decided 2026-10-02)
-- [ ] Market trades: §5.9 says they pay the 3% fee only, not sales tax. Does "all sales are taxable" change that (fee + sales tax)?
+- [x] Market trades: fee + sales tax, or fee only? → **Fee only: the 3% market fee *is* the Market's sales tax**, so every sale is still taxed once (decided 2026-10-02)
+- [x] Dock (5.11): which tax do export contracts pay? → **A flat contract tax below the Market's 3% (placeholder 1.5%)**, not the Retailer brackets, so the Dock is always the cheapest way to sell and players are rewarded for dealing with each other (decided 2026-10-02)
+- [x] Dock (5.11), Phase 4 anti-abuse: a cheap direct contract could be used to pass money between a player's own accounts (selling at a silly price) → **contract prices have a floor and a cap; unrealistically low or high prices are refused** (decided 2026-10-02)
+- [ ] Dock (5.11): what the contract price limits are measured from (cost per unit? recent Market price?) and how wide they are (e.g. 50%–200%)
 - [ ] Dock (5.11): should imports cost a little more than making the good yourself, so the production chain stays worth building?
 
 ## 12. Setup Checklist (from-scratch walkthrough)
@@ -539,6 +575,9 @@ Both are functional, self-contained HTML/JS artifacts used to validate the tradi
 **2026-10-02 (Dock planned):**
 - New planned building, the Dock (5.11): stores goods like a warehouse, fixed workers, one at first; exports through direct contracts (no 3% market fee) and imports any goods; prices follow the cost per unit. Ships, coast placement and unlock parked (Section 11). Not built
 - Export contracts pay sales tax (all sales are taxable), counted in the same 24-hour total as Retailer sales; cost per unit = running costs (ingredients, wages, electricity, later maybe water), not the construction cost
+- The 3% market fee counts as the Market's sales tax (fee only, no bracket tax on top)
+- The Dock's purpose is getting players to deal with each other: export contracts pay a flat contract tax below 3% (placeholder 1.5%) instead of the brackets, so direct deals are always the cheapest way to sell
+- Contract prices get a floor and a cap (unrealistic prices refused) so contracts can't move money between a player's own accounts; limits TBD
 
 **2026-10-02 (whole workers, hiring by wage bonus):**
 - Workers are whole people tied to their building (`hired` per building), replacing the even share; full or idle buildings keep them, unpaid (5.6)
