@@ -90,7 +90,7 @@ These are cheap now and very expensive to retrofit later. Include them in instru
 - **Offline/idle production:** included from Phase 1a — elapsed real time simulates completed jobs on reopen, capped by the jobs already queued and by output storage capacity
 - **Design tension (resolved 2026-10-01):** target offline window is ~1–2 hours. Extractors produce continuously until storage is full; processor batches/timers were scaled ×4 with queues of 8 (see 5.4). Implemented in `scripts/sim/simulation.gd`.
 - **Land/grid:** bounded plot, expandable (spend currency) — details deferred
-- **Building upgrades (Phase 2):** cost currency + time, improve batch size/timer/storage/recipes — capped by Construction Office level (see 5.8)
+- **Building upgrades (Phase 2):** cost **construction materials + laborers** from the Construction Office (no money fee; decided 2026-10-02, §5.15) + time, improve batch size/timer/storage/recipes — capped by Construction Office level (see 5.8)
 
 ### 5.2 Economy / Market — Three Sale Channels
 1. **Retailer (NPC)** — instant sell, set/slow-drifting price, likely demand-capped. **Only channel in Phases 1–3** (apart from Dock export contracts once the Dock unlocks, §5.11).
@@ -262,8 +262,7 @@ Everything stays **one calculation**, never a replay. Anything that changes powe
 | Charge | What | When | Status |
 |---|---|---|---|
 | **Sales tax** | Progressive tax on Retailer sales, taken from the proceeds | At each sale | ✅ Built 2026-10-02; to be replaced by the Company Tax (5.9.1) |
-| **Market fee** | **3% per trade** on the player market, paid by the seller; counts as the Market's sales tax | At each trade | Phase 4 (`market_fee` already in `game_config.json`, unused) |
-| **Contract tax** | Flat, below 3% (placeholder 1.5%) on Dock export contracts (§5.11) | At each contract sale | Later, with the Dock |
+| **Market fee** | **3% per trade** on the player market, paid by the seller, **on top of** the Company Tax (§5.9.1): the price of selling fast to anyone | At each trade | Phase 4 (`market_fee` already in `game_config.json`, unused) |
 
 **Progressive daily-sales tax** (all PLACEHOLDERS, in `game_config.json` → `sales_tax_brackets`, `sales_tax_window_hours`):
 - The rate depends on how much the company sold to the Retailer in the **last 24 hours** (a rolling window, so a quiet day brings the rate back down):
@@ -277,7 +276,7 @@ Everything stays **one calculation**, never a replay. Anything that changes powe
 
 - **Marginal, like income-tax brackets:** each part of a sale pays the rate of the bracket it falls in, so selling more never leaves you with less money
 - **Taxes grow as the company grows** automatically: more buildings → more sales → higher brackets. No separate "company size" count is needed (this replaced the earlier proposal of 5% + 1% per building)
-- **Market trades pay the 3% fee only**, not sales tax as well: the fee *is* the Market's sales tax (confirmed 2026-10-02), so each sale is taxed once
+- ~~Market trades pay the 3% fee only~~ — **superseded 2026-10-02 by the Company Tax (§5.9.1):** every sale in every channel pays the Company Tax; the Market adds its 3% fee, Dock contracts add nothing
 - **No property tax or profit tax** for now (a profit tax by company size is planned to replace these brackets: 5.9.1)
 - **Where it shows:** the sell message ("Sold 100 Bread for $744 ($56 sales tax)"); Stats → Cash flow ("Sales tax" under money out, plus a box with 24 h sales, the current rate and the next bracket)
 - **Rules:** `Simulation.sell`, `sales_tax`, `tax_bracket` in `scripts/sim/simulation.gd`; sales are logged in `state.sales_log` as [time, amount], entries older than the window are dropped
@@ -323,7 +322,7 @@ Still to decide: whether bracket changes are announced in advance once the serve
 - **No minimum tax for now**: selling prices always cover costs and nothing can be bought yet, so a sale can't make a loss. Add a small minimum (e.g. 1% of sales) when buying goods arrives
 - **Moving up must feel like a reward, not a punishment:** each size will later unlock things (new buildings, more building slots, bigger loans, better contracts). Until unlocks exist, only the tax changes
 - **Where it shows:** a size badge in the HUD; Stats → "Company score $85,000 · next: Small Business at $50,000…" with a progress bar; the Build Menu warns when a building would move you up; the sell message and bills show the tax
-- **Knock-on changes when built:** the selling price formula (§5.12) assumes a 10% tax on sales and must switch to a tax on profit; the Dock's contract tax and the Market fee (§5.11, Phase 4) were compared against the brackets and need a second look
+- **Knock-on changes when built:** the selling price formula (§5.12) assumes a 10% tax on sales and must switch to a tax on profit; the Dock and the Market were re-decided for it (2026-10-02): **Company Tax on every sale in every channel** (Retailer, Market, Dock contracts); the **Market adds its 3% fee**; **Dock contracts pay no extra charge** (the separate 1.5% contract tax is dropped), so direct deals stay 3% cheaper than the Market
 - Example, one cycle with $3,000 sales and goods made for $1,800 ($1,200 profit): Startup pays $120, Company $240, Conglomerate $360
 
 **Critique that shaped it (2026-10-02):** fixed tiers make a jump at each limit (one more farm can raise the tax on *all* profit). Accepted on purpose because a size is something players will want for its rewards; a smooth rate (10% + 1% per $20k of assets) was the alternative.
@@ -368,7 +367,7 @@ A coastal building, inspired by Tropico's docks. Unlocked later in the game (whe
 - **One dock at first**; more may be allowed later
 - **Export and import any goods:** raw resources, in-between goods (Flour) and finished products
 - **Export = a contract signed directly with the buyer**, so there is **no 3% market fee** (that fee is only for selling on the Market, §5.9). That is the dock's advantage. Before live players exist (Phase 4) the buyers are in-game companies; from Phase 4 they can be other players (Contract channel, §5.2)
-- **Export contracts pay a flat, low contract tax** (decided 2026-10-02): all sales are taxable, so contracts are too, but at a flat rate **below the Market's 3%** (PLACEHOLDER **1.5%**, later `contract_tax` in `game_config.json`). Not the Retailer's brackets: those reach 8–22% once a company sells more than $5,000 a day, which would make the Dock dearer than the Market for every big company
+- **Export contracts pay the Company Tax and nothing else** (decided 2026-10-02, §5.9.1): all sales are taxable, so contracts pay the Company Tax on their profit like every sale, but **no 3% market fee and no extra contract tax**. So a direct deal is always 3% cheaper than the Market. (Replaces the earlier flat 1.5% contract tax, which was set against the old sales brackets)
 - **Contract price limits** (decided 2026-10-02, against cheating): a contract price that is unrealistically low or high is refused, so players can't use contracts to pass money between their own accounts (e.g. "selling" 1 Wheat for $50,000). Where the limits sit is TBD (Section 11)
 - **Prices follow the cost per unit:** what it costs to make a good sets its export and import price, so a finished product is worth more than the raw materials that went into it (respecting the conversion ratios in §5.4)
 - **Cost per unit = the running costs of making it** (decided 2026-10-02): ingredients, wages, and electricity (what the power costs), plus water if a water utility is added later. **Not** the building's construction cost
@@ -480,6 +479,43 @@ If you sold the flour instead: 32 × $2.75 = $88 → baking earns $135 more
 - **The breakdown opens with a tap** (decided 2026-10-02): the window shows "Cost per unit $1.83 ▸"; tapping it shows the lines. A ▲ / ▼ for the change since an hour ago is still undecided (Section 11)
 
 **How the rules can keep the tags exact** (for building it): per unit, wages = `max_workers` × wage per worker × batch time ÷ units (the same whatever the staffing, see above), and water = `water_per_hour` × batch time × price ÷ units. So a finished batch's cost can be worked out the moment it finishes, without tracking every second; the save stores each stock's **total cost** next to its amount (average = total ÷ amount).
+
+### 5.15 Building Upgrades & the Construction Company (planned 2026-10-02, Phase 2; not built)
+
+**Upgrades cost materials + labor, not a money fee** (decided 2026-10-02). Realistic: you buy the materials (from your own production, an in-game supplier, or from other players from Phase 4) and pay the laborers who build it.
+
+**Construction materials** (new goods, made by ordinary production buildings, priced by the cost-based formula, §5.12):
+
+| Material | Made by | From |
+|---|---|---|
+| Wood | Lumber Camp (extractor) | Trees |
+| Planks | Sawmill | Wood |
+| Bricks | Brick Kiln | Clay (Clay Pit) |
+| Cement | Cement Plant (uses power) | Limestone (Quarry) |
+| Steel | Steel Mill (uses power) | Iron ore + Coal (Coal Mine, §5.5) |
+
+- **Simple rule: the higher the level, the more materials and the bigger the crew** (decided 2026-10-02). Each building has a **base cost** for Level 2 in `buildings.json`; each next level multiplies it by a growth factor (`upgrade_growth` in `game_config.json`, PLACEHOLDER ×1.6). New material types join as levels go up: Level 2 Planks + Bricks, Level 3 adds Cement, Level 4+ adds Steel. Crew size and hours grow the same way
+- **Material buildings are ordinary buildings every player can build**, but not yet: they arrive in a later phase with upgrades (not in the current early stage)
+- Each level says what it improves (batch, timer, storage, workers; the Warehouse's Level 2 doubles its workers, §5.10)
+- Still capped by the Construction Office's level (§5.8)
+
+**The Construction Office is the construction company** (decided 2026-10-02):
+- It has **laborers**, workers from the town's population
+- Every **upgrade** needs some laborers for some time (e.g. 5 laborers for 6 hours). Laborers on a project are tied up until it's done, so the crew size limits how many projects run at once. A higher Construction Office level gives a bigger crew
+- **Laborers are paid per project, not per hour:** the fee (laborers × wage × hours) is paid once when the project starts, so a project can never stall halfway. Idle laborers cost nothing. The fee goes to people in the game, so it's a **money sink**
+- Materials are also taken from the warehouse when the project starts (like a job's ingredients)
+- Whether **new buildings** also need the construction company and materials (today: cash + 5 seconds) is still open (Section 11)
+
+**A building stops while it is upgraded** (decided 2026-10-02). That makes upgrading a real decision (production is lost), instead of something you always do.
+- **"Upgrade after this batch"** (default): the batch being made finishes, then the upgrade starts. Nothing is lost
+- **"Start now":** the batch being made is cancelled with the usual rule (half its ingredients back, `cancel_refund_in_progress`)
+- Queued jobs keep their ingredients and continue after the upgrade; goods in storage can still be collected
+- No workers or wages while upgrading (like Suspend, §5.10); finishing offline is one calculation from timestamps (`upgrade_started_at` / `upgrade_finishes_at`)
+
+**Hiring out idle laborers** (idea 2026-10-02, Phase 4): a player can **post** their idle laborers, like a Market listing (how many, price per hour). Players without enough laborers can hire them for a project. The owner earns the price and pays the laborers' wages; the laborers are tied up until the project is done.
+- Contract-style, so it should follow the Dock rules: Company Tax only, no market fee (§5.11), and **price limits** against passing money between one's own accounts
+- Reliability can feed Rating/Reputation (§5.3)
+- Before Phase 4 there are no other players, so an **in-game contractor** could fill the same role (pricier than your own crew)
 
 ## 6. UI/UX Screens
 
@@ -654,14 +690,17 @@ A hidden dev menu (key combo on PC, secret tap sequence on mobile) for testing t
 - [ ] Do Graduates stay in Population / count toward Employment Matching, or are they a separate pool?
 - [ ] Specific per-building education-tier requirements for Employees
 - [ ] Construction Office upgrade cost curve and exact level-cap relationship to other buildings
+- [x] Upgrades (5.15): materials and amounts per level → **our own simple rule: base cost × growth factor per level; higher level = more materials and a bigger crew** (decided 2026-10-02). Exact base numbers set when built
+- [ ] Upgrades (5.15): do **new buildings** also need the construction company and materials, or only upgrades? (Maybe cash only for the first, cheap buildings, so a new player is never stuck)
+- [ ] Upgrades (5.15): before Phase 4, where materials come from when your own chain is short (in-game supplier?) and whether an in-game contractor rents out laborers
+- [x] Upgrades (5.15): who can build the material buildings (Lumber Camp, Sawmill, Clay Pit, Brick Kiln, Quarry, Cement Plant, Steel Mill)? → **every player, from the later phase that brings upgrades**; not available in the early stage (decided 2026-10-02)
 - [ ] Population growth rate tuning and House capacity numbers beyond the first Small House
 - [ ] Dock (5.11): ships and their timing (how often, how much they carry, what happens while the player is offline)
 - [ ] Dock (5.11): placement on the coast (needs a new placement rule; Placement Mode only knows the grass plot)
 - [ ] Dock (5.11): when it unlocks (player level, Construction Office level, phase), its build cost and number of workers
 - [x] Dock (5.11): how "cost per unit" is worked out → **running costs only: ingredients, wages, electricity (and water if added later); not the construction cost** (decided 2026-10-02)
 - [x] Dock (5.11): do export contracts pay sales tax? → **Yes, all sales are taxable**; same brackets and same 24-hour total as Retailer sales (decided 2026-10-02)
-- [x] Market trades: fee + sales tax, or fee only? → **Fee only: the 3% market fee *is* the Market's sales tax**, so every sale is still taxed once (decided 2026-10-02)
-- [x] Dock (5.11): which tax do export contracts pay? → **A flat contract tax below the Market's 3% (placeholder 1.5%)**, not the Retailer brackets, so the Dock is always the cheapest way to sell and players are rewarded for dealing with each other (decided 2026-10-02)
+- [x] Taxes per sale channel (re-decided 2026-10-02 for the Company Tax, 5.9.1) → **Company Tax on every sale in every channel; Market adds its 3% fee; Dock contracts add nothing** (no separate contract tax), so dealing directly is always 3% cheaper. Replaces the earlier "Market fee only" and "1.5% contract tax" answers
 - [x] Dock (5.11), Phase 4 anti-abuse: a cheap direct contract could be used to pass money between a player's own accounts (selling at a silly price) → **contract prices have a floor and a cap; unrealistically low or high prices are refused** (decided 2026-10-02)
 - [ ] Dock (5.11): what the contract price limits are measured from (cost per unit? recent Market price?) and how wide they are (e.g. 50%–200%)
 - [ ] Dock (5.11): should imports cost a little more than making the good yourself, so the production chain stays worth building?
@@ -698,6 +737,13 @@ A hidden dev menu (key combo on PC, secret tap sequence on mobile) for testing t
 Both are functional, self-contained HTML/JS artifacts used to validate the trading-mechanic math and UX before porting logic into Godot.
 
 ## 15. Revision Log
+
+**2026-10-02 (sale-channel taxes re-decided for the Company Tax):**
+- Company Tax on every sale in every channel; the Market adds its 3% fee; Dock contracts add nothing. Dropped the 1.5% contract tax and the "Market fee only" rule (5.9, 5.9.1, 5.11)
+
+**2026-10-02 (building upgrades planned):**
+- Upgrades (5.15): materials (Planks, Bricks, Cement, Steel; new construction chain) + laborers from the Construction Office, paid per project; no money fee. A building stops while upgraded ("after this batch" or "start now"). Idea for Phase 4: hire out idle laborers to other players. Not built
+- Material amounts: our own simple rule (base cost × growth per level, more materials and bigger crew at higher levels); material buildings buildable by every player once upgrades arrive
 
 **2026-10-02 (company size and Company Tax planned):**
 - New 5.9.1: Company Tax on profit at a rate set by company size (Startup 10% → Conglomerate 30%, placeholders); size = assets + last 30 days of sales, checked continuously, never goes down; worked out at each sale, collected every 12 h with the water bill; no minimum tax yet. Replaces the 0/8/15/22% sales brackets once built
