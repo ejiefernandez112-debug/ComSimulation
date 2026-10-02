@@ -113,7 +113,17 @@ func _cash_page() -> VBoxContainer:
 	var money_out := _section(page, "All time: money out")
 	_value_row(money_out, "Construction", "out_construction")
 	_value_row(money_out, "Wages", "out_wages")
+	_value_row(money_out, "Sales tax", "out_tax")
 	_value_row(money_out, "Total", "out_total")
+	var tax := _section(page, "Sales tax")
+	_value_row(tax, "Sold to the Retailer, last 24 h", "tax_sold")
+	_value_row(tax, "Your next sale is taxed at", "tax_rate")
+	var how := _body("Progressive: the first $5,000 sold in 24 hours is tax-free, then each part of a sale pays its bracket's rate (8%, 15%, 22%). Selling more never leaves you with less.")
+	how.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	how.custom_minimum_size.x = WIDTH - 90
+	how.add_theme_font_size_override("font_size", 15)
+	how.modulate.a = 0.8
+	tax.add_child(how)
 	return page
 
 
@@ -229,7 +239,14 @@ func _refresh_cash() -> void:
 	_show("in_total", UITheme.money(total_in + int(st.income.demolish)), UP)
 	_show("out_construction", UITheme.money(int(st.spending.construction)))
 	_show("out_wages", UITheme.money(int(st.spending.get("wages", 0))))
-	_show("out_total", UITheme.money(int(st.spending.construction) + int(st.spending.get("wages", 0))), DOWN)
+	_show("out_tax", UITheme.money(int(st.spending.get("tax", 0))))
+	_show("out_total", UITheme.money(int(st.spending.construction) + int(st.spending.get("wages", 0)) + int(st.spending.get("tax", 0))), DOWN)
+	var bracket := Economy.tax_bracket()
+	_show("tax_sold", UITheme.money(int(bracket.sold)))
+	var rate := "%d%%" % roundi(float(bracket.rate) * 100.0)
+	if int(bracket.next_at) > 0:
+		rate += " (next bracket at %s)" % UITheme.money(int(bracket.next_at))
+	_show("tax_rate", rate)
 
 
 ## Builds the chosen graph's lines from the history points (one every minute), plus a point for

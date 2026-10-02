@@ -235,9 +235,9 @@ func test_sell() -> void:
 	var data := _data()
 	var state := Sim.new_game(data, T0)
 	state.inventory["wheat"] = 3
-	_check(not Sim.sell(state, data, "wheat", 5).ok, "can't sell more than you have")
-	_check(not Sim.sell(state, data, "wheat", 0).ok, "can't sell zero")
-	var result := Sim.sell(state, data, "wheat", 3)
+	_check(not Sim.sell(state, data, "wheat", 5, T0).ok, "can't sell more than you have")
+	_check(not Sim.sell(state, data, "wheat", 0, T0).ok, "can't sell zero")
+	var result := Sim.sell(state, data, "wheat", 3, T0)
 	_check(result.ok and result.earned == 6, "3 wheat x 2 = 6")
 	_check(state.profile.currency == 506 and not state.inventory.has("wheat"), "money in, wheat out")
 
@@ -382,7 +382,7 @@ func test_statistics_counters() -> void:
 	_check(int(Sim.stats(state).made.get("wheat", 0)) == 20, "production counted when it happens")
 	Sim.collect(state, data, farm.id, T0 + 125)
 	_check(int(Sim.stats(state).made.get("wheat", 0)) == 20, "collecting doesn't count it twice")
-	Sim.sell(state, data, "wheat", 10)
+	Sim.sell(state, data, "wheat", 10, T0)
 	var st := Sim.stats(state)
 	_check(st.income.sales == 20 and int(st.sales_by_item.wheat) == 20 and int(st.sold.wheat) == 10, "sales counted (money, per item, amount)")
 	Sim.demolish(state, data, farm.id, T0 + 130)
@@ -557,6 +557,73 @@ func test_wages_and_debt() -> void:
 	Sim.set_staffing(building, data, u[2].id, "low", T0)  # the big farm: 4 workers
 	Sim.settle(building, data, T0 + 1000)
 	_check(int(Sim.stats(building).spending.wages) == 40, "a building under construction pays no wages")
+
+
+func test_sales_tax_brackets() -> void:
+	var data := _data()  # wheat sells for $2
+	data.config["sales_tax_brackets"] = [{"from": 0, "rate": 0.0}, {"from": 5000, "rate": 0.08},
+		{"from": 25000, "rate": 0.15}, {"from": 100000, "rate": 0.22}]
+	var state := Sim.new_game(data, T0)
+	state.inventory["wheat"] = 100_000
+	var r: Dictionary = Sim.sell(state, data, "wheat", 2000, T0)  # $4,000: inside the 0% allowance
+	_check(r.tax == 0 and r.earned == 4000 and state.profile.currency == 4500, "first $5,000 a day is tax-free")
+	r = Sim.sell(state, data, "wheat", 1000, T0 + 10)  # $2,000: $1,000 at 0% + $1,000 at 8%
+	_check(r.tax == 80 and r.earned == 1920, "only the part above $5,000 pays 8%")
+	r = Sim.sell(state, data, "wheat", 15000, T0 + 20)  # $30,000 from $6,000 to $36,000
+	_check(r.tax == 19000 * 8 / 100 + 11000 * 15 / 100, "a big sale is split across brackets (8% then 15%)")
+	var bracket := Sim.tax_bracket(state, data, T0 + 20)
+	_check(bracket.sold == 36000 and is_equal_approx(bracket.rate, 0.15) and bracket.next_at == 100000, "bracket status: sold today, rate, next step")
+	_check(Sim.stats(state).spending.tax == 80 + r.tax and Sim.stats(state).income.sales == 36000, "statistics: sales before tax, tax as money out")
+	_check(Sim.sales_tax(state, data, 1000, T0 + 24 * 3600 + 30) == 0, "sales older than 24 hours no longer count")
+	_check(Sim.sales_tax(state, data, 100, T0 + 30) == 15, "preview of the tax on a sale changes nothing")
+
+
+## A town whose 8-worker farm fills its storage (100) after 600 s at full speed.
+func _filling_town() -> Array:
+	var s := _wage_town()
+	s[1].buildings.big_farm["storage_cap"] = 100
+	return s
+
+
+func test_halted_buildings_pay_no_wages() -> void:
+	var s := _filling_town()
+	var state: Dictionary = s[0]
+	var data: Dictionary = s[1]
+	var farm: Dictionary = s[2]
+	Sim.settle(state, data, T0 + 3600)  # away an hour; the farm filled up after 10 minutes
+	_check(int(farm.storage.wheat) == 100 and Sim.is_halted(data, farm), "full storage halts the farm")
+	_check(int(Sim.stats(state).spending.wages) == 48, "wages stopped the moment it filled (600 s x 8 x $36/h = $48), not after the hour")
+	_check(Sim.workers_working(state, data, farm, T0 + 3600) == 0.0 and Sim.employment(state, data, T0 + 3600).jobs == 0, "a halted building's workers go home")
+	Sim.collect(state, data, farm.id, T0 + 3600)
+	Sim.settle(state, data, T0 + 3660)
+	_check(int(farm.storage.get("wheat", 0)) == 10 and not Sim.is_halted(data, farm), "collecting restarts it")
+
+	var t := _filling_town()
+	var steps: Dictionary = t[0]
+	var at := T0
+	while at < T0 + 3600:
+		at += 7.0
+		Sim.settle(steps, t[1], at)
+	_check(int(Sim.stats(steps).spending.wages) == 48, "same wages when playing in 7-second steps")
+
+	var mill := {"type": "x", "blocked": true}
+	data.buildings["x"] = {"category": "processor", "max_workers": 8}
+	_check(Sim.is_halted(data, mill), "a mill with a finished batch and no room is halted too")
+
+
+func test_halted_building_frees_workers() -> void:
+	var s := _filling_town()
+	var state: Dictionary = s[0]
+	var data: Dictionary = s[1]
+	var first: Dictionary = s[2]
+	data.buildings["roomy_farm"] = data.buildings.big_farm.duplicate()
+	data.buildings.roomy_farm["storage_cap"] = 10_000
+	var second := Sim.find_building(state, Sim.build(state, data, "roomy_farm", Vector2i(6, 6), T0).building_id)
+	state.population.current = 8  # 8 people for 16 jobs: both farms at half speed
+	_check(is_equal_approx(Sim.building_speed(state, data, second, T0), 0.5), "8 people for 16 jobs: half speed")
+	Sim.settle(state, data, T0 + 1300)  # the first farm fills after 1,200 s at half speed
+	_check(Sim.is_halted(data, first), "first farm full")
+	_check(is_equal_approx(Sim.building_speed(state, data, second, T0 + 1300), 1.0), "its workers went to the other farm: full speed")
 
 
 func test_dev_cash_tools() -> void:

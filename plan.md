@@ -94,7 +94,7 @@ These are cheap now and very expensive to retrofit later. Include them in instru
 
 ### 5.2 Economy / Market — Three Sale Channels
 1. **Retailer (NPC)** — instant sell, set/slow-drifting price, likely demand-capped. **Only channel in Phases 1–3.**
-2. **Market/Exchange (player-driven)** — real-time AMM pricing (same mechanic as the Currency/Stock Exchange prototypes). **Phase 4.**
+2. **Market/Exchange (player-driven)** — real-time AMM pricing (same mechanic as the Currency/Stock Exchange prototypes), **3% fee per trade** paid by the seller (§5.9). **Phase 4.**
 3. **Contract (player-to-player)** — fixed-price posted offers. **Phase 4.**
 - Any resource tier can be sold; price should still increase meaningfully per tier so processing is worth doing.
 
@@ -139,11 +139,79 @@ _Rescaled 2026-10-01 for the ~1–2h offline window: batches ×4 and timers ×4,
 
 ### 5.5 Industrial Category — Electricity & Employees (Phase 2/3)
 
-- **Electricity** — utility resource, not tradeable/sellable; feeds a shared grid pool; consumed per job start by Industrial buildings; self-sufficient (players must build their own supply, can't buy their way out of a shortage)
-- **Power Plants:**
-  - **Coal Power Plant** — consumes Coal (from a Coal Mine extractor), high output, low build cost, ongoing fuel dependency
-  - **Solar Farm** — no fuel input, high build cost, large plot footprint, low-medium output scaling with count built
-  - (Gas Plant, Wind Turbine, Hydro Dam identified as later additions, not yet committed)
+> **Electricity design planned 2026-10-02, not built yet.** All numbers are PLACEHOLDERS (they will go in `data/*.json`). Scaled to the Phase 1a economy (buildings $2,000–$8,000, wages $15/worker/hour), not to Tropico's.
+
+#### 5.5.1 How power works: a grid, not a stockpile
+- **Electricity** is a utility, not a warehouse item: it can't be stored, carried or sold at the Retailer. It is a **flow**: plants **produce** a steady number of MW, working buildings **use** a steady number of MW
+- **Supply order:** your own plants first, then the public grid (5.5.3) fills the gap, up to your connection size
+- **Short of power:** if plants + grid connection can't cover demand, **every** powered building slows down by the same share (30 MW wanted, 24 MW available → all run at 80%)
+- **One speed rule:** `speed = worker share × power share`. Electricity reuses the existing workers math (5.6), so offline catch-up, the speed display and the halt rule keep working
+- **Halted buildings** (storage full) and buildings with nothing to do use **no power**, just as halted buildings pay no wages
+- **Power use per building:** Flour Mill **3 MW**, Bakery **4 MW**, Wheat Farm **0 MW** (decided 2026-10-02: farms don't need electricity). The balanced 2 farm / 3 mill / 5 bakery chain needs **29 MW**
+- Changes from the earlier plan: power was "consumed per job start" and players had to be "self-sufficient, can't buy their way out". Both replaced by the flow model and the public grid
+
+#### 5.5.2 Power plants
+Each plant has a role; none is simply "the best":
+
+| Plant | When | Build cost | Workers | Fuel | Output | Strength | Weakness |
+|---|---|---|---|---|---|---|---|
+| **Thermal (Coal) Power Plant** | First plant (Phase 2/3) | $15,000 | 6 low-skilled | ~10 coal/min | **40 MW** at full staff | Cheapest to build per MW (~$375/MW), steady | Coal + wages forever; pollution later |
+| **Wind Turbine** | Early–mid | $6,000 | 0–1 | none | ~5 MW average (0–10 MW) | Free to run, small footprint | Output rises and falls with the wind |
+| **Solar Farm** | Mid | $10,000 | 0 | none | 8 MW in daylight, 0 at night | Free to run | Daytime only, big footprint, ~$2,500 per average MW |
+| **Nuclear Plant** | Late (after schools) | ~$120,000 | Professionals (college grads) | uranium (slow) | ~300 MW | Cheapest per MW at scale | Very expensive, needs educated workers |
+| *Hydro Dam (idea)* | Later | TBD | TBD | none | TBD | The island already has a **waterfall** | Only one spot to build it |
+
+**Thermal Power Plant details:**
+- **Output scales with workers** like every other building: the Low/Medium/High staffing choice is its "budget" (fewer workers = less power and lower wages)
+- **Coal** comes from a new **Coal Mine** (an extractor like the Wheat Farm, ~$3,000, 8 low-skilled workers, ~12 coal/min). The plant has its own coal storage (~600 coal = 1 hour) that the player fills from the warehouse
+- **No coal → 0 MW.** The moment coal runs out is predictable, so it works offline like "storage full"
+- **Running cost:** 6 × $15 wages + coal ≈ **$17 per MWh**, cheaper than the grid's ~$25, so building one pays off
+- **Upgrade (later):** oil-fuelled furnace (burns oil instead of coal)
+- Workers are low-skilled for now, because high-skilled workers need schools (5.7). Nuclear is the plant that needs educated workers
+
+#### 5.5.3 Public grid
+**Automatic, no "Buy electricity" button.** It works like a real home connection: the grid covers whatever your plants don't, and you pay for what you use, settled the same way as wages (including offline, and into debt if cash runs out). A buy button with pre-bought blocks was rejected: it means micromanaging, and the town would stop overnight while the player is offline.
+
+**Connection size** (the player's one choice, upgraded like a building):
+
+| Connection | Max draw from the grid | One-time cost |
+|---|---|---|
+| Small | 10 MW | Free (comes with the Construction Office) |
+| Medium | 25 MW | $2,000 |
+| Large | 60 MW | $8,000 |
+
+The grid is a **safety net with a ceiling**: a big company still has to build its own plants.
+
+**Price per MWh** = base × time of day × market mood × usage tier:
+- **Base:** ~**$25/MWh**
+- **Time of day:** daytime ×1.2 (peak), night ×0.8 (cheap), following the game day (5.5.4)
+- **Market mood:** a slow drift of ±20% over days from a fixed pattern ("electricity prices up 12% today"). It also nudges Retailer prices (the dynamic-pricing idea; see Section 11)
+- **Usage tier:** like the sales tax brackets, heavy users pay more for the extra part (e.g. the first 20 MW at the normal price, anything above +25%). Small companies aren't punished; big ones are pushed to build plants
+- **Phase 4 (online):** the price also rises with **everyone's** combined grid use. It plugs into the same formula
+- **Later:** sell surplus power **back** to the grid at a lower price (~$12/MWh)
+
+**Scale check:** the 29 MW balanced chain fully on the grid ≈ **$725/hour**, against ~$5,760/hour of bread sales, so power is **~13% of sales**. Noticeable, not crushing.
+
+#### 5.5.4 Day and night
+- **One game day = 12 real hours:** ~**6 hours daylight + 6 hours night**, so two game days per real day. A player who always plays at the same real time sees both day and night over the week
+- **Solar** follows it: steps up in the morning, peaks at midday, steps down in the evening, 0 at night
+- **The grid price** is cheaper at night
+- **Visual (optional, separate art task):** the island darkens at night and building lights come on
+
+#### 5.5.5 Offline catch-up rule
+Everything stays **one calculation**, never a replay. Anything that changes power is either a **predictable moment** or **changes in steps** from a fixed pattern (a formula of time, not dice rolls):
+- Wind gets a new strength every ~10 minutes; the sun moves in hourly steps; the grid price changes once per game hour and at day/night
+- Coal running out and storage filling are predictable moments, like construction finishing today
+- So 8 hours offline is a few hundred quick steps, not millions, and the result is the same whether the player was online or not
+
+#### 5.5.6 Build order
+1. Grid model + public grid (Small connection) + power use on the Mill and Bakery
+2. Coal Mine + Thermal Power Plant; connection upgrades
+3. Changing grid price (the start of dynamic pricing) + day/night cycle
+4. Wind Turbine, then Solar Farm
+5. Nuclear Plant, after schools (5.7) provide educated workers
+
+#### 5.5.7 Employees
 - **Employees** — each building requires N employees to operate; hired (small recruiting cost) then draw a recurring **wage** per time tick — the game's first ongoing upkeep/cash-flow pressure
 - **Employee education-tier requirement varies by business/industry:** basic Industrial buildings accept Uneducated workers; other businesses require High School Graduates or College Graduates depending on tier (exact per-building requirements TBD when those buildings are designed)
 - **Offline rule needed:** wages and electricity must also be settled in the one-time offline catch-up calculation — including what happens if cash runs out while the player is away (see Open Questions)
@@ -172,6 +240,46 @@ _Rescaled 2026-10-01 for the ~1–2h offline window: batches ×4 and timers ×4,
   - Small House (Residential) — pre-built, already placed → Population growth begins immediately
   - Starting cash — **$5,750** (`starting_cash` in `game_config.json`; raised by $5,000 on 2026-10-01, still tunable)
   - Wheat Farm — **not** pre-built; building it is the player's first tutorial action
+
+### 5.9 Taxes & Fees (sales tax built 2026-10-02)
+
+**The government taxes the player's company** (not Tropico-style "you are the government"). Taxes are also the economy's **money sink**: money leaves the game, which keeps prices from inflating once the player market exists. Our own design, inspired by (not copied from) Sim Companies' "costs grow with the company".
+
+| Charge | What | When | Status |
+|---|---|---|---|
+| **Sales tax** | Progressive tax on Retailer sales, taken from the proceeds | At each sale | ✅ Built 2026-10-02 |
+| **Market fee** | **3% per trade** on the player market, paid by the seller | At each trade | Phase 4 (`market_fee` already in `game_config.json`, unused) |
+
+**Progressive daily-sales tax** (all PLACEHOLDERS, in `game_config.json` → `sales_tax_brackets`, `sales_tax_window_hours`):
+- The rate depends on how much the company sold to the Retailer in the **last 24 hours** (a rolling window, so a quiet day brings the rate back down):
+
+| Sold in the last 24 h | Rate on that part |
+|---|---|
+| First $5,000 | 0% |
+| $5,000 – $25,000 | 8% |
+| $25,000 – $100,000 | 15% |
+| Above $100,000 | 22% |
+
+- **Marginal, like income-tax brackets:** each part of a sale pays the rate of the bracket it falls in, so selling more never leaves you with less money
+- **Taxes grow as the company grows** automatically: more buildings → more sales → higher brackets. No separate "company size" count is needed (this replaced the earlier proposal of 5% + 1% per building)
+- **Market trades pay the 3% fee only**, not sales tax as well (one charge per sale keeps it understandable)
+- **No property tax or profit tax** for now
+- **Where it shows:** the sell message ("Sold 100 Bread for $744 ($56 sales tax)"); Stats → Cash flow ("Sales tax" under money out, plus a box with 24 h sales, the current rate and the next bracket)
+- **Rules:** `Simulation.sell`, `sales_tax`, `tax_bracket` in `scripts/sim/simulation.gd`; sales are logged in `state.sales_log` as [time, amount], entries older than the window are dropped
+
+**Building costs raised with the tax** (the balance check found a farm paid for itself in ~6 minutes): Wheat Farm **$2,000**, Flour Mill **$5,000**, Bakery **$8,000**.
+
+**Halt rule (built 2026-10-02):** a building whose storage is full **halts**: it makes nothing, its workers go home (free to work elsewhere) and it pays **no wages** until the player collects. Offline, wages stop at the exact moment storage fills. Open: should an idle Mill/Bakery (empty queue, not full) also stop paying wages? Today it still pays.
+
+**Balance check** (per day, before the cost raise; PLACEHOLDERS):
+
+| Company | Sales | Wages | Sales tax | Tax share | Profit |
+|---|---|---|---|---|---|
+| Small (1 chain) | $49.5k | $8,640 | $5,275 | 10.7% | $35.6k |
+| Medium (3 chains) | $148.5k | — | $23,520 | 15.8% | ~$99k |
+| Large (10 chains) | $495k | — | $99,750 | 20.2% | ~$308.9k |
+
+Still to decide: whether bracket changes are announced in advance once the server sets them (Phase 4).
 
 ## 6. UI/UX Screens
 
@@ -279,9 +387,9 @@ A hidden dev menu (key combo on PC, secret tap sequence on mobile) for testing t
 1. Put the dev menu in its own scene/folder and only load it when `OS.is_debug_build()` is true
 2. Exclude that folder from release export presets (Export → Resources → exclude filter), so the code isn't even in the shipped files
 
-**Planned commands:**
-
 ✅ **Built so far (2026-10-01):** `scenes/debug/dev_panel.gd`, the **Developer** window: set cash to any amount (negative to test debt), add any amount, quick +$1,000 / +$10,000 / +$100,000, set $0. Opens with **F12** on a computer or **5 quick taps on the cash bar** on a phone; `main.gd` only loads it when `OS.is_debug_build()`. Dev cash isn't counted as income in the statistics. Step 2 (exclude `scenes/debug/` from export) waits until there is a separate release preset: the only preset today is the Android one used for phone testing, which should keep the dev window.
+
+**Planned commands:**
 
 | Category | Commands |
 |---|---|
@@ -318,7 +426,9 @@ A hidden dev menu (key combo on PC, secret tap sequence on mobile) for testing t
 - [ ] Social/community features (chat, friends, trade alliances)
 - [ ] Legal basics (ToS, Privacy Policy) — needed once real accounts exist (Phase 4); also check local rules on selling premium currency in each launch country
 - [ ] Marketing/launch plan
-- [ ] Power Plant recipe numbers (timer, batch, storage cap) for Coal Power Plant and Solar Farm
+- [x] Power plants and the public grid → **planned 2026-10-02** (5.5): power is a flow (MW), and shortages slow every building by the same share; Thermal 40 MW first, then Wind, Solar, Nuclear; automatic public grid with Small/Medium/Large connection and a price that changes with time of day, market mood and usage; one game day = 12 real hours. Numbers are placeholders
+- [x] Does the Wheat Farm use power? → **No, 0 MW** (decided 2026-10-02, 5.5.1)
+- [ ] Dynamic pricing: Retailer prices move with supply (selling a lot lowers the price, recovering over hours), market mood, and input costs like the grid price; swings kept modest (~±10–30%) and shown with a reason
 - [x] Employee hiring cost, wage amount, and headcount-per-building numbers → **no hiring cost; wages Low-skilled 15 / High-skilled 30 / Professional 60 per hour; max 8 workers per production building at level 1, staffing Low 4 / Medium 6 / High 8** (decided 2026-10-01, placeholders, wages to move to the backend later)
 - [x] What happens when the player can't pay wages (especially while offline) → **debt**: cash goes below 0 and sales pay it back; nothing can be built while in debt; buildings keep working (decided 2026-10-01)
 - [ ] School timer/batch/storage-cap numbers for Elementary/High School/College
@@ -356,6 +466,15 @@ A hidden dev menu (key combo on PC, secret tap sequence on mobile) for testing t
 Both are functional, self-contained HTML/JS artifacts used to validate the trading-mechanic math and UX before porting logic into Godot.
 
 ## 15. Revision Log
+
+**2026-10-02 (taxes, costs, halt):**
+- Built the progressive daily-sales tax (5.9): 0/8/15/22% brackets on the last 24 h of Retailer sales; replaced the building-count proposal
+- Raised build costs: Wheat Farm $2,000, Flour Mill $5,000, Bakery $8,000
+- Buildings with full storage halt: no production, no wages, workers freed
+
+**2026-10-02 (electricity plan):**
+- Rewrote 5.5 with the electricity design: power as a flow with one speed rule (workers × power), plant roster (Thermal, Wind, Solar, Nuclear, Hydro idea) with placeholder numbers, automatic public grid with connection sizes and a changing price, 12-hour game day, offline rule, build order
+- Dropped two earlier rules: power "consumed per job start" and "self-sufficient, can't buy power"
 
 **2026-10-01 (Blender art pipeline):**
 - Building art is now modelled in Blender from Python scripts (`art/blender/`), replacing "use free kits, no Blender" (Section 4). Style: more detailed, closer to Clash of Clans. Footprints for the pack: 2×2

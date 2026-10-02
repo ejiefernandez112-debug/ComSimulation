@@ -64,9 +64,15 @@ static func settle(state: Dictionary, data: Dictionary, now: float) -> Dictionar
 		while t < now and steps < 100000:  # the cap is only a safety net
 			steps += 1
 			var next := _next_staffing_change(state, data, t, now)
+			# Read every speed and the wage bill as they stand at the start of this piece, before
+			# any building moves on (a building filling up changes the others' staffing).
+			var speeds: Array[float] = []
 			for b in state.buildings:
-				_add_to(report, _settle_span(state, b, data, t, next, building_speed(state, data, b, t)))
-			wages += _pay_wages(state, _wages_per_hour(state, data, t) * (next - t) / 3600.0)
+				speeds.append(building_speed(state, data, b, t))
+			var wage_rate := _wages_per_hour(state, data, t)
+			for i in state.buildings.size():
+				_add_to(report, _settle_span(state, state.buildings[i], data, t, next, speeds[i]))
+			wages += _pay_wages(state, wage_rate * (next - t) / 3600.0)
 			grown += _grow_population(state, data, next)
 			t = next
 		state["settled_at"] = now
@@ -105,14 +111,16 @@ static func _pay_wages(state: Dictionary, amount: float) -> int:
 	return whole
 
 
-## The first moment after t (and before `until`) when staffing can change: a building finishing
-## construction (new jobs or new homes), or, while short of workers, the next person moving in.
+## The first moment after t (and before `until`) when staffing or wages can change: a building
+## finishing construction (new jobs or new homes), a building halting because its storage
+## filled up (its workers go home), or, while short of workers, the next person moving in.
 static func _next_staffing_change(state: Dictionary, data: Dictionary, t: float, until: float) -> float:
 	var next := until
 	for b in state.buildings:
 		var finish := built_at(b)
 		if finish > t and finish < next:
 			next = finish
+		next = minf(next, maxf(_halt_time(state, data, b, t), t + 0.000001))
 	var pop: Dictionary = state.population
 	var step := float(data.config.population_growth_seconds)
 	var e := employment(state, data, t)
@@ -461,8 +469,9 @@ static func demolish(state: Dictionary, data: Dictionary, building_id: String, n
 	return check
 
 
-## Sell to the NPC Retailer at its fixed price (plan.md §5.2 channel 1).
-static func sell(state: Dictionary, data: Dictionary, resource_id: String, qty: int) -> Dictionary:
+## Sell to the NPC Retailer at its fixed price (plan.md §5.2 channel 1), minus sales tax (§5.9).
+## Returns "earned" (what reaches cash), "gross" (before tax), "tax" and "rate" (tax ÷ gross).
+static func sell(state: Dictionary, data: Dictionary, resource_id: String, qty: int, now: float) -> Dictionary:
 	var res_def: Dictionary = data.resources.get(resource_id, {})
 	if res_def.is_empty():
 		return _fail("Unknown item.")
@@ -470,14 +479,63 @@ static func sell(state: Dictionary, data: Dictionary, resource_id: String, qty: 
 		return _fail("Choose how many to sell.")
 	if int(state.inventory.get(resource_id, 0)) < qty:
 		return _fail("You don't have that many.")
-	var earned := int(qty * float(res_def.retail_price))
+	var gross := int(qty * float(res_def.retail_price))
+	var tax := sales_tax(state, data, gross, now)
+	var earned := gross - tax
 	_remove_from(state.inventory, {resource_id: qty})
 	state.profile.currency += earned
+	# Remember this sale for the 24-hour tax window, and forget sales that have left it.
+	var window := float(data.config.get("sales_tax_window_hours", 24)) * 3600.0
+	var log: Array = state.get("sales_log", [])
+	while not log.is_empty() and float(log[0][0]) <= now - window:
+		log.pop_front()
+	log.append([now, gross])
+	state["sales_log"] = log
 	var s := stats(state)
-	s.income.sales += earned
-	_add_to(s.sales_by_item, {resource_id: earned})
+	s.income.sales += gross
+	s.spending["tax"] = int(s.spending.get("tax", 0)) + tax
+	_add_to(s.sales_by_item, {resource_id: gross})
 	_add_to(s.sold, {resource_id: qty})
-	return _ok({"earned": earned})
+	return _ok({"earned": earned, "gross": gross, "tax": tax, "rate": float(tax) / gross if gross > 0 else 0.0})
+
+
+## Sales tax on a sale worth `gross` (changes nothing). Progressive, like income-tax brackets, on
+## the company's Retailer sales over the last sales_tax_window_hours (24): each part of the sale
+## pays the rate of the bracket it falls in (first $5,000 0%, then 8%, 15%, 22%), so selling
+## more never leaves the company with less.
+static func sales_tax(state: Dictionary, data: Dictionary, gross: int, now: float) -> int:
+	var brackets: Array = data.config.get("sales_tax_brackets", [])
+	var from := float(sales_last_day(state, data, now))
+	var to := from + gross
+	var tax := 0.0
+	for i in brackets.size():
+		var low := float(brackets[i].from)
+		var high: float = float(brackets[i + 1].from) if i + 1 < brackets.size() else INF
+		tax += maxf(minf(to, high) - maxf(from, low), 0.0) * float(brackets[i].rate)
+	return roundi(tax)
+
+
+## Retailer sales (before tax) over the tax window. Changes nothing (sell tidies the log).
+static func sales_last_day(state: Dictionary, data: Dictionary, now: float) -> int:
+	var window := float(data.config.get("sales_tax_window_hours", 24)) * 3600.0
+	var total := 0
+	for entry in state.get("sales_log", []):
+		if float(entry[0]) > now - window and float(entry[0]) <= now:
+			total += int(entry[1])
+	return total
+
+
+## The tax bracket the company's next sale starts in: {"sold" (last 24 h), "rate", "next_at"
+## (sales total where the next bracket starts, or -1 at the top)}.
+static func tax_bracket(state: Dictionary, data: Dictionary, now: float) -> Dictionary:
+	var sold := sales_last_day(state, data, now)
+	var brackets: Array = data.config.get("sales_tax_brackets", [])
+	var result := {"sold": sold, "rate": 0.0, "next_at": -1}
+	for i in brackets.size():
+		if sold >= int(brackets[i].from):
+			result.rate = float(brackets[i].rate)
+			result.next_at = int(brackets[i + 1].from) if i + 1 < brackets.size() else -1
+	return result
 
 
 # --- Developer tools (scenes/debug/, test builds only; plan.md §10) --------------
@@ -588,9 +646,49 @@ static func workers_wanted(data: Dictionary, b: Dictionary) -> int:
 ## buildings when there are fewer people than jobs. Can be a fraction (an average over the
 ## town); 0 while it's still being built.
 static func workers_working(state: Dictionary, data: Dictionary, b: Dictionary, now: float) -> float:
-	if not is_built(b, now):
+	if not is_built(b, now) or is_halted(data, b):
 		return 0.0
 	return workers_wanted(data, b) * staffing(state, data, now)
+
+
+## Halted: its storage is full (a farm with no room for the next batch, or a finished batch
+## waiting for room), so it makes nothing until the player collects. Its workers go home:
+## no wages, and they don't count as employed, so other buildings can use them.
+static func is_halted(data: Dictionary, b: Dictionary) -> bool:
+	var def: Dictionary = data.buildings.get(b.type, {})
+	match def.get("category", ""):
+		"extractor":
+			return int(def.storage_cap) - _total(b.storage) < _total(def.recipes[0].outputs)
+		"processor":
+			return bool(b.blocked)
+	return false
+
+
+## When a working building will halt (storage full) if nothing changes, at its current speed;
+## INF if it won't. Settling splits time at this moment so wages stop exactly then, even while
+## the player is away.
+static func _halt_time(state: Dictionary, data: Dictionary, b: Dictionary, t: float) -> float:
+	var def: Dictionary = data.buildings.get(b.type, {})
+	if max_workers(data, b) <= 0 or not is_built(b, t) or is_halted(data, b) or float(b.job_started_at) > t:
+		return INF
+	var speed := building_speed(state, data, b, t)
+	if speed <= 0.0:
+		return INF
+	var space := int(def.get("storage_cap", 0)) - _total(b.storage)
+	var done := t - float(b.job_started_at)  # work already done on the current cycle / job
+	if def.get("category", "") == "extractor":
+		var recipe: Dictionary = def.recipes[0]
+		var fits := floori(float(space) / _total(recipe.outputs))
+		return t + (fits * float(recipe.duration) - done) / speed + 0.000001
+	var work := -done
+	for job in b.queue:
+		var recipe := _recipe(def, job.recipe_id)
+		work += float(recipe.get("duration", 0.0))
+		var out := _total(recipe.get("outputs", {}))
+		if space < out:
+			return t + work / speed + 0.000001  # this batch finishes with nowhere to go
+		space -= out
+	return INF  # the queue runs out first
 
 
 ## Wage per hour for one worker of this building's type (game_config.json worker_types).
@@ -677,7 +775,7 @@ static func staffing(state: Dictionary, data: Dictionary, now: float) -> float:
 static func employment(state: Dictionary, data: Dictionary, now: float) -> Dictionary:
 	var jobs := 0
 	for b in state.buildings:
-		if is_built(b, now):
+		if is_built(b, now) and not is_halted(data, b):
 			jobs += workers_wanted(data, b)
 	var people := int(state.population.current)
 	var employed := mini(people, jobs)
@@ -730,7 +828,7 @@ static func _record_history(state: Dictionary, data: Dictionary, now: float) -> 
 static func _new_stats() -> Dictionary:
 	return {
 		"income": {"sales": 0, "demolish": 0},  # money in, by where it came from
-		"spending": {"construction": 0, "wages": 0},  # money out, by what it went on
+		"spending": {"construction": 0, "wages": 0, "tax": 0},  # money out, by what it went on
 		"sales_by_item": {},  # resource -> money earned selling it
 		"made": {},  # resource -> amount ever produced
 		"sold": {},  # resource -> amount ever sold

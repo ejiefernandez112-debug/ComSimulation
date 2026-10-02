@@ -59,7 +59,7 @@ static func status(b: Dictionary) -> Dictionary:
 			for res in r.outputs:
 				per_cycle += int(r.outputs[res])
 			if int(def.storage_cap) - stored(b) < per_cycle:
-				return {"text": "Storage full! Collect to keep going", "progress": 1.0, "good": false}
+				return {"text": "Halted: storage full. Collect to restart (no wages meanwhile)", "progress": 1.0, "good": false}
 			var p := Economy.job_progress(b)
 			var speed := Economy.building_speed(b)
 			if speed <= 0.0:
@@ -68,7 +68,7 @@ static func status(b: Dictionary) -> Dictionary:
 			return _with_speed("Growing %s · next in %s" % [resource_name(output_of(r)), UITheme.duration(left)], p, speed)
 		"processor":
 			if b.blocked:
-				return {"text": "Done! Collect to make room", "progress": 1.0, "good": false}
+				return {"text": "Halted: done, no room. Collect to restart (no wages meanwhile)", "progress": 1.0, "good": false}
 			if b.queue.is_empty():
 				return {"text": "Idle: add a job to start", "progress": -1.0, "good": false}
 			var p := Economy.job_progress(b)

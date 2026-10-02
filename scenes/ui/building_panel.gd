@@ -228,8 +228,10 @@ func _refresh_workers(b: Dictionary, def: Dictionary) -> void:
 		note = "Workers start when it's built (%d asked for). " % w.wanted + note
 	elif short:
 		note = "Only %s of the %d asked for: not enough people, build houses. " % [working, w.wanted] + note
+	elif Economy.is_halted(b):
+		note = "Halted: storage full, so the workers went home and cost nothing. Collect to restart. " + note
 	elif not producing:
-		note = "Not producing right now (%s). " % ("storage full" if def.category == "extractor" or b.blocked else "no jobs queued") + note
+		note = "Not producing right now (no jobs queued), but the workers are still paid. " + note
 	_workers_note.text = note
 
 

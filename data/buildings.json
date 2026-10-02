@@ -15,7 +15,7 @@
 		"_comment": "Extractor: produces on its own until storage is full (900 = 90 min).",
 		"name": "Wheat Farm", "category": "extractor", "menu_tab": "farming",
 		"description": "Grows wheat all by itself until its storage is full.",
-		"build_cost": 100, "buildable": true, "build_time": 5, "max_workers": 8, "worker_type": "low_skilled",
+		"build_cost": 2000, "buildable": true, "build_time": 5, "max_workers": 8, "worker_type": "low_skilled",
 		"storage_cap": 900,
 		"recipes": [
 			{ "id": "grow_wheat", "inputs": {}, "outputs": { "wheat": 10 }, "duration": 60 }
@@ -25,7 +25,7 @@
 		"_comment": "8 queued jobs x 6 min = 48 min of work.",
 		"name": "Flour Mill", "category": "processor", "menu_tab": "industry",
 		"description": "Grinds wheat into flour, one batch at a time.",
-		"build_cost": 250, "buildable": true, "build_time": 5, "max_workers": 8, "worker_type": "low_skilled",
+		"build_cost": 5000, "buildable": true, "build_time": 5, "max_workers": 8, "worker_type": "low_skilled",
 		"storage_cap": 256, "queue_size": 8,
 		"recipes": [
 			{ "id": "mill_flour", "inputs": { "wheat": 40 }, "outputs": { "flour": 32 }, "duration": 360 }
@@ -35,7 +35,7 @@
 		"_comment": "8 queued jobs x 10 min = 80 min of work.",
 		"name": "Bakery", "category": "processor", "menu_tab": "industry",
 		"description": "Bakes flour into fresh bread that sells for more.",
-		"build_cost": 400, "buildable": true, "build_time": 5, "max_workers": 8, "worker_type": "low_skilled",
+		"build_cost": 8000, "buildable": true, "build_time": 5, "max_workers": 8, "worker_type": "low_skilled",
 		"storage_cap": 192, "queue_size": 8,
 		"recipes": [
 			{ "id": "bake_bread", "inputs": { "flour": 32 }, "outputs": { "bread": 24 }, "duration": 600 }

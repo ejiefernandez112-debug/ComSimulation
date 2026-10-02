@@ -62,6 +62,21 @@ func demolish(building_id: String) -> Dictionary:
 	return _after(Simulation.demolish(state, data(), building_id, TimeService.now()))
 
 
+## Halted: storage full, so it makes nothing and pays no wages until collected.
+func is_halted(building: Dictionary) -> bool:
+	return Simulation.is_halted(data(), building)
+
+
+## Sales tax a sale worth `gross` would pay right now (changes nothing).
+func sales_tax(gross: int) -> int:
+	return Simulation.sales_tax(state, data(), gross, TimeService.now())
+
+
+## {"sold" (Retailer sales, last 24 h), "rate" (bracket the next sale starts in), "next_at"}.
+func tax_bracket() -> Dictionary:
+	return Simulation.tax_bracket(state, data(), TimeService.now())
+
+
 ## Developer tools only (the dev panel in scenes/debug/, test builds only).
 func dev_set_cash(amount: int) -> Dictionary:
 	return _after(Simulation.dev_set_cash(state, amount))
@@ -77,7 +92,7 @@ func set_staffing(building_id: String, level: String) -> Dictionary:
 
 
 func sell(resource_id: String, qty: int) -> Dictionary:
-	return _after(Simulation.sell(state, data(), resource_id, qty))
+	return _after(Simulation.sell(state, data(), resource_id, qty, TimeService.now()))
 
 
 # --- Read-only questions for the UI ---
