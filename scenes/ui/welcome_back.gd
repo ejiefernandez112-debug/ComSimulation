@@ -29,7 +29,7 @@ func show_if_away() -> bool:
 	if roundi(int(report.get("wages", 0)) / 100.0) > 0:  # at least $1 (money is in cents)
 		_row("Wages paid").add_child(_amount("cash", "-" + UITheme.money(int(report.wages))))
 	if roundi(int(report.get("water", 0)) / 100.0) > 0:
-		_row("Water paid").add_child(_amount("water", "-" + UITheme.money(int(report.water))))
+		_row("Water bills").add_child(_amount("water", "-" + UITheme.money(int(report.water))))
 	_row("Cash now").add_child(_amount("cash", UITheme.money(Economy.currency())))
 
 	var counts: Dictionary = Economy.production_rates().buildings

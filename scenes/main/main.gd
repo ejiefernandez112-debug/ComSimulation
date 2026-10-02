@@ -48,6 +48,8 @@ func _ready() -> void:
 	menu_bar.hide_while_visible([building_bar, build_menu.placing_bar, build_menu.window()])
 	test_panel.message.connect(hud.toast)
 	settings_panel.new_game_requested.connect(_ask_new_game)
+	Economy.water_bill_paid.connect(func(cost: int, m3: float):
+		hud.toast("Water bill paid: %s for %s m³" % [UITheme.money(cost), UITheme.number(roundi(m3))], Economy.currency() < 0))
 	_warehouse_panel = load("res://scenes/ui/warehouse_panel.gd").new()
 	_warehouse_panel.name = "WarehousePanel"
 	ui_root.add_child(_warehouse_panel)

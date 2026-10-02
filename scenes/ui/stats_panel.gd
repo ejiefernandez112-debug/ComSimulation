@@ -125,7 +125,28 @@ func _cash_page() -> VBoxContainer:
 	how.add_theme_font_size_override("font_size", 15)
 	how.modulate.a = 0.8
 	tax.add_child(how)
+	var water := _section(page, "Water bill")
+	_value_row(water, "This cycle so far", "water_so_far")
+	_value_row(water, "Charged in", "water_due")
+	_value_row(water, "Last bill", "water_last")
+	var water_how := _body(_water_explanation())
+	water_how.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	water_how.custom_minimum_size.x = WIDTH - 90
+	water_how.add_theme_font_size_override("font_size", 15)
+	water_how.modulate.a = 0.8
+	water.add_child(water_how)
 	return page
+
+
+## "Water comes from the public supply… billed every 12 hours. The part above 1,200 m³ in a
+## cycle costs 25% more." Numbers from game_config.json, so the text follows any retuning.
+func _water_explanation() -> String:
+	var water: Dictionary = GameData.config.get("water", {})
+	var text := "Water comes from the public supply at %s per m³. A meter records what your buildings use, and the bill is charged every %d hours." % [UITheme.price(roundi(float(water.get("price_per_m3", 0.0)) * 100.0)), int(water.get("billing_hours", 12))]
+	var tiers: Array = water.get("tiers", [])
+	for i in range(1, tiers.size()):
+		text += " The part above %s m³ in a cycle costs %d%% more." % [UITheme.number(int(tiers[i].from)), roundi(float(tiers[i].extra) * 100.0)]
+	return text
 
 
 func _graphs_page() -> VBoxContainer:
@@ -254,6 +275,15 @@ func _refresh_cash() -> void:
 	if int(bracket.next_at) > 0:
 		rate += " (next bracket at %s)" % UITheme.money(int(bracket.next_at))
 	_show("tax_rate", rate)
+	var bill := Economy.water_bill()
+	_show("water_so_far", "%s m³ · %s" % [UITheme.number(roundi(float(bill.m3))), UITheme.money(int(bill.cost))])
+	_show("water_due", UITheme.duration(float(bill.due_at) - TimeService.now()))
+	var bills := Economy.water_bills()
+	if bills.is_empty():
+		_show("water_last", "none yet")
+	else:
+		var last: Dictionary = bills[-1]
+		_show("water_last", "%s for %s m³ (%s ago)" % [UITheme.money(int(last.cost)), UITheme.number(roundi(float(last.m3))), LineChart._ago(TimeService.now() - float(last.t))])
 
 
 ## Builds the chosen graph's lines from the history points (one every minute), plus a point for

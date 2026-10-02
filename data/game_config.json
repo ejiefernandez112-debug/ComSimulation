@@ -17,8 +17,8 @@
 	"_tax": "Sales tax on Retailer sales (plan.md 5.9): progressive like income-tax brackets, on the company's sales over the last sales_tax_window_hours. Each part of a sale pays the rate of the bracket it falls in, so selling more never leaves you with less. market_fee = the Phase 4 player-market fee per trade, paid by the seller (not used yet). PLACEHOLDERS.",
 	"_pricing": "Retail prices are worked out from costs (plan.md 5.12): per batch, ingredients + max_workers at the minimum wage + water at its base price + build_cost / payback_hours, divided by the units made and by (1 - typical_tax_rate). payback_hours = hours of full-staff production for a building to pay for itself. PLACEHOLDERS.",
 	"pricing": { "payback_hours": 12, "typical_tax_rate": 0.10 },
-	"_water": "The public water supply (plan.md 5.13): buildings with water_per_hour (m³) draw it while they produce. price_per_m3 in dollars; tiers = extra share of the price for the part of the company's total use (m³/hour) above \"from\". Unlimited supply. PLACEHOLDERS.",
-	"water": { "price_per_m3": 2.0, "tiers": [{ "from": 0, "extra": 0.0 }, { "from": 100, "extra": 0.25 }] },
+	"_water": "The public water supply (plan.md 5.13): buildings with water_per_hour (m³) draw it while they produce; a meter records it at price_per_m3 (dollars) and the bill is charged every billing_hours (12 = one game day; unpaid = debt). tiers = extra share of the price for the part of a cycle's m³ above \"from\" (first 1,200 m³ per cycle normal). bill_history = past bills kept. Unlimited supply. PLACEHOLDERS.",
+	"water": { "price_per_m3": 2.0, "billing_hours": 12, "bill_history": 10, "tiers": [{ "from": 0, "extra": 0.0 }, { "from": 1200, "extra": 0.25 }] },
 	"sales_tax_window_hours": 24,
 	"sales_tax_brackets": [
 		{ "from": 0, "rate": 0.0 },

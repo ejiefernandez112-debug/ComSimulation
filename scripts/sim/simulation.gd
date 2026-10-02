@@ -34,6 +34,7 @@ static func new_game(data: Dictionary, now: float) -> Dictionary:
 		"population": {"current": 0, "growth_anchor": now},
 		"settled_at": now,  # everything has been worked out up to this moment
 		"stats": _new_stats(),
+		"water_meter": {"m3": 0.0, "base_cost": 0.0, "cycle_start": now},  # the first bill is due in 12 h
 	}
 	for entry in config.starting_buildings:
 		# Starting buildings are already standing: no construction time.
@@ -44,8 +45,8 @@ static func new_game(data: Dictionary, now: float) -> Dictionary:
 # --- Settling time ------------------------------------------------------------
 
 ## Brings every building, the population and wages up to `now`.
-## Returns everything produced, e.g. {"wheat": 30, "population": 2, "wages": 12000, "water": 600}
-## (money in cents; for the offline summary).
+## Returns everything produced, e.g. {"wheat": 30, "population": 2, "wages": 12000, "water": 71800}
+## (money in cents; "water" = water bills charged; for the offline summary).
 ##
 ## A building's speed depends on how many workers are actually working in it (see
 ## building_speed), and wages are paid for each of them. That only changes at a few moments
@@ -70,20 +71,25 @@ static func settle(state: Dictionary, data: Dictionary, now: float) -> Dictionar
 		while t < now and steps < 100000:  # the cap is only a safety net
 			steps += 1
 			_hire(state, data, t)  # people who just moved in, or posts that just opened
-			var next := _next_staffing_change(state, data, t, now)
-			# Read every speed and the wage bill as they stand at the start of this piece, before
-			# any building moves on (a building filling up changes the others' staffing).
+			# Read every speed, the wage bill and the water use as they stand at the start of this
+			# piece, before any building moves on (a building filling up changes the others' staffing).
 			var speeds: Array[float] = []
 			for b in state.buildings:
 				speeds.append(building_speed(state, data, b, t))
 			var wage_rate := _wages_per_hour(state, data, t)
-			var water_rate := water_cost_per_hour(state, data, t)
+			var water_m3_per_hour := water_use_total(state, data, t)
+			# Split at the next staffing change, and at the next water bill (a fixed moment) when
+			# there is water to bill; empty cycles are skipped in one go, so a long absence stays quick.
+			var next := _next_staffing_change(state, data, t, now)
+			if water_m3_per_hour > 0.0 or float(water_meter(state, t).m3) > 0.0:
+				next = minf(next, maxf(water_bill_due_at(state, data, t), t + 0.000001))
 			for i in state.buildings.size():
 				_add_to(report, _settle_span(state, state.buildings[i], data, t, next, speeds[i]))
 			wages += _pay_wages(state, wage_rate * (next - t) / 3600.0)
-			water += _pay_water(state, water_rate * (next - t) / 3600.0)
+			_meter_water(state, data, water_m3_per_hour * (next - t) / 3600.0, t)
 			grown += _grow_population(state, data, next)
 			t = next
+			water += _bill_water_if_due(state, data, t)
 		state["settled_at"] = now
 	_hire(state, data, now)
 	if grown > 0:
@@ -114,11 +120,6 @@ static func _settle_span(state: Dictionary, b: Dictionary, data: Dictionary, t0:
 ## as one long one. Returns the cents paid.
 static func _pay_wages(state: Dictionary, dollars: float) -> int:
 	return _pay_over_time(state, dollars, "wage_carry", "wages")
-
-
-## The water bill (`dollars`), paid the same way as wages; parts of a cent wait in "water_carry".
-static func _pay_water(state: Dictionary, dollars: float) -> int:
-	return _pay_over_time(state, dollars, "water_carry", "water")
 
 
 ## A running cost paid out of cash over time (into debt if need be), counted in the statistics
@@ -1061,8 +1062,10 @@ static func _wages_per_hour(state: Dictionary, data: Dictionary, now: float) -> 
 
 
 # --- Water (plan.md §5.13) ------------------------------------------------------
-# The government's public water supply: unlimited, so it never slows a building down; buildings
-# just pay for what they draw, and heavy users pay more for the extra.
+# The government's public water supply: unlimited, so it never slows a building down. A meter
+# records what the company draws (and what it cost at the price of the moment); every
+# water.billing_hours (12) the bill is charged at once, heavy users paying more for the part of
+# the cycle's m³ above each tier. Unpaid bills simply take cash below 0 (debt).
 
 ## m³ of water per hour this building draws right now: its water_per_hour while producing, times
 ## its speed (6 of 8 workers = 75% of it). 0 while built, halted, idle or suspended.
@@ -1081,23 +1084,80 @@ static func water_use_total(state: Dictionary, data: Dictionary, now: float) -> 
 	return total
 
 
-## What drawing `m3_per_hour` costs per hour (dollars): the base price per m³, plus each tier's
-## extra on the part of the use above where that tier starts (first 100 m³/h normal, above +25%).
-static func water_cost(data: Dictionary, m3_per_hour: float) -> float:
-	var water: Dictionary = data.config.get("water", {})
-	var price := float(water.get("price_per_m3", 0.0))
-	var tiers: Array = water.get("tiers", [{"from": 0, "extra": 0.0}])
+## The water meter: {"m3" (drawn this cycle), "base_cost" (dollars, each m³ at the price when it
+## was drawn), "cycle_start" (when this billing cycle began)}. Older saves get one starting `now`.
+static func water_meter(state: Dictionary, now: float) -> Dictionary:
+	if not state.has("water_meter"):
+		state["water_meter"] = {"m3": 0.0, "base_cost": 0.0, "cycle_start": now}
+	return state.water_meter
+
+
+## Seconds in one billing cycle (water.billing_hours, 12 = one game day).
+static func billing_seconds(data: Dictionary) -> float:
+	return maxf(float(data.config.get("water", {}).get("billing_hours", 12.0)), 0.02) * 3600.0
+
+
+## When the current water bill falls due (a fixed moment: cycle start + one cycle).
+static func water_bill_due_at(state: Dictionary, data: Dictionary, now: float) -> float:
+	return float(water_meter(state, now).cycle_start) + billing_seconds(data)
+
+
+## The base price per m³ (dollars) right now. Later it can drift (market mood).
+static func water_price(data: Dictionary) -> float:
+	return float(data.config.get("water", {}).get("price_per_m3", 0.0))
+
+
+## Records `m3` drawn, at the price of the moment.
+static func _meter_water(state: Dictionary, data: Dictionary, m3: float, now: float) -> void:
+	if m3 <= 0.0:
+		return
+	var meter := water_meter(state, now)
+	meter.m3 = float(meter.m3) + m3
+	meter.base_cost = float(meter.base_cost) + m3 * water_price(data)
+
+
+## A cycle's bill (dollars) for `m3` that cost `base_cost` at the base price: plus each tier's
+## extra on the part of the m³ above where that tier starts (first 1,200 m³ normal, above +25%).
+static func water_bill_cost(data: Dictionary, m3: float, base_cost: float) -> float:
+	if m3 <= 0.0:
+		return 0.0
+	var average_price := base_cost / m3
 	var cost := 0.0
+	var tiers: Array = data.config.get("water", {}).get("tiers", [{"from": 0, "extra": 0.0}])
 	for i in tiers.size():
 		var low := float(tiers[i].from)
 		var high: float = float(tiers[i + 1].from) if i + 1 < tiers.size() else INF
-		cost += maxf(minf(m3_per_hour, high) - low, 0.0) * price * (1.0 + float(tiers[i].extra))
+		cost += maxf(minf(m3, high) - low, 0.0) * average_price * (1.0 + float(tiers[i].extra))
 	return cost
 
 
-## The company's water bill per hour right now (dollars).
-static func water_cost_per_hour(state: Dictionary, data: Dictionary, now: float) -> float:
-	return water_cost(data, water_use_total(state, data, now))
+## The bill so far this cycle: {"m3", "cost" (cents), "due_at"}. Changes nothing.
+static func water_bill_so_far(state: Dictionary, data: Dictionary, now: float) -> Dictionary:
+	var meter := water_meter(state, now)
+	return {"m3": float(meter.m3), "cost": cents(water_bill_cost(data, float(meter.m3), float(meter.base_cost))),
+		"due_at": water_bill_due_at(state, data, now)}
+
+
+## If the bill is due at `now`, charges it all at once (into debt if need be), keeps it in the
+## bill history and starts the next cycle at the fixed moment it was due. Returns cents charged.
+static func _bill_water_if_due(state: Dictionary, data: Dictionary, now: float) -> int:
+	var charged := 0
+	while now >= water_bill_due_at(state, data, now) - 0.000001:
+		var meter := water_meter(state, now)
+		var due := water_bill_due_at(state, data, now)
+		var amount := cents(water_bill_cost(data, float(meter.m3), float(meter.base_cost)))
+		if amount > 0:
+			state.profile.currency -= amount
+			var spending: Dictionary = stats(state).spending
+			spending["water"] = int(spending.get("water", 0)) + amount
+			var bills: Array = state.get("water_bills", [])
+			bills.append({"t": due, "m3": float(meter.m3), "cost": amount})
+			while bills.size() > int(data.config.get("water", {}).get("bill_history", 10)):
+				bills.pop_front()
+			state["water_bills"] = bills
+			charged += amount
+		state["water_meter"] = {"m3": 0.0, "base_cost": 0.0, "cycle_start": due}
+	return charged
 
 
 # --- Statistics ---------------------------------------------------------------

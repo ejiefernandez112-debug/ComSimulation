@@ -1067,16 +1067,17 @@ func test_hiring_away_matches_playing() -> void:
 	_check(Sim.hired(away.buildings[4]) == 2 and Sim.hired(away.buildings[5]) == 2, "the buildings with bonuses were filled")
 
 
-## The public water supply (plan.md §5.13): buildings pay for the water they draw while they
-## produce, heavy users pay more for the extra, and it never slows anything down.
+## The public water supply (plan.md §5.13): a meter records what buildings draw while they
+## produce; every cycle the bill is charged at once (heavy users pay more for the extra).
 func test_water_supply() -> void:
 	var data := _bonus_data()  # people only change when the test says so
-	data.config["water"] = {"price_per_m3": 2.0, "tiers": [{"from": 0, "extra": 0.0}, {"from": 100, "extra": 0.25}]}
+	# Bills every hour here (12 in the game), and the extra starts at 10 m³ per cycle.
+	data.config["water"] = {"price_per_m3": 2.0, "billing_hours": 1, "tiers": [{"from": 0, "extra": 0.0}, {"from": 10, "extra": 0.25}]}
 	data.buildings["wet_farm"] = {"category": "extractor", "build_cost": 0, "buildable": true, "max_workers": 2,
 		"storage_cap": 50, "water_per_hour": 60,
 		"recipes": [{"id": "grow", "inputs": {}, "outputs": {"wheat": 10}, "duration": 60}]}
-	_check(is_equal_approx(Sim.water_cost(data, 60.0), 120.0), "60 m³/h at $2 = $120/hour")
-	_check(is_equal_approx(Sim.water_cost(data, 140.0), 100 * 2.0 + 40 * 2.5), "above 100 m³/h the extra costs 25% more: $200 + $100")
+	_check(is_equal_approx(Sim.water_bill_cost(data, 8.0, 16.0), 16.0), "8 m³ at $2 = $16")
+	_check(is_equal_approx(Sim.water_bill_cost(data, 14.0, 28.0), 10 * 2.0 + 4 * 2.5), "above 10 m³ in a cycle the extra costs 25% more: $20 + $10")
 	var state := Sim.new_game(data, T0)
 	var farm := Sim.find_building(state, Sim.build(state, data, "wet_farm", Vector2i(5, 5), T0).building_id)
 	_check(Sim.water_use(state, data, farm, T0) == 0.0, "nobody working yet: no water drawn")
@@ -1087,27 +1088,47 @@ func test_water_supply() -> void:
 	Sim.settle(state, data, T0 + 1)
 	# Water follows the work done: its 5 batches (storage 50) take 5 minutes of full-speed work,
 	# so 5 m³ = $10 in all, whatever the speed was along the way.
-	var report := Sim.settle(state, data, T0 + 1 + 300)
-	_check(int(Sim.stats(state).spending.water) == 1000 and int(report.get("water", 0)) > 0, "water is paid over time, in the report and the statistics ($10)")
-	Sim.settle(state, data, T0 + 3600)
-	_check(int(Sim.stats(state).spending.water) == 1000 and Sim.is_halted(data, farm), "full storage: no more water drawn")
+	Sim.settle(state, data, T0 + 1 + 300)
+	_check(Sim.is_halted(data, farm) and is_equal_approx(float(Sim.water_meter(state, T0).m3), 5.0), "the meter recorded 5 m³; full storage: no more water drawn")
+	var bill := Sim.water_bill_so_far(state, data, T0 + 1000)
+	_check(int(Sim.stats(state).spending.get("water", 0)) == 0 and int(bill.cost) == 1000 and is_equal_approx(float(bill.due_at), T0 + 3600), "nothing paid yet: $10 so far, due at the end of the cycle")
+	var cash := int(state.profile.currency)
+	var report := Sim.settle(state, data, T0 + 3600)
+	_check(int(state.profile.currency) == cash - 1000 and int(report.get("water", 0)) == 1000 and int(Sim.stats(state).spending.water) == 1000, "the bill is charged all at once when it falls due ($10)")
+	_check(state.water_bills.size() == 1 and int(state.water_bills[0].cost) == 1000 and is_equal_approx(float(Sim.water_meter(state, T0).cycle_start), T0 + 3600), "it goes in the bill history, and the next cycle starts at that fixed moment")
+	Sim.settle(state, data, T0 + 7300)
+	_check(state.water_bills.size() == 1 and is_equal_approx(float(Sim.water_meter(state, T0).cycle_start), T0 + 7200), "a cycle with no water use sends no bill")
 
+	var poor := Sim.new_game(data, T0)
+	data.buildings["big_wet_farm"] = data.buildings.wet_farm.duplicate(true)
+	data.buildings.big_wet_farm["storage_cap"] = 100_000
+	Sim.build(poor, data, "big_wet_farm", Vector2i(5, 5), T0)
+	poor.population.current = 2
+	poor.profile.currency = 0
+	poor["wage_carry"] = 0.0
+	data.config["worker_types"] = {"low_skilled": {"name": "Low-skilled", "wage_per_hour": 0}}  # only water costs money here
+	Sim.settle(poor, data, T0 + 3600)  # 60 m³ in the hour: 10 x $2 + 50 x $2.50 = $145
+	_check(int(poor.profile.currency) == -14500, "a heavy user pays the extra, and an unpaid bill just goes into debt")
+
+	data.config["worker_types"] = {"low_skilled": {"name": "Low-skilled", "wage_per_hour": 15}}
 	var steps := Sim.new_game(data, T0)
-	Sim.build(steps, data, "wet_farm", Vector2i(5, 5), T0)
+	Sim.build(steps, data, "big_wet_farm", Vector2i(5, 5), T0)
 	Sim.build(steps, data, "wet_farm", Vector2i(6, 6), T0)
 	steps.population.current = 4
 	var away := steps.duplicate(true)
 	var at := T0
-	while at < T0 + 3600:
-		at = minf(at + 7.0, T0 + 3600)
+	while at < T0 + 3 * 3600 + 100:
+		at = minf(at + 7.0, T0 + 3 * 3600 + 100)
 		Sim.settle(steps, data, at)
-	Sim.settle(away, data, T0 + 3600)
-	_check(int(steps.stats.spending.water) == int(away.stats.spending.water) and steps.profile.currency == away.profile.currency, "same water bill in 7-second steps as in one go")
+	Sim.settle(away, data, T0 + 3 * 3600 + 100)
+	var same: bool = steps.water_bills.size() == 3 and away.water_bills.size() == 3 and steps.profile.currency == away.profile.currency
+	for i in mini(steps.water_bills.size(), away.water_bills.size()):
+		same = same and int(steps.water_bills[i].cost) == int(away.water_bills[i].cost) and is_equal_approx(float(steps.water_bills[i].t), float(away.water_bills[i].t))
+	_check(same, "three bills while away = the same three bills playing in 7-second steps")
 
 	data.resources.wheat.erase("price")
-	data.buildings.erase("farm")
-	data.buildings.erase("slow_farm")
-	data.buildings.erase("crew_farm")
+	for type_id in ["farm", "slow_farm", "crew_farm", "big_wet_farm"]:
+		data.buildings.erase(type_id)
 	data.config["pricing"] = {"payback_hours": 10, "typical_tax_rate": 0.0}
 	# wet_farm: 2 workers x $15 x 1/60 h = $0.50, water 60 m³/h x 1/60 h x $2 = $2: $2.50 / 10
 	_check(Sim.unit_price(data, "wheat") == 25, "water is part of the price per unit ($0.25)")

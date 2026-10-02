@@ -4,6 +4,9 @@ extends Node
 
 ## Emitted whenever the state may have changed, so UI can refresh.
 signal changed
+## A water bill was just charged while playing (cents, m³). Bills charged while the game was
+## closed are in offline_report instead (the Welcome back window).
+signal water_bill_paid(cost: int, m3: float)
 
 const Simulation = preload("res://scripts/sim/simulation.gd")
 const SaveFormat = preload("res://scripts/sim/save_format.gd")
@@ -62,6 +65,9 @@ func data() -> Dictionary:
 ## Brings everything up to date. Returns what was produced (the offline summary uses this).
 func tick() -> Dictionary:
 	var report: Dictionary = Simulation.settle(state, data(), TimeService.now())
+	if int(report.get("water", 0)) > 0 and not water_bills().is_empty():
+		water_bill_paid.emit(int(report.water), float(water_bills()[-1].m3))
+		_dirty = true  # save soon after a bill
 	if _dirty:
 		save_game()  # once per second at most, so a burst of taps is one write
 	changed.emit()
@@ -264,9 +270,15 @@ func water_use(building: Dictionary) -> float:
 	return Simulation.water_use(state, data(), building, TimeService.now())
 
 
-## The company's water bill per hour right now, in dollars (heavy users pay more for the extra).
-func water_cost_per_hour() -> float:
-	return Simulation.water_cost_per_hour(state, data(), TimeService.now())
+## The water bill building up this cycle: {"m3", "cost" (cents, heavy-user extra included),
+## "due_at" (unix time it's charged)}.
+func water_bill() -> Dictionary:
+	return Simulation.water_bill_so_far(state, data(), TimeService.now())
+
+
+## Past water bills, oldest first: [{"t" (when charged), "m3", "cost" (cents)}].
+func water_bills() -> Array:
+	return state.get("water_bills", [])
 
 
 ## A building type's price, in cents (buildings.json lists it in dollars).
