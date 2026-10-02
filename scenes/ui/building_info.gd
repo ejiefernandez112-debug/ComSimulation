@@ -49,8 +49,9 @@ static func _count(workers: float) -> String:
 	return str(roundi(workers))
 
 
-static func _no_workers(progress: float) -> Dictionary:
-	return {"text": "Stopped: no workers. Build houses or raise its bonus", "progress": progress, "good": false}
+static func _no_workers(b: Dictionary, progress: float) -> Dictionary:
+	var fix := "Build houses" if GameData.buildings[b.type].get("fixed_wage", false) else "Build houses or raise its bonus"
+	return {"text": "Stopped: no workers. %s" % fix, "progress": progress, "good": false}
 
 
 ## What the building is doing: {"text": String, "progress": 0..1, or -1 for no bar, "good": bool}.
@@ -78,7 +79,7 @@ static func status(b: Dictionary) -> Dictionary:
 			var p := Economy.job_progress(b)
 			var speed := Economy.building_speed(b)
 			if speed <= 0.0:
-				return _no_workers(p)
+				return _no_workers(b, p)
 			var left := (1.0 - p) * float(r.duration) / speed
 			return _with_speed(b, "Growing %s · next in %s" % [resource_name(output_of(r)), UITheme.duration(left)], p, speed)
 		"processor":
@@ -89,7 +90,7 @@ static func status(b: Dictionary) -> Dictionary:
 			var p := Economy.job_progress(b)
 			var speed := Economy.building_speed(b)
 			if speed <= 0.0:
-				return _no_workers(p)
+				return _no_workers(b, p)
 			var left: float = ((1.0 - p) * float(r.duration) + (b.queue.size() - 1) * float(r.duration)) / speed
 			return _with_speed(b, "Making %s · %s left" % [resource_name(output_of(r)), UITheme.duration(left)], p, speed)
 		"retail":
@@ -104,7 +105,7 @@ static func status(b: Dictionary) -> Dictionary:
 				return {"text": "Shelves empty: put food on a shelf to sell it (no wages meanwhile)", "progress": -1.0, "good": false}
 			var speed := Economy.building_speed(b)
 			if speed <= 0.0:
-				return _no_workers(-1.0)
+				return _no_workers(b, -1.0)
 			return _with_speed(b, "Selling %d product%s · next sells out in %s" % [selling, "" if selling == 1 else "s", UITheme.duration(soonest)], -1.0, speed)
 		"residential":
 			return {"text": "Home for %d people" % int(def.get("population_capacity", 0)), "progress": -1.0, "good": true}

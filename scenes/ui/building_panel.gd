@@ -265,7 +265,8 @@ func _build_workers(def: Dictionary) -> void:
 			text += " at the minimum wage"
 		if def.get("staffed_first", false):
 			text += ", hired before any other building"
-		var fixed := _wrapped(text + ". Upgrading to Level 2 (coming later) doubles them.")
+		var later := " Upgrading to Level 2 (coming later) doubles them." if def.category == "storage" else " Upgrading (coming later) adds more."
+		var fixed := _wrapped(text + "." + later)
 		fixed.add_theme_font_size_override("font_size", 16)
 		box.add_child(fixed)
 	else:
@@ -373,7 +374,7 @@ func _refresh_workers(b: Dictionary, def: Dictionary) -> void:
 		_rate_text.text = "%s of %s" % [UITheme.number(Economy.storage_capacity(b)), UITheme.number(int(def.get("capacity", 0)))]
 		note += " · short of workers = less room"
 	elif def.category == "retail":
-		note += " while a shelf is selling · fewer workers = shelves sell slower"
+		note += " while a shelf is selling · short of people = shelves sell slower"
 	else:
 		var r := BuildingInfo.recipe(b.type)
 		var per_minute := 0.0
@@ -392,6 +393,8 @@ func _refresh_workers(b: Dictionary, def: Dictionary) -> void:
 		note = "Idle: no jobs queued. Its workers wait, unpaid, for the next job. " + note
 	elif short and def.get("staffed_first", false):
 		note = "Only %d of the %d asked for: it gets free people before any other building, so the town just needs more people. Build houses. " % [int(w.hired), int(w.wanted)] + note
+	elif short and def.get("fixed_wage", false):
+		note = "Only %d of the %d asked for: free people go to warehouses first, then to the biggest bonus, and this one pays the minimum, so it waits its turn. Build houses. " % [int(w.hired), int(w.wanted)] + note
 	elif short:
 		note = "Only %d of the %d asked for: free people go to warehouses first, then to the biggest bonus. Build houses, or raise its bonus. " % [int(w.hired), int(w.wanted)] + note
 	_workers_note.text = note

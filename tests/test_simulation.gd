@@ -1527,12 +1527,36 @@ func test_supermarket_save_round_trip() -> void:
 	_check(_difference(state, loaded, "") in ["", "last_saved_at"], "the loaded shelves go on selling exactly the same")
 
 
+## A store with fixed workers (like the real Supermarket): no staffing or bonus choice, it waits
+## its turn for free people, and short of people it sells slower.
+func test_supermarket_fixed_workers() -> void:
+	var data := _shop_data()
+	data.buildings.market["fixed_workers"] = true
+	data.buildings.market["fixed_wage"] = true
+	var state := Sim.new_game(data, T0)
+	state.population.current = 10
+	var market := Sim.find_building(state, Sim.build(state, data, "market", Vector2i(5, 5), T0).building_id)
+	state.inventory["flour"] = 100
+	_check(not Sim.can_set_staffing(state, data, market.id, "low").ok, "fixed workers: no Low / Medium / High choice")
+	_check(not Sim.can_set_bonus(state, data, market.id, "big").ok, "fixed wage: no bonus")
+	_check(not Sim.is_staffed_first(data, market), "it isn't staffed first: it waits its turn")
+	Sim.stock_shelf(state, data, market.id, "flour", 10, "normal", T0)  # 10 people: 10 an hour
+	state.population.current = 1  # then people move away: one person left for its 2 posts
+	Sim._hire(state, data, T0)
+	Sim.settle(state, data, T0 + 3601)
+	_check(not Sim.shelves(data, market)[0].is_empty(), "1 of 2 workers: half speed, not sold out after an hour")
+	Sim.settle(state, data, T0 + 7201)
+	_check(Sim.shelves(data, market)[0].is_empty(), "sold out after 2 hours")
+
+
 ## The real data: the Supermarket and the goods it sells make sense.
 func test_real_shop_data() -> void:
 	var data := {"resources": GameDataScript.load_json("res://data/resources.json"),
 		"buildings": GameDataScript.load_json("res://data/buildings.json"),
 		"config": GameDataScript.load_json("res://data/game_config.json")}
 	_check(data.buildings.get("supermarket", {}).get("category", "") == "retail" and int(data.buildings.supermarket.get("shelves", 0)) > 0, "real data: the Supermarket is a shop with shelves")
+	var shop: Dictionary = data.buildings.supermarket
+	_check(shop.get("fixed_workers", false) and shop.get("fixed_wage", false) and not shop.get("staffed_first", false), "real data: the Supermarket has fixed workers at the minimum wage and waits its turn for people")
 	_check(Sim.shop_products(data).has("bread") and Sim.shop_products(data).has("flour") and not Sim.shop_products(data).has("wheat"), "real data: shops sell flour and bread, not raw wheat")
 	var tags := Sim.price_tags(data)
 	_check(tags.has(str(data.config.retail.get("default_tag", ""))), "real data: the default price tag exists")

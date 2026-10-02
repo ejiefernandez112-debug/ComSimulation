@@ -536,7 +536,7 @@ The Retail building (selling to the village) is the **Supermarket** (`supermarke
 
 - **Village demand:** a shelf sells **people × the item's appetite × the tag's speed** per hour (appetite PLACEHOLDERS: Bread 3.6, Flour 3.2 per person per hour, tuned so ~40 people buy what one Farm + Mill + Bakery make; the game only shows village totals). The rate and price are fixed when the goods go on the shelf, so more people help the *next* shelf
 - **Variety brings shoppers ("one-stop shop", our own idea):** +10% for each different product on the store's shelves beyond the first (`retail.variety_bonus`). It changes the moment a shelf sells out, so keeping shelves full keeps shoppers coming
-- **Workers:** 4 (Low / Medium / High staffing, wage bonus). Fewer workers = shelves sell slower (3 of 4 = 75%). Paid per hour **only while a shelf is selling**; empty shelves = idle, no wages. Electricity later (0 MW for now)
+- **Workers: a fixed 4 at the minimum wage** (decided 2026-10-02, like the warehouse: `fixed_workers`, `fixed_wage`): no Low / Medium / High and no bonus, because neither did anything worth having here (half the workers sell half as fast for the same total wages; a bonus only wins hiring priority). More only by upgrading later. **Not staffed first:** it waits its turn for free people; short of people, shelves sell slower (3 of 4 = 75%). Paid per hour **only while a shelf is selling**; empty shelves = idle, no wages. Electricity later (0 MW for now)
 - **Paid at the end of each shelf batch** (decided 2026-10-02): when a shelf sells out, its sales minus sales tax (§5.9; Company Tax when that's built) reach cash. Taking a shelf down early (red X, asks first) pays for what's sold so far and returns the rest to the warehouse; demolish and suspend do the same
 - **Offline:** exact, one calculation per stretch: settling splits time at each sell-out (the shoppers bonus changes then) and at worker changes. The Welcome back window lists what sold and what it earned; while playing, a message says "Sold out: 1,000 Bread. +$9,331"
 - **Why demand limits volume (re-assessed 2026-10-02):** a price-only "demand meter" (±30%) was rejected: dumping goods at −30% still made a profit, and holding stock back to sell at +30% could be gamed. Here more goods simply take longer to sell, and lowering the price is the player's choice
@@ -703,7 +703,7 @@ A hidden dev menu (key combo on PC, secret tap sequence on mobile) for testing t
 - [ ] Raw goods on the Dock and Market: §5.11 says the Dock exports *any* goods, raw included. Does "raw Wheat not sellable" also cover the Dock/Market, or only stores?
 - [x] Fruits → **later**, from a **Plantation** with a crop choice (Banana, Mango, Lemon, Pineapple, Papaya, Coconut), sold fresh at the Grocery Store; processing optional (decided 2026-10-02, 5.17)
 - [ ] Plantation (5.17): does changing crop lose the growing batch (replanting)? One crop per building, or several plots?
-- [ ] Supermarket (5.16): tune the PLACEHOLDERS by playing: build cost $2,500, 4 shelves, 4 workers, appetites (Bread 3.6, Flour 3.2), price tags, +10% variety bonus. Should fruits share one "fruit" appetite (5.17)?
+- [ ] Supermarket (5.16): tune the PLACEHOLDERS by playing: build cost $2,500, 4 shelves, 4 fixed workers, appetites (Bread 3.6, Flour 3.2), price tags, +10% variety bonus. Should fruits share one "fruit" appetite (5.17)?
 - [x] Water → **public government supply only, a flow (m³/h), unlimited, heavy users pay more (+25% above 100 m³/h)**; Wheat Farm 30 m³/h (decided 2026-10-02, 5.13)
 - [ ] Does the Bakery use water (e.g. 5 m³/h for dough)? (5.13, user decides later)
 - [x] Utility billing → **a bill every 12 real hours (one game day), metered at the price when used, unpaid = debt, no late fee; wages stay continuous** (decided 2026-10-02, 5.13)
@@ -776,6 +776,9 @@ A hidden dev menu (key combo on PC, secret tap sequence on mobile) for testing t
 Both are functional, self-contained HTML/JS artifacts used to validate the trading-mechanic math and UX before porting logic into Godot.
 
 ## 15. Revision Log
+
+**2026-10-02 (Supermarket: fixed workers):**
+- The Supermarket has a fixed 4 workers at the minimum wage, like the warehouse: no staffing or bonus choice (neither helped selling). It waits its turn for free people (not staffed first)
 
 **2026-10-02 (Supermarket built, on trial):**
 - The Retail building is the Supermarket (5.16): 4 shelves selling different foods at once, five price tags (Big Sale → Luxury), village demand from population × appetite, +10% shoppers per extra product, paid when a shelf sells out, wages only while selling. Raw wheat can't be sold. Replaces the Sell test buttons
