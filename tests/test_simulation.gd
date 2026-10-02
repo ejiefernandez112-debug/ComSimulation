@@ -445,7 +445,7 @@ func test_employment() -> void:
 	var state := Sim.new_game(data, T0)
 	Sim.build(state, data, "crew_farm", Vector2i(3, 3), T0)  # 2 jobs
 	var mill_id: String = Sim.build(state, data, "crew_mill", Vector2i(4, 4), T0).building_id  # 3 jobs
-	_check(Sim.employment(state, data, T0).jobs == 2, "a mill with nothing queued offers no jobs")
+	_check(Sim.employment(state, data, T0).jobs == 5, "a mill with nothing queued still offers its posts (its workers wait, unpaid)")
 	state.inventory["wheat"] = 20
 	Sim.fill_queue(state, data, mill_id, "mill", T0)  # 2 batches: busy for the whole test
 	var e := Sim.employment(state, data, T0)
@@ -548,7 +548,8 @@ func test_staffing_levels() -> void:
 	Sim.set_staffing(state, data, farm.id, "medium", T0 + 120)
 	_check(Sim.workers_wanted(data, farm) == 6 and is_equal_approx(Sim.building_speed(state, data, farm, T0 + 120), 0.75), "Medium: 6 workers, 75% speed")
 	_check(Sim.employment(state, data, T0 + 120).jobs == 6, "jobs follow the staffing level")
-	state.population.current = 3
+	state.population.current = 3  # 7 people moved away
+	Sim.settle(state, data, T0 + 120)
 	_check(is_equal_approx(Sim.workers_working(state, data, farm, T0 + 120), 3.0) and is_equal_approx(Sim.building_speed(state, data, farm, T0 + 120), 3.0 / 8.0), "only 3 people for 6 jobs: 3 working, 3/8 speed")
 	_check(not Sim.set_staffing(state, data, farm.id, "huge", T0).ok, "unknown staffing levels are refused")
 	_check(not Sim.set_staffing(state, data, state.buildings[1].id, "low", T0).ok, "a house has no workers to set")
@@ -624,7 +625,7 @@ func test_halted_buildings_pay_no_wages() -> void:
 	Sim.settle(state, data, T0 + 3600)  # away an hour; the farm filled up after 10 minutes
 	_check(int(farm.storage.wheat) == 100 and Sim.is_halted(data, farm), "full storage halts the farm")
 	_check(int(Sim.stats(state).spending.wages) == 48, "wages stopped the moment it filled (600 s x 8 x $36/h = $48), not after the hour")
-	_check(Sim.workers_working(state, data, farm, T0 + 3600) == 0.0 and Sim.employment(state, data, T0 + 3600).jobs == 0, "a halted building's workers go home")
+	_check(Sim.workers_working(state, data, farm, T0 + 3600) == 0.0 and Sim.hired(farm) == 8, "a halted building's workers stop working but stay tied to it")
 	Sim.collect(state, data, farm.id, T0 + 3600)
 	Sim.settle(state, data, T0 + 3660)
 	_check(int(farm.storage.get("wheat", 0)) == 10 and not Sim.is_halted(data, farm), "collecting restarts it")
@@ -679,7 +680,7 @@ func test_idle_buildings_pay_no_wages() -> void:
 	_check(int(Sim.stats(steps).spending.wages) == 288 + 48, "same wages when playing in 7-second steps")
 
 
-func test_halted_building_frees_workers() -> void:
+func test_halted_building_keeps_workers() -> void:
 	var s := _filling_town()
 	var state: Dictionary = s[0]
 	var data: Dictionary = s[1]
@@ -687,11 +688,15 @@ func test_halted_building_frees_workers() -> void:
 	data.buildings["roomy_farm"] = data.buildings.big_farm.duplicate()
 	data.buildings.roomy_farm["storage_cap"] = 10_000
 	var second := Sim.find_building(state, Sim.build(state, data, "roomy_farm", Vector2i(6, 6), T0).building_id)
-	state.population.current = 8  # 8 people for 16 jobs: both farms at half speed
-	_check(is_equal_approx(Sim.building_speed(state, data, second, T0), 0.5), "8 people for 16 jobs: half speed")
-	Sim.settle(state, data, T0 + 1300)  # the first farm fills after 1,200 s at half speed
+	_check(Sim.hired(first) == 8 and Sim.hired(second) == 2, "10 people: the first farm hired its 8 when it opened, the second gets the other 2")
+	state.population.current = 8  # 2 people moved away
+	Sim.settle(state, data, T0)
+	_check(Sim.hired(first) == 8 and Sim.hired(second) == 0, "with equal bonuses, the newest building loses its workers first")
+	Sim.settle(state, data, T0 + 700)  # the first farm fills after 600 s
 	_check(Sim.is_halted(data, first), "first farm full")
-	_check(is_equal_approx(Sim.building_speed(state, data, second, T0 + 1300), 1.0), "its workers went to the other farm: full speed")
+	_check(Sim.hired(first) == 8 and Sim.building_speed(state, data, second, T0 + 700) == 0.0, "its workers stay tied to it: the other farm doesn't get them")
+	Sim.suspend(state, data, first.id, T0 + 700)
+	_check(Sim.hired(first) == 0 and is_equal_approx(Sim.building_speed(state, data, second, T0 + 700), 1.0), "suspending frees them: they fill the other farm's open posts")
 
 
 func test_dev_cash_tools() -> void:
@@ -941,6 +946,100 @@ func test_old_save_gets_a_warehouse() -> void:
 	result = SaveFormat.from_text(JSON.stringify(old), data)
 	store = result.state.buildings[-1]
 	_check(store.type == "store" and Vector2i(int(store.position[0]), int(store.position[1])) == Vector2i(3, 0), "or on the first free tile")
+
+	# Version 2 saves shared workers out evenly and kept no headcount: hand them out again.
+	var data2 := _bonus_data()
+	var town := Sim.new_game(data2, T0)
+	var crew := Sim.find_building(town, Sim.build(town, data2, "crew_farm", Vector2i(5, 5), T0).building_id)
+	town.population.current = 1
+	var v2 := JSON.parse_string(SaveFormat.to_text(town, T0)) as Dictionary
+	v2.save_version = 2
+	for building in v2.buildings:
+		building.erase("hired")
+	result = SaveFormat.from_text(JSON.stringify(v2), data2)
+	_check(result.ok and Sim.hired(Sim.find_building(result.state, crew.id)) == 1, "an older save gets its workers handed out by the new rules")
+
+
+## A town for the hiring tests: minimum wage $15, bonuses 0 / 20 / 40 / 60%, people only change
+## when the test says so. crew_farm has 2 posts.
+func _bonus_data() -> Dictionary:
+	var data := _data()
+	data.config["population_growth_seconds"] = 0
+	data.config["worker_types"] = {"low_skilled": {"name": "Low-skilled", "wage_per_hour": 15}}
+	data.config["wage_bonuses"] = {"none": 0.0, "small": 0.2, "good": 0.4, "big": 0.6}
+	return data
+
+
+## Whole workers, tied to their building, hired by wage bonus (plan.md §5.6).
+func test_hiring_by_bonus() -> void:
+	var data := _bonus_data()
+	var state := Sim.new_game(data, T0)
+	var a := Sim.find_building(state, Sim.build(state, data, "crew_farm", Vector2i(3, 3), T0).building_id)
+	var b := Sim.find_building(state, Sim.build(state, data, "crew_farm", Vector2i(4, 4), T0).building_id)
+	_check(Sim.set_bonus(state, data, b.id, "good", T0).ok, "a bonus can be chosen")
+	_check(not Sim.set_bonus(state, data, b.id, "huge", T0).ok and not Sim.set_bonus(state, data, state.buildings[1].id, "big", T0).ok, "unknown bonuses, or a house, are refused")
+	_check(is_equal_approx(Sim.wage_per_worker(data, a), 15.0) and is_equal_approx(Sim.wage_per_worker(data, b), 21.0), "wage = minimum $15 + bonus ($15 + 40% = $21)")
+	state.population.current = 3
+	Sim.settle(state, data, T0)
+	_check(Sim.hired(b) == 2 and Sim.hired(a) == 1, "the bigger bonus fills first: 2 there, the 3rd person to the other")
+	_check(is_equal_approx(Sim.building_wages(state, data, b, T0), 42.0), "its wage bill: 2 x $21")
+	Sim.set_staffing(state, data, b.id, "low", T0)  # 2 posts -> 1
+	_check(Sim.hired(b) == 1 and Sim.hired(a) == 2, "lowering its staffing frees a worker, who takes the open post elsewhere")
+	Sim.set_bonus(state, data, a.id, "none", T0)
+	Sim.set_staffing(state, data, b.id, "high", T0)  # an open post again, but nobody is free
+	_check(Sim.hired(b) == 1 and Sim.hired(a) == 2, "workers are tied: an open post never pulls them from another building")
+	Sim.set_bonus(state, data, b.id, "big", T0)
+	_check(Sim.hired(a) == 2, "not even with a bigger bonus")
+	state.population.current = 4
+	Sim.settle(state, data, T0)
+	_check(Sim.hired(b) == 2, "but the next person to move in takes it")
+
+	var even := Sim.new_game(data, T0)
+	var farms: Array = []
+	for x in 3:
+		farms.append(Sim.find_building(even, Sim.build(even, data, "crew_farm", Vector2i(x, 5), T0).building_id))
+	even.population.current = 3
+	Sim.settle(even, data, T0)
+	_check(Sim.hired(farms[0]) == 1 and Sim.hired(farms[1]) == 1 and Sim.hired(farms[2]) == 1, "equal bonuses: they take turns, one each")
+	even.population.current = 2
+	Sim.settle(even, data, T0)
+	_check(Sim.hired(farms[2]) == 0 and Sim.hired(farms[0]) == 1, "fewer people: the newest building (same bonus) loses first")
+	Sim.set_bonus(even, data, farms[2].id, "small", T0)
+	even.population.current = 3
+	Sim.settle(even, data, T0)
+	Sim.set_bonus(even, data, farms[0].id, "big", T0)
+	even.population.current = 2
+	Sim.settle(even, data, T0)
+	_check(Sim.hired(farms[1]) == 0 and Sim.hired(farms[0]) == 1 and Sim.hired(farms[2]) == 1, "fewer people: the smallest bonus loses first")
+	var e := Sim.employment(even, data, T0)
+	_check(e.jobs == 6 and e.employed == 2 and e.unemployed == 0 and e.open_jobs == 4, "employment counts whole, hired people")
+
+
+## Being away gives exactly the same hiring, production and wages as playing all along, with
+## bonuses, people moving in and a building finishing partway.
+func test_hiring_away_matches_playing() -> void:
+	var data := _bonus_data()
+	data.config["population_growth_seconds"] = 10
+	var played := Sim.new_game(data, T0)
+	var away := Sim.new_game(data, T0)
+	for state in [played, away]:
+		Sim.build(state, data, "cabin", Vector2i(8, 8), T0)  # room for 5 more people from T0 + 200
+		for x in 3:
+			Sim.build(state, data, "crew_farm", Vector2i(x, 5), T0)
+		Sim.build(state, data, "slow_farm", Vector2i(5, 5), T0)  # finishes at T0 + 5
+		Sim.set_bonus(state, data, state.buildings[4].id, "good", T0)
+		Sim.set_bonus(state, data, state.buildings[5].id, "small", T0)
+	data.buildings.slow_farm["max_workers"] = 2
+	var t := T0
+	while t < T0 + 3000:
+		t += 7.0
+		Sim.settle(played, data, t)
+	Sim.settle(away, data, t)
+	var same: bool = played.population.current == away.population.current and played.profile.currency == away.profile.currency
+	for i in played.buildings.size():
+		same = same and Sim.hired(played.buildings[i]) == Sim.hired(away.buildings[i]) and played.buildings[i].storage == away.buildings[i].storage
+	_check(same, "one long absence = playing in 7-second steps (people, hired workers, storage, cash)")
+	_check(Sim.hired(away.buildings[4]) == 2 and Sim.hired(away.buildings[5]) == 2, "the buildings with bonuses were filled")
 
 
 ## The real data files must be valid: every recipe uses known resources, numbers make sense.

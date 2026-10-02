@@ -12,6 +12,7 @@ signal cancel_requested(building_id: String, index: int)
 signal move_requested(building_id: String)
 signal demolish_requested(building_id: String)
 signal staffing_requested(building_id: String, level: String)
+signal bonus_requested(building_id: String, level: String)
 signal suspend_requested(building_id: String)
 signal resume_requested(building_id: String)
 
@@ -27,6 +28,8 @@ var _collect: Button
 var _produce: Button
 var _fill: Button
 var _staff_buttons := {}  # staffing level -> its button
+var _bonus_buttons := {}  # wage bonus level -> its button
+var _wage_each_text: Label
 var _workers_text: Label
 var _wages_text: Label
 var _rate_text: Label
@@ -62,6 +65,7 @@ func _build_rows(b: Dictionary, def: Dictionary) -> void:
 	_produce = null
 	_fill = null
 	_staff_buttons.clear()
+	_bonus_buttons.clear()
 	_workers_text = null
 	_suspend = null
 	_stock_bar = null
@@ -210,9 +214,11 @@ func _build_workers(def: Dictionary) -> void:
 		box.add_child(fixed)
 	else:
 		_build_staffing_buttons(box, def)
+	_build_bonus_buttons(box)
 	_workers_text = _figure_row(box, "Workers:")
 	_rate_text = _figure_row(box, "Usable Room:" if def.category == "storage" else "Production Rate:")
-	_wages_text = _figure_row(box, "Wage:")
+	_wage_each_text = _figure_row(box, "Wage per worker:")
+	_wages_text = _figure_row(box, "Wage bill:")
 	_workers_note = _wrapped("")
 	_workers_note.add_theme_font_size_override("font_size", 15)
 	box.add_child(_workers_note)
@@ -236,6 +242,29 @@ func _build_staffing_buttons(box: VBoxContainer, def: Dictionary) -> void:
 		_staff_buttons[level] = button
 
 
+## Wage bonus: None / +20% / +40% / +60% on top of the minimum wage. A bigger bonus costs more
+## per worker and gets this building the next free workers first.
+func _build_bonus_buttons(box: VBoxContainer) -> void:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 6)
+	box.add_child(row)
+	var title := _body("Bonus:")
+	title.custom_minimum_size.x = 70
+	row.add_child(title)
+	var bonuses: Dictionary = GameData.config.get("wage_bonuses", {})
+	for level in bonuses:
+		var share := float(bonuses[level])
+		var button := Button.new()
+		button.text = "None" if share <= 0.0 else "+%d%%" % roundi(share * 100.0)
+		button.tooltip_text = "%s bonus: pay %d%% more than the minimum wage. Bigger bonuses get free workers first" % [level.capitalize(), roundi(share * 100.0)]
+		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		button.custom_minimum_size.y = 40
+		button.add_theme_font_size_override("font_size", 16)
+		button.pressed.connect(func(): bonus_requested.emit(building_id, level))
+		row.add_child(button)
+		_bonus_buttons[level] = button
+
+
 ## "Title ........ value" with the value in bigger type. Returns the value label.
 func _figure_row(parent: Control, title: String) -> Label:
 	var row := HBoxContainer.new()
@@ -254,18 +283,24 @@ func _refresh_workers(b: Dictionary, def: Dictionary) -> void:
 	var w := Economy.workers(b)
 	for level in _staff_buttons:
 		_staff_buttons[level].theme_type_variation = "YellowButton" if level == w.level else "BlueButton"
-	var working := _count(w.working)
+	for level in _bonus_buttons:
+		_bonus_buttons[level].theme_type_variation = "YellowButton" if level == w.bonus else "BlueButton"
 	var producing: bool = Economy.is_built(b) and Economy.is_producing(b)
-	# Short of people only counts while it has work: a halted or idle building sends everyone home.
-	var short: bool = producing and w.working < w.wanted - 0.01
-	# Workers employed / most it can employ, e.g. "6/8".
-	_workers_text.text = "%s/%d" % [working, w.max]
+	# Short: posts it asked for that nobody has taken (open posts, waiting for free people).
+	var short: bool = Economy.is_built(b) and not Economy.is_suspended(b) and int(w.hired) < int(w.wanted)
+	# Workers tied to it / most it can employ, e.g. "6/8" (always whole people).
+	_workers_text.text = "%d/%d" % [int(w.hired), int(w.max)]
 	_workers_text.add_theme_color_override("font_color", UITheme.BAD.darkened(0.3) if short else UITheme.TEXT_DARK)
+	var bonus_pay: float = w.wage_each - w.minimum
+	if bonus_pay > 0.01:
+		_wage_each_text.text = "%s + %s bonus = %s" % [UITheme.money(roundi(w.minimum)), UITheme.money(roundi(bonus_pay)), UITheme.money(roundi(w.wage_each))]
+	else:
+		_wage_each_text.text = "%s (minimum)" % UITheme.money(roundi(w.minimum))
 	_wages_text.text = "%s / hour" % UITheme.money(roundi(w.wages))
 	var speed := Economy.building_speed(b)
 	_rate_text.text = "%d%%" % floori(speed * 100.0 + 0.001)
-	# The details: why it isn't full speed, what that rate makes, and the wage per worker.
-	var note := "%s workers at %s / hour each" % [w.type, UITheme.money(roundi(w.wage_each))]
+	# The details: why it isn't full speed and what that rate makes.
+	var note := "%s workers, paid per hour" % w.type
 	if def.category == "storage":
 		_rate_text.text = "%s of %s" % [UITheme.number(Economy.storage_capacity(b)), UITheme.number(int(def.get("capacity", 0)))]
 		note += " · short of workers = less room"
@@ -276,15 +311,15 @@ func _refresh_workers(b: Dictionary, def: Dictionary) -> void:
 			per_minute += int(r.outputs[res]) * 60.0 / float(r.duration) * speed
 		note += " · %.1f %s / min" % [per_minute, BuildingInfo.resource_name(BuildingInfo.output_of(r))]
 	if not Economy.is_built(b):
-		note = "Workers start when it's built (%d asked for). " % w.wanted + note
+		note = "It hires when it's built (%d asked for). " % w.wanted + note
 	elif Economy.is_suspended(b):
-		note = "Suspended: the workers went home and cost nothing. Resume to start again. " + note
-	elif short:
-		note = "Only %s of the %d asked for: not enough people, build houses. " % [working, w.wanted] + note
+		note = "Suspended: its workers were freed for other buildings. Resume to hire again. " + note
 	elif Economy.is_halted(b):
-		note = "Halted: storage full, so the workers went home and cost nothing. Collect to restart. " + note
+		note = "Halted: storage full. Its workers wait, unpaid, until you collect. " + note
 	elif not producing:
-		note = "Idle: no jobs queued, so the workers went home and cost nothing. Add a job to start. " + note
+		note = "Idle: no jobs queued. Its workers wait, unpaid, for the next job. " + note
+	elif short:
+		note = "Only %d of the %d asked for: free people go to the biggest bonus first. Build houses, or raise its bonus. " % [int(w.hired), int(w.wanted)] + note
 	_workers_note.text = note
 
 
@@ -473,7 +508,3 @@ func _wrapped(text: String) -> Label:
 	label.custom_minimum_size.x = WIDTH - 70
 	return label
 
-
-## "6" for whole workers, "4.3" when short of people (an average across the town's buildings).
-func _count(workers: float) -> String:
-	return str(roundi(workers)) if absf(workers - roundf(workers)) < 0.05 else "%.1f" % workers

@@ -46,6 +46,14 @@ static func _migrate(state: Dictionary, version: int, data: Dictionary) -> void:
 		# starter warehouse, or they would have no room for goods at all.
 		_add_starter_warehouse(state, data)
 		version = 2
+	if version < 3:
+		# Version 3: each building keeps its own whole number of hired workers (plan.md §5.6,
+		# "Hiring & wage bonuses"), instead of an even share. Hand the town's people out by the
+		# new rules, as things stood when the game was saved.
+		for b in state.buildings:
+			b["hired"] = 0
+		Simulation._hire(state, data, float(state.get("settled_at", 0.0)))
+		version = 3
 	state["save_version"] = version
 
 

@@ -10,7 +10,7 @@ extends RefCounted
 ## Time model: buildings store when their current cycle/job started (`job_started_at`).
 ## "Settling" turns elapsed time into finished output in one calculation, never tick-by-tick.
 
-const SAVE_VERSION := 2  # 2: warehouses are buildings (save_format.gd adds one to older saves)
+const SAVE_VERSION := 3  # 2: warehouses are buildings; 3: buildings keep their own hired workers
 ## Used when game_config.json has no staffing_levels: share of max_workers per level.
 const DEFAULT_STAFFING_LEVELS := {"low": 0.5, "medium": 0.75, "high": 1.0}
 
@@ -45,7 +45,8 @@ static func new_game(data: Dictionary, now: float) -> Dictionary:
 ##
 ## A building's speed depends on how many workers are actually working in it (see
 ## building_speed), and wages are paid for each of them. That only changes at a few moments
-## (a person moves in, a building finishes, the player changes staffing, which settles first),
+## (a person moves in and is hired, a building finishes or stops, the player changes staffing,
+## which settles first),
 ## so the time since the last settle is split at those moments and each piece is worked out in
 ## one go. That's a handful of steps however long the player was away, never a minute-by-minute
 ## replay.
@@ -63,6 +64,7 @@ static func settle(state: Dictionary, data: Dictionary, now: float) -> Dictionar
 		var steps := 0
 		while t < now and steps < 100000:  # the cap is only a safety net
 			steps += 1
+			_hire(state, data, t)  # people who just moved in, or posts that just opened
 			var next := _next_staffing_change(state, data, t, now)
 			# Read every speed and the wage bill as they stand at the start of this piece, before
 			# any building moves on (a building filling up changes the others' staffing).
@@ -76,6 +78,7 @@ static func settle(state: Dictionary, data: Dictionary, now: float) -> Dictionar
 			grown += _grow_population(state, data, next)
 			t = next
 		state["settled_at"] = now
+	_hire(state, data, now)
 	if grown > 0:
 		report["population"] = grown
 	if wages > 0:
@@ -112,9 +115,9 @@ static func _pay_wages(state: Dictionary, amount: float) -> int:
 
 
 ## The first moment after t (and before `until`) when staffing or wages can change: a building
-## finishing construction (new jobs or new homes), a building stopping because its storage
-## filled up or its last job is done (its workers go home), or, while short of workers, the
-## next person moving in.
+## finishing construction (new posts or new homes), a building stopping because its storage
+## filled up or its last job is done (its workers wait, unpaid), or, while posts are open, the
+## next person moving in (they're hired straight away).
 static func _next_staffing_change(state: Dictionary, data: Dictionary, t: float, until: float) -> float:
 	var next := until
 	for b in state.buildings:
@@ -125,7 +128,7 @@ static func _next_staffing_change(state: Dictionary, data: Dictionary, t: float,
 	var pop: Dictionary = state.population
 	var step := float(data.config.population_growth_seconds)
 	var e := employment(state, data, t)
-	if step > 0.0 and e.jobs > e.population and int(pop.current) < population_capacity(state, data, t):
+	if step > 0.0 and e.open_jobs > 0 and int(pop.current) < population_capacity(state, data, t):
 		var arrival := float(pop.growth_anchor) + step * (floorf((t - float(pop.growth_anchor)) / step + 0.000001) + 1.0)
 		if arrival > t and arrival < next:
 			next = arrival
@@ -259,6 +262,7 @@ static func build(state: Dictionary, data: Dictionary, type_id: String, cell: Ve
 	state.profile.currency -= int(def.build_cost)
 	stats(state).spending.construction += int(def.build_cost)
 	var b := _add_building(state, type_id, cell, now, now + float(def.get("build_time", 0.0)))
+	_hire(state, data, now)  # a building ready at once hires now; others when construction ends
 	return _ok({"building_id": b.id})
 
 
@@ -306,6 +310,31 @@ static func set_staffing(state: Dictionary, data: Dictionary, building_id: Strin
 		return check
 	settle(state, data, now)
 	find_building(state, building_id)["staffing"] = level
+	_hire(state, data, now)  # lower: the extra workers are freed for other posts; higher: new posts
+	return _ok()
+
+
+## Whether the building's wage bonus could be set to `level` ("none", "small", "good", "big").
+static func can_set_bonus(state: Dictionary, data: Dictionary, building_id: String, level: String) -> Dictionary:
+	var b := find_building(state, building_id)
+	if b.is_empty():
+		return _fail("Building not found.")
+	if max_workers(data, b) <= 0:
+		return _fail("This building has no workers.")
+	if not data.config.get("wage_bonuses", {}).has(level):
+		return _fail("Unknown bonus.")
+	return _ok()
+
+
+## Choose the wage bonus: a bigger bonus costs more per worker and puts the building first in
+## line for free workers. It never pulls workers from other buildings (they're tied there).
+static func set_bonus(state: Dictionary, data: Dictionary, building_id: String, level: String, now: float) -> Dictionary:
+	var check := can_set_bonus(state, data, building_id, level)
+	if not check.ok:
+		return check
+	settle(state, data, now)  # time so far is paid at the old wage
+	find_building(state, building_id)["bonus"] = level
+	_hire(state, data, now)
 	return _ok()
 
 
@@ -525,6 +554,8 @@ static func suspend(state: Dictionary, data: Dictionary, building_id: String, no
 			kept[res] = int(check.goods[res]) - qty
 	_add_to(state.inventory, moved)
 	b.storage = kept
+	b["hired"] = 0  # its workers are freed: they take open posts elsewhere
+	_hire(state, data, now)
 	return _ok({"moved": moved, "kept": kept})
 
 
@@ -539,6 +570,7 @@ static func resume(state: Dictionary, data: Dictionary, building_id: String, now
 	b.erase("suspended")
 	b.job_started_at = now
 	b.blocked = false
+	_hire(state, data, now)  # it queues for free workers again (its old ones went elsewhere)
 	return _ok()
 
 
@@ -557,6 +589,7 @@ static func demolish(state: Dictionary, data: Dictionary, building_id: String, n
 	var cap := population_capacity(state, data, now)
 	if state.population.current > cap:
 		state.population.current = cap
+	_hire(state, data, now)  # its workers are freed; if people moved away, others may lose workers
 	return check
 
 
@@ -763,13 +796,67 @@ static func has_fixed_workers(data: Dictionary, b: Dictionary) -> bool:
 	return bool(data.buildings.get(b.type, {}).get("fixed_workers", false))
 
 
-## How many people are actually working there: what it asks for, cut back evenly across all
-## buildings when there are fewer people than jobs. Can be a fraction (an average over the
-## town); 0 while it's still being built or isn't producing (halted or idle).
+## How many people are working there right now: its hired workers (always a whole number) while
+## it's producing; 0 while it's still being built or isn't producing (halted, idle, suspended).
+## Halted and idle buildings keep their workers (tied, unpaid) until they restart.
 static func workers_working(state: Dictionary, data: Dictionary, b: Dictionary, now: float) -> float:
 	if not is_built(b, now) or not is_producing(data, b):
 		return 0.0
-	return workers_wanted(data, b) * staffing(state, data, now)
+	return float(hired(b))
+
+
+## Workers tied to this building (hired, whether working right now or waiting unpaid).
+static func hired(b: Dictionary) -> int:
+	return int(b.get("hired", 0))
+
+
+## Posts the building offers: what its staffing level asks for, once built and while not
+## suspended. Halted or idle buildings keep offering them.
+static func posts(data: Dictionary, b: Dictionary, now: float) -> int:
+	if not is_built(b, now) or is_suspended(b):
+		return 0
+	return workers_wanted(data, b)
+
+
+## Hands out free people (plan.md §5.6 "Hiring & wage bonuses"). Workers are tied to their
+## building, so only free people move: each takes an open post at the building with the biggest
+## wage bonus; with equal bonuses they take turns, the emptiest building first (fewest hired for
+## what it asked for), then the older one. With more workers than people (a home was demolished)
+## workers leave the buildings with the smallest bonus first, the newest building first.
+static func _hire(state: Dictionary, data: Dictionary, now: float) -> void:
+	var free := int(state.population.current)
+	for b in state.buildings:
+		b["hired"] = mini(hired(b), posts(data, b, now))  # e.g. staffing was lowered: the rest are freed
+		free -= hired(b)
+	while free < 0:
+		var leave := -1
+		for i in state.buildings.size():
+			var b: Dictionary = state.buildings[i]
+			if hired(b) > 0 and (leave < 0 or bonus_rate(data, b) <= bonus_rate(data, state.buildings[leave])):
+				leave = i
+		state.buildings[leave]["hired"] = hired(state.buildings[leave]) - 1
+		free += 1
+	while free > 0:
+		var best := -1
+		for i in state.buildings.size():
+			var b: Dictionary = state.buildings[i]
+			if hired(b) < posts(data, b, now) and (best < 0 or _hires_before(data, b, state.buildings[best], now)):
+				best = i
+		if best < 0:
+			return  # every post is filled: the rest stay unemployed
+		state.buildings[best]["hired"] = hired(state.buildings[best]) + 1
+		free -= 1
+
+
+## Whether building `a` gets the next free worker before `b` (both have an open post): bigger
+## bonus first, then the emptier one (compared without decimals: a.hired / a.posts < b.hired /
+## b.posts). Equal on both: the one found first, i.e. the older building.
+static func _hires_before(data: Dictionary, a: Dictionary, b: Dictionary, now: float) -> bool:
+	var rate_a := bonus_rate(data, a)
+	var rate_b := bonus_rate(data, b)
+	if not is_equal_approx(rate_a, rate_b):
+		return rate_a > rate_b
+	return hired(a) * posts(data, b, now) < hired(b) * posts(data, a, now)
 
 
 ## Producing: has work to do and room for it, and isn't suspended. Workers are only hired (and
@@ -784,15 +871,15 @@ static func is_suspended(b: Dictionary) -> bool:
 	return bool(b.get("suspended", false))
 
 
-## Idle: a Mill or Bakery with no jobs queued. Like a halted building, its workers go home:
-## no wages, and other buildings can use them.
+## Idle: a Mill or Bakery with no jobs queued. Like a halted building, it pays no wages; its
+## workers stay tied to it, waiting unpaid for the next job.
 static func is_idle(data: Dictionary, b: Dictionary) -> bool:
 	return data.buildings.get(b.type, {}).get("category", "") == "processor" and b.queue.is_empty()
 
 
 ## Halted: its storage is full (a farm with no room for the next batch, or a finished batch
-## waiting for room), so it makes nothing until the player collects. Its workers go home:
-## no wages, and they don't count as employed, so other buildings can use them.
+## waiting for room), so it makes nothing until the player collects. It pays no wages; its
+## workers stay tied to it, waiting unpaid.
 static func is_halted(data: Dictionary, b: Dictionary) -> bool:
 	var def: Dictionary = data.buildings.get(b.type, {})
 	match def.get("category", ""):
@@ -832,10 +919,26 @@ static func _stop_time(state: Dictionary, data: Dictionary, b: Dictionary, t: fl
 	return t + work / speed + 0.000001  # the last job is done: idle from then on
 
 
-## Wage per hour for one worker of this building's type (game_config.json worker_types).
+## Wage per hour for one worker here: the minimum wage for its worker type (game_config.json
+## worker_types, set by the game) plus the building's bonus (None 0% / Small 20% / ...).
 static func wage_per_worker(data: Dictionary, b: Dictionary) -> float:
+	return minimum_wage(data, b) * (1.0 + bonus_rate(data, b))
+
+
+## The minimum wage for this building's worker type, before any bonus.
+static func minimum_wage(data: Dictionary, b: Dictionary) -> float:
 	var type: String = data.buildings.get(b.type, {}).get("worker_type", "low_skilled")
 	return float(data.config.get("worker_types", {}).get(type, {}).get("wage_per_hour", 0.0))
+
+
+## The building's chosen wage bonus: "none", "small", "good" or "big" (wage_bonuses in config).
+static func bonus_level(data: Dictionary, b: Dictionary) -> String:
+	return str(b.get("bonus", data.config.get("default_bonus", "none")))
+
+
+## Its bonus as a share of the minimum wage (0.4 = +40%).
+static func bonus_rate(data: Dictionary, b: Dictionary) -> float:
+	return float(data.config.get("wage_bonuses", {}).get(bonus_level(data, b), 0.0))
 
 
 ## What the building's workers cost per hour right now.
@@ -905,9 +1008,8 @@ static func production_rates(state: Dictionary, data: Dictionary, now: float) ->
 	return {"made": made, "used": used, "buildings": counts}
 
 
-## Share of jobs that are filled, 0.0 to 1.0 (1.0 when there are enough people or no jobs).
-## When short, every building gets this share of the workers it asks for: with 10 people and
-## 16 jobs each gets 63% (plan.md §5.6: short-staffed buildings slow down rather than stop).
+## Share of the town's posts that are filled, 0.0 to 1.0 (1.0 when every post is filled or there
+## are none). Below 1 the town is short of people: some buildings have open posts.
 static func staffing(state: Dictionary, data: Dictionary, now: float) -> float:
 	var e := employment(state, data, now)
 	if e.jobs <= 0:
@@ -915,15 +1017,16 @@ static func staffing(state: Dictionary, data: Dictionary, now: float) -> float:
 	return float(e.employed) / float(e.jobs)
 
 
-## Jobs = workers asked for by finished buildings at their staffing levels; people fill them up
-## to the population. {"population", "jobs", "employed", "unemployed", "open_jobs"}
+## Jobs = posts at finished, non-suspended buildings; employed = workers hired into them (whole
+## people, tied to their building). {"population", "jobs", "employed", "unemployed", "open_jobs"}
 static func employment(state: Dictionary, data: Dictionary, now: float) -> Dictionary:
 	var jobs := 0
+	var employed := 0
 	for b in state.buildings:
-		if is_built(b, now) and is_producing(data, b):
-			jobs += workers_wanted(data, b)
+		jobs += posts(data, b, now)
+		employed += mini(hired(b), posts(data, b, now))
 	var people := int(state.population.current)
-	var employed := mini(people, jobs)
+	employed = mini(employed, people)
 	return {"population": people, "jobs": jobs, "employed": employed, "unemployed": people - employed, "open_jobs": jobs - employed}
 
 
@@ -997,6 +1100,7 @@ static func _add_building(state: Dictionary, type_id: String, cell: Vector2i, no
 		# moment construction ends: settling waits until then, so nothing grows while it's being built.
 		"job_started_at": maxf(now, finished_at),
 		"blocked": false,  # processor: finished job is waiting for storage space
+		"hired": 0,  # workers tied to it (whole people, see _hire)
 	}
 	state.next_building_id = int(state.next_building_id) + 1
 	state.buildings.append(b)

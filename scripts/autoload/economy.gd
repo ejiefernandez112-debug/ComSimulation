@@ -236,6 +236,11 @@ func set_staffing(building_id: String, level: String) -> Dictionary:
 	return _after(Simulation.set_staffing(state, data(), building_id, level, TimeService.now()))
 
 
+## level: "none", "small", "good" or "big" (see wage_bonuses in game_config.json).
+func set_bonus(building_id: String, level: String) -> Dictionary:
+	return _after(Simulation.set_bonus(state, data(), building_id, level, TimeService.now()))
+
+
 func sell(resource_id: String, qty: int) -> Dictionary:
 	return _after(Simulation.sell(state, data(), resource_id, qty, TimeService.now()))
 
@@ -310,15 +315,16 @@ func building_speed(building: Dictionary) -> float:
 	return Simulation.building_speed(state, data(), building, TimeService.now())
 
 
-## Share of jobs filled in town (0.0 to 1.0). Below 1, every building gets that share of the
-## workers it asks for.
+## Share of the town's posts that are filled (0.0 to 1.0). Below 1 the town is short of people:
+## some buildings have open posts (the ones with the smallest bonuses fill last).
 func staffing() -> float:
 	return Simulation.staffing(state, data(), TimeService.now())
 
 
 ## A building's workers: {"level" (low/medium/high), "wanted" (asked for at that level),
 ## "working" (actually working, can be a fraction when short), "max", "wage_each" (per hour),
-## "wages" (per hour now), "type" (worker type name), "fixed" (true = no staffing choice)}.
+## "wages" (per hour now), "type" (worker type name), "fixed" (true = no staffing choice),
+## "hired" (tied to it), "bonus" (wage bonus level), "minimum" (minimum wage per hour)}.
 func workers(building: Dictionary) -> Dictionary:
 	var now := TimeService.now()
 	var d := data()
@@ -332,6 +338,9 @@ func workers(building: Dictionary) -> Dictionary:
 		"wages": Simulation.building_wages(state, d, building, now),
 		"type": str(d.config.get("worker_types", {}).get(type_id, {}).get("name", type_id)),
 		"fixed": Simulation.has_fixed_workers(d, building),  # no Low/Medium/High choice (warehouses)
+		"hired": Simulation.hired(building),  # tied to it, working or waiting unpaid
+		"bonus": Simulation.bonus_level(d, building),  # none / small / good / big
+		"minimum": Simulation.minimum_wage(d, building),  # per hour, before the bonus
 	}
 
 

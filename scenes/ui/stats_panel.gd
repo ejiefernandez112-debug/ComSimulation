@@ -198,11 +198,10 @@ func _refresh_people() -> void:
 	_show("jobs", str(e.jobs))
 	_employed_bar.value = 100.0 * e.employed / maxf(e.population, 1)
 	_show("employed_share", "%d%% of people have a job" % roundi(100.0 * e.employed / maxf(e.population, 1)))
-	var speed := Economy.staffing()
-	if speed >= 1.0:
-		_show("work_speed", "Buildings work at full speed")
+	if e.open_jobs <= 0:
+		_show("work_speed", "Every post is filled")
 	else:
-		_show("work_speed", "Buildings work at %d%% speed: %d more worker%s needed" % [floori(speed * 100.0), e.open_jobs, "" if e.open_jobs == 1 else "s"], DOWN)
+		_show("work_speed", "%d post%s open: free people go to the biggest wage bonus first" % [e.open_jobs, "" if e.open_jobs == 1 else "s"], DOWN)
 	var counts := {}
 	var jobs := {}  # type -> jobs asked for at the chosen staffing levels
 	for building in Economy.state.buildings:

@@ -33,23 +33,24 @@ static func amounts(items: Dictionary) -> String:
 	return " + ".join(parts)
 
 
-## Below full speed: say how slow and why. Too few people in town is a warning; a lower
+## Below full speed: say how slow and why. Open posts it couldn't fill are a warning; a lower
 ## staffing level the player chose is not.
-static func _with_speed(text: String, progress: float, speed: float) -> Dictionary:
+static func _with_speed(b: Dictionary, text: String, progress: float, speed: float) -> Dictionary:
 	if speed >= 0.999:
 		return {"text": text, "progress": progress, "good": true}
-	if Economy.staffing() < 1.0:
+	var w := Economy.workers(b)
+	if int(w.hired) < int(w.wanted):
 		return {"text": "%s · %d%% speed, short of workers" % [text, floori(speed * 100.0 + 0.001)], "progress": progress, "good": false}
 	return {"text": "%s · %d%% speed" % [text, floori(speed * 100.0 + 0.001)], "progress": progress, "good": true}
 
 
-## "3" for whole workers, "2.5" when short of people (an average across the town).
+## Workers are always whole people: "3".
 static func _count(workers: float) -> String:
-	return str(roundi(workers)) if absf(workers - roundf(workers)) < 0.05 else "%.1f" % workers
+	return str(roundi(workers))
 
 
 static func _no_workers(progress: float) -> Dictionary:
-	return {"text": "Stopped: no workers yet. Build houses so people move in", "progress": progress, "good": false}
+	return {"text": "Stopped: no workers yet. Build houses, or give it a bigger wage bonus than your other buildings", "progress": progress, "good": false}
 
 
 ## What the building is doing: {"text": String, "progress": 0..1, or -1 for no bar, "good": bool}.
@@ -66,7 +67,7 @@ static func status(b: Dictionary) -> Dictionary:
 			var full := int(def.get("capacity", 0))
 			if room < full:  # its workers are fixed, so only a lack of people can cut its room
 				var w := Economy.workers(b)
-				return {"text": "Room for %s of %s goods (%s of %d workers: not enough people, build houses)" % [UITheme.number(room), UITheme.number(full), _count(w.working), int(w.max)], "progress": -1.0, "good": false}
+				return {"text": "Room for %s of %s goods (%s of %d workers: build houses, or give it a bigger bonus)" % [UITheme.number(room), UITheme.number(full), _count(w.working), int(w.max)], "progress": -1.0, "good": false}
 			return {"text": "Room for %s goods" % UITheme.number(room), "progress": -1.0, "good": true}
 		"extractor":
 			var per_cycle := 0
@@ -79,7 +80,7 @@ static func status(b: Dictionary) -> Dictionary:
 			if speed <= 0.0:
 				return _no_workers(p)
 			var left := (1.0 - p) * float(r.duration) / speed
-			return _with_speed("Growing %s · next in %s" % [resource_name(output_of(r)), UITheme.duration(left)], p, speed)
+			return _with_speed(b, "Growing %s · next in %s" % [resource_name(output_of(r)), UITheme.duration(left)], p, speed)
 		"processor":
 			if b.blocked:
 				return {"text": "Halted: done, no room. Collect to restart (no wages meanwhile)", "progress": 1.0, "good": false}
@@ -90,7 +91,7 @@ static func status(b: Dictionary) -> Dictionary:
 			if speed <= 0.0:
 				return _no_workers(p)
 			var left: float = ((1.0 - p) * float(r.duration) + (b.queue.size() - 1) * float(r.duration)) / speed
-			return _with_speed("Making %s · %s left" % [resource_name(output_of(r)), UITheme.duration(left)], p, speed)
+			return _with_speed(b, "Making %s · %s left" % [resource_name(output_of(r)), UITheme.duration(left)], p, speed)
 		"residential":
 			return {"text": "Home for %d people" % int(def.get("population_capacity", 0)), "progress": -1.0, "good": true}
 	return {"text": "Your headquarters", "progress": -1.0, "good": true}

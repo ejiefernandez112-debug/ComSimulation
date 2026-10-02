@@ -13,7 +13,7 @@
 	"_stats": "Statistics graphs: a point is recorded every stats_sample_seconds while playing (one point covers time spent away), keeping the latest stats_history_size points (360 x 60s = 6 hours).",
 	"stats_sample_seconds": 60,
 	"stats_history_size": 360,
-	"_workers": "staffing_levels = share of a building's max_workers the player can choose (8 at level 1 -> Low 4, Medium 6, High 8). New buildings start at default_staffing. worker_types: wage_per_hour is paid for every worker actually working, including while the game is closed, and only while the building is producing (not when full or with no jobs queued); cash may go below 0 (debt). available = false types can't be hired yet (high-skilled = high school graduates, professional = college graduates; they arrive with schools). All PLACEHOLDERS.",
+	"_workers": "staffing_levels = share of a building's max_workers the player can choose (8 at level 1 -> Low 4, Medium 6, High 8). New buildings start at default_staffing. worker_types: wage_per_hour = the MINIMUM wage, set by the game; each building adds its wage bonus on top (wage_bonuses: share of the minimum, chosen per building, new ones start at default_bonus; a bigger bonus gets free workers first, plan.md 5.6). Wages are paid for every worker actually working, including while the game is closed, and only while the building is producing (not when full or with no jobs queued); cash may go below 0 (debt). available = false types can't be hired yet (high-skilled = high school graduates, professional = college graduates; they arrive with schools). All PLACEHOLDERS.",
 	"_tax": "Sales tax on Retailer sales (plan.md 5.9): progressive like income-tax brackets, on the company's sales over the last sales_tax_window_hours. Each part of a sale pays the rate of the bracket it falls in, so selling more never leaves you with less. market_fee = the Phase 4 player-market fee per trade, paid by the seller (not used yet). PLACEHOLDERS.",
 	"sales_tax_window_hours": 24,
 	"sales_tax_brackets": [
@@ -25,6 +25,8 @@
 	"market_fee": 0.03,
 	"staffing_levels": { "low": 0.5, "medium": 0.75, "high": 1.0 },
 	"default_staffing": "high",
+	"wage_bonuses": { "none": 0.0, "small": 0.2, "good": 0.4, "big": 0.6 },
+	"default_bonus": "none",
 	"worker_types": {
 		"low_skilled": { "name": "Low-skilled", "wage_per_hour": 15, "available": true },
 		"high_skilled": { "name": "High-skilled", "wage_per_hour": 30, "available": false },

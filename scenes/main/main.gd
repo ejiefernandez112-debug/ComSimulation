@@ -39,6 +39,7 @@ func _ready() -> void:
 	building_panel.move_requested.connect(_start_move)
 	building_panel.demolish_requested.connect(_ask_demolish)
 	building_panel.staffing_requested.connect(_set_staffing)
+	building_panel.bonus_requested.connect(_set_bonus)
 	building_panel.suspend_requested.connect(_ask_suspend)
 	building_panel.resume_requested.connect(_resume)
 	menu_bar.tile_pressed.connect(_on_menu_tile)
@@ -287,6 +288,13 @@ func _resume(building_id: String) -> void:
 	if result.ok:
 		hud.toast("%s is back to work." % GameData.buildings[Economy.building(building_id).type].name)
 	else:
+		hud.toast(result.error, true)
+
+
+## Wage bonus in the building window: costs more per worker, gets free workers first.
+func _set_bonus(building_id: String, level: String) -> void:
+	var result := Economy.set_bonus(building_id, level)
+	if not result.ok:
 		hud.toast(result.error, true)
 
 
