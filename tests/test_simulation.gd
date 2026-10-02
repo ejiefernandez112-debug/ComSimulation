@@ -1134,6 +1134,84 @@ func test_water_supply() -> void:
 	_check(Sim.unit_price(data, "wheat") == 25, "water is part of the price per unit ($0.25)")
 
 
+## Cost tags (plan.md §5.14): every stock knows what it cost to make, the cost moves with the
+## goods, and mixing averages it. Minimum wage $15; crew_farm 2 workers, 10 wheat per 60 s (wages
+## $0.50 a batch = 5 cents a wheat); crew_mill 3 workers, 10 wheat -> 8 flour in 90 s.
+func test_cost_tags() -> void:
+	var data := _bonus_data()
+	data.config["water"] = {"price_per_m3": 2.0, "billing_hours": 12, "tiers": [{"from": 0, "extra": 0.0}]}
+	var state := Sim.new_game(data, T0)
+	var farm := Sim.find_building(state, Sim.build(state, data, "crew_farm", Vector2i(3, 3), T0).building_id)
+	state.population.current = 2
+	Sim.settle(state, data, T0)
+	Sim.settle(state, data, T0 + 120)  # 2 batches
+	_check(int(farm.storage.wheat) == 20 and is_equal_approx(float(farm.storage_cost.wheat), 100.0), "20 wheat made for $1.00 (wages only)")
+	Sim.collect(state, data, farm.id, T0 + 120)
+	_check(int(state.inventory.wheat) == 20 and is_equal_approx(Sim.average_cost(state, "wheat"), 5.0), "collected: the cost tag came along (5 cents each)")
+
+	var half := Sim.new_game(data, T0)
+	var slow := Sim.find_building(half, Sim.build(half, data, "crew_farm", Vector2i(3, 3), T0).building_id)
+	half.population.current = 1  # 1 of 2 workers: half speed
+	Sim.settle(half, data, T0)
+	Sim.settle(half, data, T0 + 120)
+	_check(int(slow.storage.wheat) == 10 and is_equal_approx(float(slow.storage_cost.wheat), 50.0), "half the workers: half as much, at the same cost per unit")
+
+	state.population.current = 5  # the mill's 3 workers too
+	var mill := Sim.find_building(state, Sim.build(state, data, "crew_mill", Vector2i(5, 5), T0 + 120).building_id)
+	Sim.enqueue(state, data, mill.id, "mill", T0 + 120)
+	_check(is_equal_approx(float(mill.queue[0].input_cost.wheat), 50.0) and is_equal_approx(float(state.inventory_cost.wheat), 50.0), "a queued batch takes its wheat's cost with it (10 x 5 cents)")
+	Sim.settle(state, data, T0 + 210)  # 90 s later: wages 3 x $15 x 1.5 min = $1.125
+	_check(int(mill.storage.flour) == 8 and is_equal_approx(float(mill.storage_cost.flour), 50.0 + 112.5), "8 flour made for $0.50 of wheat + $1.125 wages")
+
+	state.inventory["wheat"] = int(state.inventory.wheat) + 10  # 10 bought at 15 cents each
+	state.inventory_cost["wheat"] = float(state.inventory_cost.wheat) + 150.0
+	_check(is_equal_approx(Sim.average_cost(state, "wheat"), 10.0), "own wheat (5) and bought wheat (15) mix to an average of 10 cents")
+	var sale := Sim.sell(state, data, "wheat", 4, T0 + 210)  # wheat sells at a fixed $2 here
+	_check(int(sale.cost) == 40 and int(sale.profit) == int(sale.earned) - 40, "a sale knows what the goods cost to make, and the profit")
+	_check(is_equal_approx(Sim.average_cost(state, "wheat"), 10.0), "selling some keeps the average")
+	state.inventory["wheat"] = int(state.inventory.wheat) + 4  # 4 more bought at 10 cents: 20 wheat
+	state.inventory_cost["wheat"] = float(state.inventory_cost.wheat) + 40.0
+	Sim.enqueue(state, data, mill.id, "mill", T0 + 210)
+	Sim.enqueue(state, data, mill.id, "mill", T0 + 210)  # all 20 wheat now in 2 batches
+	Sim.cancel_job(state, data, mill.id, 1, T0 + 210)  # the waiting one: all 10 wheat back
+	_check(int(state.inventory.wheat) == 10 and is_equal_approx(float(state.inventory_cost.wheat), 100.0), "cancelling gives the wheat back with its cost tag (10 x 10 cents)")
+
+	Sim.set_bonus(state, data, mill.id, "good", T0 + 210)
+	var running := Sim.batch_running_cost(state, data, mill, data.buildings.crew_mill.recipes[0])
+	_check(is_equal_approx(float(running.wages), 112.5 * 1.4), "a +40% bonus raises the wages in the cost by 40%")
+	var breakdown := Sim.cost_breakdown(state, data, mill, T0 + 210)
+	_check(breakdown.output == "flour" and is_equal_approx(float(breakdown.total), (100.0 + 157.5) / 8.0) and is_equal_approx(float(breakdown.ingredients[0].each), 10.0), "cost per unit: the batch being made's wheat (10 each) + wages, ÷ 8 flour")
+	_check(int(breakdown.price) == 300 and is_equal_approx(float(breakdown.making_earns), 8 * 300 - 10 * 200 - 157.5), "and what milling earns over selling the wheat")
+
+	data.buildings["wet_farm"] = {"category": "extractor", "build_cost": 0, "buildable": true, "max_workers": 2,
+		"storage_cap": 100, "water_per_hour": 60, "recipes": [{"id": "grow", "inputs": {}, "outputs": {"wheat": 10}, "duration": 60}]}
+	state.population.current = 7
+	var wet := Sim.find_building(state, Sim.build(state, data, "wet_farm", Vector2i(7, 7), T0 + 210).building_id)
+	Sim.settle(state, data, T0 + 270)  # one batch: wages 50 cents + 1 m³ x $2
+	_check(is_equal_approx(float(wet.storage_cost.wheat), 250.0), "water used goes into the cost tag ($0.50 wages + $2.00 water)")
+	Sim.suspend(state, data, wet.id, T0 + 270)
+	_check(wet.storage.is_empty() and int(state.inventory.wheat) == 20 and is_equal_approx(float(state.inventory_cost.wheat), 100.0 + 250.0), "suspending sends the goods to the warehouse with their cost tags")
+
+
+## Older saves get cost tags at the standard cost of making things.
+func test_old_save_gets_cost_tags() -> void:
+	var data := _bonus_data()
+	data.resources.wheat.erase("price")
+	data.buildings.erase("farm")
+	data.buildings.erase("slow_farm")  # crew_farm makes wheat: 2 x $15 / 60 per 10 = 5 cents each
+	var state := Sim.new_game(data, T0)
+	state.inventory["wheat"] = 10
+	var old := JSON.parse_string(SaveFormat.to_text(state, T0)) as Dictionary
+	old.save_version = 4
+	old.erase("inventory_cost")
+	var result := SaveFormat.from_text(JSON.stringify(old), data)
+	_check(result.ok and is_equal_approx(Sim.average_cost(result.state, "wheat"), 5.0), "old stock gets the standard cost of making it (5 cents a wheat)")
+	var real := {"resources": GameDataScript.load_json("res://data/resources.json"),
+		"buildings": GameDataScript.load_json("res://data/buildings.json"),
+		"config": GameDataScript.load_json("res://data/game_config.json")}
+	_check(is_equal_approx(Sim.standard_unit_cost(real, "wheat"), 30.0) and is_equal_approx(Sim.standard_unit_cost(real, "flour"), 75.0) and is_equal_approx(Sim.standard_unit_cost(real, "bread"), 4400.0 / 24.0), "real data: wheat $0.30, flour $0.75, bread $1.83 (the plan's example)")
+
+
 ## Retail prices come from costs (plan.md §5.12): ingredients + standard wages + building share
 ## (pays back in payback_hours), ÷ units, ÷ (1 - typical tax). In cents, rounded.
 func test_cost_based_prices() -> void:

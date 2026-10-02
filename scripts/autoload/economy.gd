@@ -281,6 +281,17 @@ func water_bills() -> Array:
 	return state.get("water_bills", [])
 
 
+## What one unit of this building's product costs to make right now, with the breakdown for its
+## window (see Simulation.cost_breakdown; amounts in cents). {} if it makes nothing.
+func cost_breakdown(building: Dictionary) -> Dictionary:
+	return Simulation.cost_breakdown(state, data(), building, TimeService.now())
+
+
+## Average cost tag (cents per unit) of this item in the warehouse: what it cost you to make or buy.
+func average_cost(resource_id: String) -> float:
+	return Simulation.average_cost(state, resource_id)
+
+
 ## A building type's price, in cents (buildings.json lists it in dollars).
 func build_cost(type_id: String) -> int:
 	return Simulation.cents(float(GameData.buildings.get(type_id, {}).get("build_cost", 0)))

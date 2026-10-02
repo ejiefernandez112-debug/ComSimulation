@@ -385,7 +385,7 @@ The first **utility** (electricity, §5.5, will work the same way and reuse the 
   - Cost per unit (building window) still uses the current price per m³: the bill changes *when* you pay, not *what* it costs
 - **In prices (§5.12):** a batch's water (at the base price) is one more cost line, so a water price change flows down the chain. Farm: 30 m³/h × $2 = $60/h → Wheat **$0.53 → $0.64**, Flour $2.60 → $2.75, Bread $9.92 → $10.14
 
-### 5.14 Cost per unit (decided 2026-10-02, not built yet)
+### 5.14 Cost per unit (decided and built 2026-10-02)
 
 **What it costs YOU to make one unit**, shown in each production building's window. It is a fact about your company, separate from the selling price (§5.12, the designer's price). Same approach as Sim Companies (research report in `C:\Program Files\Project_AI\MYSIMS\reports\Sim Companies production cost.md`).
 

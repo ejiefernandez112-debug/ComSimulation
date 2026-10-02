@@ -13,8 +13,8 @@ extends RefCounted
 ## Time model: buildings store when their current cycle/job started (`job_started_at`).
 ## "Settling" turns elapsed time into finished output in one calculation, never tick-by-tick.
 
-const SAVE_VERSION := 4  # 2: warehouses are buildings; 3: buildings keep their own hired workers;
-# 4: money is stored in cents
+const SAVE_VERSION := 5  # 2: warehouses are buildings; 3: buildings keep their own hired workers;
+# 4: money is stored in cents; 5: stock carries cost tags
 ## Used when game_config.json has no staffing_levels: share of max_workers per level.
 const DEFAULT_STAFFING_LEVELS := {"low": 0.5, "medium": 0.75, "high": 1.0}
 
@@ -175,25 +175,35 @@ static func _grow_population(state: Dictionary, data: Dictionary, now: float) ->
 
 ## settle_building, plus counting what was made for the statistics. Rules code uses this one.
 static func _settle_one(state: Dictionary, b: Dictionary, data: Dictionary, now: float) -> Dictionary:
-	var produced := settle_building(b, data, now)
+	var produced := settle_building(b, data, now, state)
 	_add_to(stats(state).made, produced)
 	return produced
 
 
-static func settle_building(b: Dictionary, data: Dictionary, now: float) -> Dictionary:
+## Moves a building's work forward to `now`. With `state`, finished batches also get their cost
+## tags (ingredients + wages + water, plan.md §5.14).
+static func settle_building(b: Dictionary, data: Dictionary, now: float, state: Dictionary = {}) -> Dictionary:
 	if is_suspended(b):
 		return {}  # switched off: nothing moves (resume starts its work afresh)
 	var def: Dictionary = data.buildings.get(b.type, {})
 	match def.get("category", ""):
 		"extractor":
-			return _settle_extractor(b, def, now)
+			return _settle_extractor(b, def, now, state, data)
 		"processor":
-			return _settle_processor(b, def, now)
+			return _settle_processor(b, def, now, state, data)
 	return {}
 
 
+## The running cost (cents) of one batch of `recipe` here, or 0 when not tracking costs.
+static func _running_cost_cents(state: Dictionary, data: Dictionary, b: Dictionary, recipe: Dictionary) -> float:
+	if state.is_empty():
+		return 0.0
+	var running := batch_running_cost(state, data, b, recipe)
+	return float(running.wages) + float(running.water)
+
+
 ## Extractors (Wheat Farm) produce on their own, one batch per cycle, until storage is full.
-static func _settle_extractor(b: Dictionary, def: Dictionary, now: float) -> Dictionary:
+static func _settle_extractor(b: Dictionary, def: Dictionary, now: float, state: Dictionary, data: Dictionary) -> Dictionary:
 	var recipe: Dictionary = def.recipes[0]
 	var duration := float(recipe.duration)
 	var per_cycle := _total(recipe.outputs)
@@ -208,6 +218,8 @@ static func _settle_extractor(b: Dictionary, def: Dictionary, now: float) -> Dic
 	var done := mini(cycles, fits)
 	var produced := _scaled(recipe.outputs, done)
 	_add_to(b.storage, produced)
+	if done > 0:
+		_put_cost(_costs(b, "storage_cost"), _spread_cost(produced, done * _running_cost_cents(state, data, b, recipe)))
 	if cycles >= fits:
 		b.job_started_at = now  # it filled up somewhere in that time; restart once collected
 	else:
@@ -217,7 +229,7 @@ static func _settle_extractor(b: Dictionary, def: Dictionary, now: float) -> Dic
 
 ## Processors (Mill, Bakery) work through their job queue one job at a time.
 ## A finished job waits ("blocked") if the building's storage has no room for its output.
-static func _settle_processor(b: Dictionary, def: Dictionary, now: float) -> Dictionary:
+static func _settle_processor(b: Dictionary, def: Dictionary, now: float, state: Dictionary, data: Dictionary) -> Dictionary:
 	var produced := {}
 	while not b.queue.is_empty():
 		var recipe := _recipe(def, b.queue[0].recipe_id)
@@ -233,6 +245,11 @@ static func _settle_processor(b: Dictionary, def: Dictionary, now: float) -> Dic
 		var outputs := _scaled(recipe.outputs, 1)
 		_add_to(b.storage, outputs)
 		_add_to(produced, outputs)
+		# Its cost tag: what its ingredients cost when it was queued + wages + water.
+		var batch_cost := _running_cost_cents(state, data, b, recipe)
+		for res in b.queue[0].get("input_cost", {}):
+			batch_cost += float(b.queue[0].input_cost[res])
+		_put_cost(_costs(b, "storage_cost"), _spread_cost(outputs, batch_cost))
 		b.queue.pop_front()
 		# The next job starts when this one finished, or right now if it had been waiting for space.
 		b.job_started_at = now if b.blocked else finish
@@ -395,11 +412,13 @@ static func enqueue(state: Dictionary, data: Dictionary, building_id: String, re
 	if not check.ok:
 		return check
 	var recipe := _recipe(data.buildings[b.type], recipe_id)
+	# The ingredients take their cost tags with them into the batch (plan.md §5.14).
+	var input_cost := _take_cost(state.inventory, _costs(state, "inventory_cost"), recipe.inputs)
 	_remove_from(state.inventory, recipe.inputs)
 	if b.queue.is_empty():
 		b.job_started_at = now
 		b.blocked = false
-	b.queue.append({"recipe_id": recipe_id})
+	b.queue.append({"recipe_id": recipe_id, "input_cost": input_cost})
 	return _ok()
 
 
@@ -449,8 +468,10 @@ static func collect(state: Dictionary, data: Dictionary, building_id: String, no
 			free -= qty
 	if moved.is_empty():
 		return _fail("The warehouse is full.")
+	var moved_cost := _take_cost(b.storage, _costs(b, "storage_cost"), moved)  # cost tags go along
 	_remove_from(b.storage, moved)
 	_add_to(state.inventory, moved)
+	_put_cost(_costs(state, "inventory_cost"), moved_cost)
 	settle(state, data, now)  # a job that was waiting for space can finish now
 	return _ok({"moved": moved})
 
@@ -481,8 +502,11 @@ static func cancel_job(state: Dictionary, data: Dictionary, building_id: String,
 	var check := can_cancel_job(state, data, building_id, index)
 	if not check.ok:
 		return check
+	var job: Dictionary = b.queue[index]
+	var refund_cost := _refund_cost(job, _recipe(data.buildings[b.type], job.recipe_id), check.refund)
 	b.queue.remove_at(index)
 	_add_to(state.inventory, check.refund)
+	_put_cost(_costs(state, "inventory_cost"), refund_cost)  # what's given back keeps its cost tag
 	if index == 0:
 		b.job_started_at = now  # the next job (if any) starts from scratch now
 	return check
@@ -525,6 +549,24 @@ static func _goods_inside(data: Dictionary, b: Dictionary) -> Dictionary:
 	return goods
 
 
+## The cost tags (cents) of _goods_inside, the same pieces in the same order: storage's tags, a
+## finished batch's ingredients + running cost, and each refund's share of what it cost.
+static func _goods_inside_cost(state: Dictionary, data: Dictionary, b: Dictionary) -> Dictionary:
+	var def: Dictionary = data.buildings.get(b.type, {})
+	var costs: Dictionary = _costs(b, "storage_cost").duplicate()
+	for i in b.queue.size():
+		var recipe := _recipe(def, b.queue[i].recipe_id)
+		if i == 0 and b.blocked:
+			var batch_cost := _running_cost_cents(state, data, b, recipe)
+			for res in b.queue[0].get("input_cost", {}):
+				batch_cost += float(b.queue[0].input_cost[res])
+			_put_cost(costs, _spread_cost(recipe.get("outputs", {}), batch_cost))
+			continue
+		var key := "cancel_refund_in_progress" if i == 0 else "cancel_refund_waiting"
+		_put_cost(costs, _refund_cost(b.queue[i], recipe, _share(recipe.get("inputs", {}), float(data.config.get(key, 0.0)))))
+	return costs
+
+
 static func _count_category(state: Dictionary, data: Dictionary, category: String) -> int:
 	var count := 0
 	for b in state.buildings:
@@ -562,6 +604,7 @@ static func suspend(state: Dictionary, data: Dictionary, building_id: String, no
 	var check := can_suspend(state, data, building_id)
 	if not check.ok:
 		return check
+	var costs := _goods_inside_cost(state, data, b)  # the goods keep their cost tags
 	b.storage = {}
 	b.queue = []
 	b.blocked = false
@@ -569,15 +612,23 @@ static func suspend(state: Dictionary, data: Dictionary, building_id: String, no
 	var free := warehouse_cap(state, data) - warehouse_total(state)  # after its workers left
 	var moved := {}
 	var kept := {}
+	var moved_cost := {}
+	var kept_cost := {}
 	for res in check.goods:
-		var qty := mini(int(check.goods[res]), maxi(free, 0))
+		var all := int(check.goods[res])
+		var qty := mini(all, maxi(free, 0))
 		free -= qty
+		var cost := float(costs.get(res, 0.0))
 		if qty > 0:
 			moved[res] = qty
-		if int(check.goods[res]) > qty:
-			kept[res] = int(check.goods[res]) - qty
+			moved_cost[res] = cost * qty / all
+		if all > qty:
+			kept[res] = all - qty
+			kept_cost[res] = cost * (all - qty) / all
 	_add_to(state.inventory, moved)
+	_put_cost(_costs(state, "inventory_cost"), moved_cost)
 	b.storage = kept
+	b["storage_cost"] = kept_cost
 	b["hired"] = 0  # its workers are freed: they take open posts elsewhere
 	_hire(state, data, now)
 	return _ok({"moved": moved, "kept": kept})
@@ -605,10 +656,12 @@ static func demolish(state: Dictionary, data: Dictionary, building_id: String, n
 	var check := can_demolish(state, data, building_id)
 	if not check.ok:
 		return check
+	var costs := _goods_inside_cost(state, data, b)
 	state.buildings.erase(b)
 	state.profile.currency += int(check.money)
 	stats(state).income.demolish += int(check.money)
 	_add_to(state.inventory, check.goods)
+	_put_cost(_costs(state, "inventory_cost"), costs)  # the goods keep their cost tags
 	# Fewer homes can mean less room: people over the new capacity move away.
 	var cap := population_capacity(state, data, now)
 	if state.population.current > cap:
@@ -618,8 +671,9 @@ static func demolish(state: Dictionary, data: Dictionary, building_id: String, n
 
 
 ## Sell to the NPC Retailer at its price (plan.md §5.2 channel 1, price §5.12), minus sales tax
-## (§5.9). Returns, in cents: "earned" (what reaches cash), "gross" (before tax), "tax", and
-## "rate" (tax ÷ gross).
+## (§5.9). Returns, in cents: "earned" (what reaches cash), "gross" (before tax), "tax", "rate"
+## (tax ÷ gross), "cost" (what the goods cost to make, their cost tags §5.14) and "profit"
+## (earned − cost).
 static func sell(state: Dictionary, data: Dictionary, resource_id: String, qty: int, now: float) -> Dictionary:
 	var res_def: Dictionary = data.resources.get(resource_id, {})
 	if res_def.is_empty():
@@ -631,6 +685,8 @@ static func sell(state: Dictionary, data: Dictionary, resource_id: String, qty: 
 	var gross := qty * unit_price(data, resource_id)
 	var tax := sales_tax(state, data, gross, now)
 	var earned := gross - tax
+	# What the sold goods cost to make (their cost tags), so the sale can show the profit.
+	var made_for := float(_take_cost(state.inventory, _costs(state, "inventory_cost"), {resource_id: qty}).get(resource_id, 0.0))
 	_remove_from(state.inventory, {resource_id: qty})
 	state.profile.currency += earned
 	# Remember this sale for the 24-hour tax window, and forget sales that have left it.
@@ -645,7 +701,8 @@ static func sell(state: Dictionary, data: Dictionary, resource_id: String, qty: 
 	s.spending["tax"] = int(s.spending.get("tax", 0)) + tax
 	_add_to(s.sales_by_item, {resource_id: gross})
 	_add_to(s.sold, {resource_id: qty})
-	return _ok({"earned": earned, "gross": gross, "tax": tax, "rate": float(tax) / gross if gross > 0 else 0.0})
+	return _ok({"earned": earned, "gross": gross, "tax": tax, "rate": float(tax) / gross if gross > 0 else 0.0,
+		"cost": roundi(made_for), "profit": earned - roundi(made_for)})
 
 
 ## Sales tax, in cents, on a sale worth `gross` cents (changes nothing). Progressive, like
@@ -1158,6 +1215,172 @@ static func _bill_water_if_due(state: Dictionary, data: Dictionary, now: float) 
 			charged += amount
 		state["water_meter"] = {"m3": 0.0, "base_cost": 0.0, "cycle_start": due}
 	return charged
+
+
+# --- Cost tags and cost per unit (plan.md §5.14) ----------------------------------
+# Every stock carries its total cost in cents next to its amount: the warehouse in
+# state.inventory_cost, a building's storage in b.storage_cost, a queued batch's ingredients in
+# its queue entry ("input_cost"). Average cost = total cost ÷ amount, so mixing averages it.
+# Moving goods moves their share of the cost with them. Missing tags count as 0 (older saves get
+# standard tags when loaded, save_format.gd).
+
+## The cost dictionary `key` of `holder` (made empty on first use).
+static func _costs(holder: Dictionary, key: String) -> Dictionary:
+	if not holder.has(key):
+		holder[key] = {}
+	return holder[key]
+
+
+## Average cost per unit (cents) of what's in the warehouse; 0 when there's none.
+static func average_cost(state: Dictionary, resource_id: String) -> float:
+	var qty := int(state.inventory.get(resource_id, 0))
+	if qty <= 0:
+		return 0.0
+	return float(_costs(state, "inventory_cost").get(resource_id, 0.0)) / qty
+
+
+## Removes the cost of `items` from `costs` (the stock's tags; call BEFORE the goods leave
+## `stock`): each takes its share of its stock's total. Returns {resource: cents taken}.
+static func _take_cost(stock: Dictionary, costs: Dictionary, items: Dictionary) -> Dictionary:
+	var taken := {}
+	for res in items:
+		var have := int(stock.get(res, 0))
+		var qty := mini(int(items[res]), have)
+		if have <= 0 or qty <= 0:
+			continue
+		var share := float(costs.get(res, 0.0)) * qty / have
+		taken[res] = share
+		if qty >= have:
+			costs.erase(res)
+		else:
+			costs[res] = float(costs.get(res, 0.0)) - share
+	return taken
+
+
+## Adds cents to a stock's cost tags: {resource: cents}.
+static func _put_cost(costs: Dictionary, amounts: Dictionary) -> void:
+	for res in amounts:
+		costs[res] = float(costs.get(res, 0.0)) + float(amounts[res])
+
+
+## Spreads `cents` over `outputs` by quantity: {resource: cents}.
+static func _spread_cost(outputs: Dictionary, cents_total: float) -> Dictionary:
+	var units := _total(outputs)
+	var out := {}
+	for res in outputs:
+		out[res] = cents_total * int(outputs[res]) / maxf(units, 1)
+	return out
+
+
+## What running one batch of `recipe` costs here right now, in cents: {"wages", "water"}.
+## Wages = max_workers × wage per worker (minimum + bonus) × batch time: the same whatever the
+## staffing, since fewer workers simply take longer. Water = water_per_hour × batch time × the
+## price per m³ right now.
+static func batch_running_cost(state: Dictionary, data: Dictionary, b: Dictionary, recipe: Dictionary) -> Dictionary:
+	var def: Dictionary = data.buildings.get(b.type, {})
+	var hours := float(recipe.get("duration", 0.0)) / 3600.0
+	var wages := max_workers(data, b) * wage_per_worker(data, b) * hours
+	var water := float(def.get("water_per_hour", 0.0)) * hours * water_unit_price(state, data)
+	return {"wages": wages * 100.0, "water": water * 100.0}
+
+
+## The price of the next m³ (dollars): the base price, plus the extra of the tier this cycle's
+## use has reached (+25% once past 1,200 m³).
+static func water_unit_price(state: Dictionary, data: Dictionary) -> float:
+	var used := float(state.get("water_meter", {}).get("m3", 0.0))
+	var extra := 0.0
+	for tier in data.config.get("water", {}).get("tiers", []):
+		if used >= float(tier.from):
+			extra = float(tier.extra)
+	return water_price(data) * (1.0 + extra)
+
+
+## What making one unit costs with standard numbers (cents): ingredients at their standard cost,
+## a full crew at the minimum wage, water at the base price; no building share, no tax. Used for
+## cost tags of older saves, and as the estimate when an ingredient isn't in stock. A resource
+## with a fixed "price" costs that price (it's bought).
+static func standard_unit_cost(data: Dictionary, resource_id: String) -> float:
+	return _standard_unit_cost(data, resource_id, {})
+
+
+static func _standard_unit_cost(data: Dictionary, resource_id: String, visiting: Dictionary) -> float:
+	var res_def: Dictionary = data.resources.get(resource_id, {})
+	if res_def.has("price"):
+		return float(cents(float(res_def.price)))
+	if visiting.has(resource_id):
+		return 0.0
+	visiting[resource_id] = true
+	for type_id in data.buildings:
+		var def: Dictionary = data.buildings[type_id]
+		for recipe in def.get("recipes", []):
+			if not recipe.outputs.has(resource_id):
+				continue
+			var hours := float(recipe.duration) / 3600.0
+			var cost := 0.0  # cents per batch
+			for input in recipe.get("inputs", {}):
+				cost += int(recipe.inputs[input]) * _standard_unit_cost(data, input, visiting)
+			cost += int(def.get("max_workers", 0)) * _minimum_wage_of(data, def) * hours * 100.0
+			cost += float(def.get("water_per_hour", 0.0)) * hours * water_price(data) * 100.0
+			visiting.erase(resource_id)
+			return cost / maxf(_total(recipe.outputs), 1)
+	visiting.erase(resource_id)
+	return 0.0
+
+
+## The cost tags of what a job gives back when stopped (cancel, demolish, suspend): each
+## ingredient's share of what it cost when the job was queued. `refund` = {resource: qty back}.
+static func _refund_cost(job: Dictionary, recipe: Dictionary, refund: Dictionary) -> Dictionary:
+	var paid: Dictionary = job.get("input_cost", {})
+	var out := {}
+	for res in refund:
+		var put_in := int(recipe.get("inputs", {}).get(res, 0))
+		if put_in > 0:
+			out[res] = float(paid.get(res, 0.0)) * int(refund[res]) / put_in
+	return out
+
+
+## Cost per unit of what this building makes, right now, for its window (plan.md §5.14), in
+## cents: {"output", "units", "ingredients": [{"res", "qty", "each", "per_unit"}], "wages",
+## "water", "total" (all per unit), "price" (selling price), "estimated" (an ingredient isn't in
+## stock, so its standard cost was used), "workers", "wage_each" (dollars/h), "minutes",
+## "inputs_value", "batch_value", "making_earns" (per batch: what making it adds over selling the
+## ingredients)}. {} for buildings that make nothing.
+static func cost_breakdown(state: Dictionary, data: Dictionary, b: Dictionary, now: float) -> Dictionary:
+	var def: Dictionary = data.buildings.get(b.type, {})
+	var recipes: Array = def.get("recipes", [])
+	if recipes.is_empty():
+		return {}
+	var recipe: Dictionary = recipes[0]
+	if not b.get("queue", []).is_empty() and not _recipe(def, b.queue[0].recipe_id).is_empty():
+		recipe = _recipe(def, b.queue[0].recipe_id)
+	var units := maxf(_total(recipe.outputs), 1)
+	var running := batch_running_cost(state, data, b, recipe)
+	var result := {"output": recipe.outputs.keys()[0], "units": int(units), "ingredients": [],
+		"wages": float(running.wages) / units, "water": float(running.water) / units,
+		"estimated": false, "workers": max_workers(data, b), "wage_each": wage_per_worker(data, b),
+		"minutes": float(recipe.duration) / 60.0}
+	var total := float(result.wages) + float(result.water)
+	var inputs_value := 0
+	for res in recipe.get("inputs", {}):
+		var qty := int(recipe.inputs[res])
+		var each := 0.0
+		var job_cost: Dictionary = b.queue[0].get("input_cost", {}) if not b.get("queue", []).is_empty() else {}
+		if job_cost.has(res):
+			each = float(job_cost[res]) / qty  # the batch being made: what its ingredients cost
+		elif int(state.inventory.get(res, 0)) > 0:
+			each = average_cost(state, res)  # the next batch would use these
+		else:
+			each = standard_unit_cost(data, res)
+			result.estimated = true
+		result.ingredients.append({"res": res, "qty": qty / units, "each": each, "per_unit": each * qty / units})
+		total += each * qty / units
+		inputs_value += qty * unit_price(data, res)
+	result["total"] = total
+	result["price"] = unit_price(data, result.output)
+	result["inputs_value"] = inputs_value
+	result["batch_value"] = int(units) * int(result.price)
+	result["making_earns"] = float(result.batch_value) - inputs_value - float(running.wages) - float(running.water)
+	return result
 
 
 # --- Statistics ---------------------------------------------------------------

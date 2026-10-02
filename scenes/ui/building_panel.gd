@@ -31,6 +31,9 @@ var _staff_buttons := {}  # staffing level -> its button
 var _bonus_buttons := {}  # wage bonus level -> its button
 var _wage_each_text: Label
 var _water_text: Label  # buildings that draw water from the public supply (plan.md §5.13)
+var _cost_button: Button  # production buildings: "Cost per unit: $1.83 ▸", tap to open
+var _cost_details: VBoxContainer  # the breakdown lines under it
+var _cost_open := false  # whether the breakdown is open (kept while the game runs)
 var _workers_text: Label
 var _wages_text: Label
 var _rate_text: Label
@@ -69,6 +72,8 @@ func _build_rows(b: Dictionary, def: Dictionary) -> void:
 	_bonus_buttons.clear()
 	_workers_text = null
 	_water_text = null
+	_cost_button = null
+	_cost_details = null
 	_suspend = null
 	_stock_bar = null
 	_goods_grid = null
@@ -94,6 +99,25 @@ func _build_rows(b: Dictionary, def: Dictionary) -> void:
 		row.add_child(spacer)
 		row.add_child(_icon("clock", 30))
 		row.add_child(_body(UITheme.duration(float(r.duration))))
+		# Cost per unit (plan.md §5.14): one line; tapping it opens the breakdown.
+		_cost_button = Button.new()
+		_cost_button.flat = true
+		_cost_button.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		_cost_button.add_theme_font_size_override("font_size", 18)
+		_cost_button.add_theme_constant_override("outline_size", 0)  # plain text, like the lines under it
+		_cost_button.add_theme_color_override("font_color", UITheme.TEXT_DARK)
+		_cost_button.add_theme_color_override("font_hover_color", UITheme.TEXT_DARK)
+		_cost_button.add_theme_color_override("font_pressed_color", UITheme.TEXT_DARK)
+		_cost_button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+		_cost_button.tooltip_text = "Tap to see what goes into the cost"
+		_cost_button.pressed.connect(func():
+			_cost_open = not _cost_open
+			_refresh()
+			_layout.call_deferred())
+		box.add_child(_cost_button)
+		_cost_details = VBoxContainer.new()
+		_cost_details.add_theme_constant_override("separation", 2)
+		box.add_child(_cost_details)
 
 	# "Now": what it's doing, and for processors the queue too (its first slot is the batch
 	# being made), with a Fill button beside the heading.
@@ -395,6 +419,8 @@ func _refresh() -> void:
 		_stock_text.text = "%s / %s" % [UITheme.number(Economy.warehouse_total()), UITheme.number(cap)]
 	if _goods_grid and Economy.state.inventory != _shown_stock:
 		_fill_goods_grid()
+	if _cost_button:
+		_refresh_cost(b)
 	if _storage_bar:
 		var stored := BuildingInfo.stored(b)
 		_storage_bar.value = 100.0 * stored / float(def.storage_cap)
@@ -411,6 +437,70 @@ func _refresh() -> void:
 		_fill.text = "Fill x%d" % count if count > 0 else "Fill"
 		# Greyed when nothing fits, but still tappable, so the player is told why.
 		_fill.theme_type_variation = "YellowButton" if count > 0 else "GreyButton"
+
+
+## "Cost per unit: $1.83 ▸"; open, the lines of plan.md §5.14: each ingredient at its cost tag,
+## wages, water, electricity (later), then what it sells for and the profit, and (for buildings
+## with ingredients) what making it earns over selling the ingredients.
+func _refresh_cost(b: Dictionary) -> void:
+	var cost := Economy.cost_breakdown(b)
+	if cost.is_empty():
+		_cost_button.visible = false
+		return
+	var item := BuildingInfo.resource_name(cost.output)
+	_cost_button.text = "Cost per unit (%s): %s  %s" % [item, UITheme.price(roundi(cost.total)), "▾" if _cost_open else "▸"]
+	_cost_details.visible = _cost_open
+	for child in _cost_details.get_children():
+		_cost_details.remove_child(child)
+		child.queue_free()
+	if not _cost_open:
+		return
+	for line in cost.ingredients:
+		_cost_line("%s   %s × %s" % [BuildingInfo.resource_name(line.res), _amount_text(float(line.qty)), UITheme.price(roundi(line.each))], float(line.per_unit))
+	_cost_line("Wages   %d × %s/h, %s" % [int(cost.workers), UITheme.dollars(cost.wage_each), _minutes_text(float(cost.minutes))], float(cost.wages))
+	_cost_line("Water", float(cost.water))
+	_cost_line("Electricity", -1.0)
+	var profit: int = int(cost.price) - roundi(cost.total)
+	var sells := _small_note("Sells for %s · about %s %s each (before tax)" % [UITheme.price(int(cost.price)), UITheme.price(absi(profit)), "profit" if profit >= 0 else "loss"])
+	_cost_details.add_child(sells)
+	if not cost.ingredients.is_empty():
+		var parts: Array[String] = []
+		for line in cost.ingredients:
+			parts.append("%d %s" % [roundi(float(line.qty) * int(cost.units)), BuildingInfo.resource_name(line.res).to_lower()])
+		var earns := float(cost.making_earns)
+		_cost_details.add_child(_small_note("If you sold the %s instead: %s → making it earns %s %s per batch" % [
+			" and ".join(parts), UITheme.money(int(cost.inputs_value)), UITheme.money(absi(roundi(earns))), "more" if earns >= 0 else "less"]))
+	if cost.estimated:
+		_cost_details.add_child(_small_note("Not in stock yet: the ingredients' cost is an estimate."))
+
+
+## One breakdown line: "Flour   1.33 × $0.75 ........ $1.00" (amount -1 = not in the game yet).
+func _cost_line(title: String, cents: float) -> void:
+	var row := HBoxContainer.new()
+	_cost_details.add_child(row)
+	var label := _body("   " + title)
+	label.add_theme_font_size_override("font_size", 16)
+	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(label)
+	var value := _body("coming later" if cents < 0.0 else UITheme.price(roundi(cents)))
+	value.add_theme_font_size_override("font_size", 16)
+	row.add_child(value)
+
+
+func _small_note(text: String) -> Label:
+	var note := _wrapped(text)
+	note.add_theme_font_size_override("font_size", 15)
+	return note
+
+
+## 1.333 -> "1.33", 4.0 -> "4".
+func _amount_text(amount: float) -> String:
+	return str(roundi(amount)) if is_equal_approx(amount, roundf(amount)) else "%.2f" % amount
+
+
+## 10.0 -> "10 min", 1.5 -> "1.5 min".
+func _minutes_text(minutes: float) -> String:
+	return "%s min" % _amount_text(minutes)
 
 
 ## Warehouses: one dark tile per item in stock, [icon] amount like the HUD's item counters, in

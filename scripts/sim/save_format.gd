@@ -58,7 +58,34 @@ static func _migrate(state: Dictionary, version: int, data: Dictionary) -> void:
 		# Version 4: money is kept in whole cents (plan.md §5.12). Older saves counted dollars.
 		_dollars_to_cents(state)
 		version = 4
+	if version < 5:
+		# Version 5: stock carries cost tags (plan.md §5.14). Older saves don't know what their
+		# goods cost, so they get the standard cost of making them.
+		_standard_cost_tags(state, data)
+		version = 5
 	state["save_version"] = version
+
+
+## Cost tags for a version 4 save: every stock (warehouse, building storage, queued batches'
+## ingredients) at the standard cost of making it.
+static func _standard_cost_tags(state: Dictionary, data: Dictionary) -> void:
+	var inventory_cost := {}
+	for res in state.inventory:
+		inventory_cost[res] = int(state.inventory[res]) * Simulation.standard_unit_cost(data, res)
+	state["inventory_cost"] = inventory_cost
+	for b in state.buildings:
+		var storage_cost := {}
+		for res in b.storage:
+			storage_cost[res] = int(b.storage[res]) * Simulation.standard_unit_cost(data, res)
+		b["storage_cost"] = storage_cost
+		var def: Dictionary = data.buildings.get(b.type, {})
+		for job in b.queue:
+			var paid := {}
+			for recipe in def.get("recipes", []):
+				if recipe.id == job.get("recipe_id", ""):
+					for res in recipe.get("inputs", {}):
+						paid[res] = int(recipe.inputs[res]) * Simulation.standard_unit_cost(data, res)
+			job["input_cost"] = paid
 
 
 ## Every money amount in a version 3 save, from dollars to cents: cash, the part-cent wage

@@ -68,7 +68,7 @@ func _refresh() -> void:
 		_list.add_child(empty)
 
 
-## [icon] Wheat ........ 1,250   $0.53 each   worth $663
+## [icon] Wheat (made for $0.30 each) ... 1,250   sells $0.64   worth $800
 func _row(res: String, qty: int) -> PanelContainer:
 	var box := PanelContainer.new()
 	box.theme_type_variation = "Inset"
@@ -81,11 +81,17 @@ func _row(res: String, qty: int) -> PanelContainer:
 	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	icon.custom_minimum_size = Vector2(36, 36)
 	row.add_child(icon)
-	var name_label := _label(BuildingInfo.resource_name(res), 20)
-	name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	row.add_child(name_label)
+	# The name, with its cost tag underneath: what this stock cost you to make or buy (§5.14).
+	var names := VBoxContainer.new()
+	names.add_theme_constant_override("separation", -4)
+	names.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(names)
+	names.add_child(_label(BuildingInfo.resource_name(res), 20))
+	var tag := _label("made for %s each" % UITheme.price(roundi(Economy.average_cost(res))), 14)
+	tag.theme_type_variation = "BodyLabel"
+	names.add_child(tag)
 	row.add_child(_label(UITheme.number(qty), 20))
-	var each := _label("%s each" % UITheme.price(Economy.unit_price(res)), 16)
+	var each := _label("sells %s" % UITheme.price(Economy.unit_price(res)), 16)
 	each.theme_type_variation = "BodyLabel"
 	each.custom_minimum_size.x = 100
 	each.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
