@@ -60,7 +60,7 @@ func _data() -> Dictionary:
 			# The starter warehouse: 1000 room, no workers (so the other tests' people counts don't change).
 			"store": {"category": "storage", "build_cost": 300, "buildable": true, "capacity": 1000},
 			# A warehouse with workers: 4 of 4 working = 1000 room, 2 of 4 = 500.
-			"crew_store": {"category": "storage", "build_cost": 0, "buildable": true, "capacity": 1000, "max_workers": 4, "fixed_workers": true},
+			"crew_store": {"category": "storage", "build_cost": 0, "buildable": true, "capacity": 1000, "max_workers": 4, "fixed_workers": true, "staffed_first": true},
 			"farm": {"category": "extractor", "build_cost": 100, "buildable": true, "storage_cap": 100,
 				"recipes": [{"id": "grow", "inputs": {}, "outputs": {"wheat": 10}, "duration": 60}]},
 			"mill": {"category": "processor", "build_cost": 200, "buildable": true, "storage_cap": 16, "queue_size": 4,
@@ -1013,6 +1013,25 @@ func test_hiring_by_bonus() -> void:
 	_check(Sim.hired(farms[1]) == 0 and Sim.hired(farms[0]) == 1 and Sim.hired(farms[2]) == 1, "fewer people: the smallest bonus loses first")
 	var e := Sim.employment(even, data, T0)
 	_check(e.jobs == 6 and e.employed == 2 and e.unemployed == 0 and e.open_jobs == 4, "employment counts whole, hired people")
+
+
+## Warehouses are staffed before any other building, whatever bonus the others pay, and lose
+## their workers last (their room must not vanish).
+func test_warehouses_staffed_first() -> void:
+	var data := _bonus_data()
+	var state := Sim.new_game(data, T0)
+	var farm := Sim.find_building(state, Sim.build(state, data, "crew_farm", Vector2i(3, 3), T0).building_id)
+	Sim.set_bonus(state, data, farm.id, "big", T0)
+	var store := Sim.find_building(state, Sim.build(state, data, "crew_store", Vector2i(5, 5), T0).building_id)
+	state.population.current = 3
+	Sim.settle(state, data, T0)
+	_check(Sim.hired(store) == 3 and Sim.hired(farm) == 0, "3 people: all go to the warehouse, even though the farm pays +60%")
+	state.population.current = 6
+	Sim.settle(state, data, T0)
+	_check(Sim.hired(store) == 4 and Sim.hired(farm) == 2, "once the warehouse is full, the rest go to the farm")
+	state.population.current = 3
+	Sim.settle(state, data, T0)
+	_check(Sim.hired(store) == 3 and Sim.hired(farm) == 0, "fewer people: the farm loses its workers before the warehouse does")
 
 
 ## Being away gives exactly the same hiring, production and wages as playing all along, with

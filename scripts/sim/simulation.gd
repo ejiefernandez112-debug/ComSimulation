@@ -819,10 +819,11 @@ static func posts(data: Dictionary, b: Dictionary, now: float) -> int:
 
 
 ## Hands out free people (plan.md §5.6 "Hiring & wage bonuses"). Workers are tied to their
-## building, so only free people move: each takes an open post at the building with the biggest
-## wage bonus; with equal bonuses they take turns, the emptiest building first (fewest hired for
-## what it asked for), then the older one. With more workers than people (a home was demolished)
-## workers leave the buildings with the smallest bonus first, the newest building first.
+## building, so only free people move: warehouses ("staffed_first") are filled before anything
+## else; then each takes an open post at the building with the biggest wage bonus; with equal
+## bonuses they take turns, the emptiest building first (fewest hired for what it asked for),
+## then the older one. With more workers than people (a home was demolished) workers leave the
+## buildings with the smallest bonus first, the newest building first, and warehouses last.
 static func _hire(state: Dictionary, data: Dictionary, now: float) -> void:
 	var free := int(state.population.current)
 	for b in state.buildings:
@@ -832,7 +833,7 @@ static func _hire(state: Dictionary, data: Dictionary, now: float) -> void:
 		var leave := -1
 		for i in state.buildings.size():
 			var b: Dictionary = state.buildings[i]
-			if hired(b) > 0 and (leave < 0 or bonus_rate(data, b) <= bonus_rate(data, state.buildings[leave])):
+			if hired(b) > 0 and (leave < 0 or _leaves_before(data, b, state.buildings[leave])):
 				leave = i
 		state.buildings[leave]["hired"] = hired(state.buildings[leave]) - 1
 		free += 1
@@ -848,15 +849,33 @@ static func _hire(state: Dictionary, data: Dictionary, now: float) -> void:
 		free -= 1
 
 
-## Whether building `a` gets the next free worker before `b` (both have an open post): bigger
-## bonus first, then the emptier one (compared without decimals: a.hired / a.posts < b.hired /
-## b.posts). Equal on both: the one found first, i.e. the older building.
+## Whether building `a` gets the next free worker before `b` (both have an open post): buildings
+## that are "staffed_first" (warehouses) before all others, then the bigger bonus, then the
+## emptier one (compared without decimals: a.hired / a.posts < b.hired / b.posts). Equal on all:
+## the one found first, i.e. the older building.
 static func _hires_before(data: Dictionary, a: Dictionary, b: Dictionary, now: float) -> bool:
+	if is_staffed_first(data, a) != is_staffed_first(data, b):
+		return is_staffed_first(data, a)
 	var rate_a := bonus_rate(data, a)
 	var rate_b := bonus_rate(data, b)
 	if not is_equal_approx(rate_a, rate_b):
 		return rate_a > rate_b
 	return hired(a) * posts(data, b, now) < hired(b) * posts(data, a, now)
+
+
+## With fewer people than workers: whether a worker at `a` leaves before one at `b` (`b` was
+## found earlier, so it's the older one). "staffed_first" buildings lose workers last; then the
+## smaller bonus goes first; equal: the newer building (`a`) goes first.
+static func _leaves_before(data: Dictionary, a: Dictionary, b: Dictionary) -> bool:
+	if is_staffed_first(data, a) != is_staffed_first(data, b):
+		return not is_staffed_first(data, a)
+	return bonus_rate(data, a) <= bonus_rate(data, b)
+
+
+## Gets free workers before every other building and loses them last (warehouses: their room
+## must not vanish just because other buildings pay more). "staffed_first" in buildings.json.
+static func is_staffed_first(data: Dictionary, b: Dictionary) -> bool:
+	return bool(data.buildings.get(b.type, {}).get("staffed_first", false))
 
 
 ## Producing: has work to do and room for it, and isn't suspended. Workers are only hired (and

@@ -50,7 +50,7 @@ static func _count(workers: float) -> String:
 
 
 static func _no_workers(progress: float) -> Dictionary:
-	return {"text": "Stopped: no workers yet. Build houses, or give it a bigger wage bonus than your other buildings", "progress": progress, "good": false}
+	return {"text": "Stopped: no workers. Build houses or raise its bonus", "progress": progress, "good": false}
 
 
 ## What the building is doing: {"text": String, "progress": 0..1, or -1 for no bar, "good": bool}.
@@ -67,7 +67,7 @@ static func status(b: Dictionary) -> Dictionary:
 			var full := int(def.get("capacity", 0))
 			if room < full:  # its workers are fixed, so only a lack of people can cut its room
 				var w := Economy.workers(b)
-				return {"text": "Room for %s of %s goods (%s of %d workers: build houses, or give it a bigger bonus)" % [UITheme.number(room), UITheme.number(full), _count(w.working), int(w.max)], "progress": -1.0, "good": false}
+				return {"text": "Room for %s of %s goods (%s of %d workers: not enough people, build houses)" % [UITheme.number(room), UITheme.number(full), _count(w.working), int(w.max)], "progress": -1.0, "good": false}
 			return {"text": "Room for %s goods" % UITheme.number(room), "progress": -1.0, "good": true}
 		"extractor":
 			var per_cycle := 0

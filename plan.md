@@ -93,9 +93,9 @@ These are cheap now and very expensive to retrofit later. Include them in instru
 - **Building upgrades (Phase 2):** cost currency + time, improve batch size/timer/storage/recipes — capped by Construction Office level (see 5.8)
 
 ### 5.2 Economy / Market — Three Sale Channels
-1. **Retailer (NPC)** — instant sell, set/slow-drifting price, likely demand-capped. **Only channel in Phases 1–3.**
+1. **Retailer (NPC)** — instant sell, set/slow-drifting price, likely demand-capped. **Only channel in Phases 1–3** (apart from Dock export contracts once the Dock unlocks, §5.11).
 2. **Market/Exchange (player-driven)** — real-time AMM pricing (same mechanic as the Currency/Stock Exchange prototypes), **3% fee per trade** paid by the seller (§5.9). **Phase 4.**
-3. **Contract (player-to-player)** — fixed-price posted offers. **Phase 4.**
+3. **Contract (player-to-player)** — fixed-price posted offers, **no market fee**; goods go through the **Dock** (§5.11). With in-game buyers once the Dock unlocks; with other players from **Phase 4.**
 - Any resource tier can be sold; price should still increase meaningfully per tier so processing is worth doing.
 
 ### 5.3 Progression
@@ -228,11 +228,12 @@ Everything stays **one calculation**, never a replay. Anything that changes powe
   - **Full or idle buildings keep their workers**, unpaid, until they restart (wages only while producing)
   - **Fixed minimum wage** per worker type, set by the game (`wage_per_hour` in `worker_types`: low-skilled $15, high-skilled $30, professional $60). Players can't pay less. Phase 4: the server could change it, like a law
   - **Wage bonus per building**, chosen in its window like staffing (Tropico-style budget): **None 0% / Small +20% / Good +40% / Big +60%** (`wage_bonuses` in `game_config.json`; whole dollars: $15 → $18 / $21 / $24). New buildings start at None. Shown as "Wage: $15 + $6 bonus = $21 per worker / hour"
-  - **Who gets free workers** (new arrivals, or workers freed by the player): each takes an open post at the building with the **biggest bonus**. Same bonus: they take turns one at a time, the emptiest building (fewest hired compared with what it asked for) first, then the older building. Open posts = what the staffing level asks for, at finished, non-suspended buildings
+  - **Warehouses are always staffed first** (decided 2026-10-02; `staffed_first` in `buildings.json`): they get free workers before every other building, whatever bonus the others pay, and lose them last, so storage room never vanishes while people are free
+  - **Who gets free workers** (new arrivals, or workers freed by the player), after the warehouses: each takes an open post at the building with the **biggest bonus**. Same bonus: they take turns one at a time, the emptiest building (fewest hired compared with what it asked for) first, then the older building. Open posts = what the staffing level asks for, at finished, non-suspended buildings
   - **Fewer people** (a house demolished): the unemployed leave first, then workers at the buildings with the **smallest bonus** (newest building first among equals)
   - Raising a bonus doesn't pull workers from other buildings (they're tied); it puts the building first in line for the next free workers
   - Later (Phase 3, happiness): a bigger bonus could also make workers happier and more productive, like Tropico's budget. Not now: it would change the whole balance
-  - Warehouses (fixed workers) take part the same way and can also get a bonus
+  - Warehouses (fixed workers) can also get a bonus; it only matters between warehouses, since they're staffed first anyway
   - Offline catch-up stays one calculation: each person moving in takes the best open post at that moment
 - In **Phase 2/3**, once Employees exist, **Employment Matching** activates: Available = Population − Employed. Understaffed buildings run at reduced capacity/output rather than failing to hire outright.
 
@@ -299,7 +300,7 @@ Still to decide: whether bracket changes are announced in advance once the serve
 **Warehouse** (`warehouse` in `buildings.json`, category `storage`, Build Menu tab "Storage"):
 - All warehouses together hold the company's goods: **one shared stock**, no moving goods between them. Room = the sum of every finished, working warehouse
 - One comes **pre-built** in the starting kit; more cost **$3,000** each (5 s to build). PLACEHOLDERS
-- **Workers: a fixed 4 low-skilled** ($60/hour), with **no Low / Medium / High choice** (decided 2026-10-02; `fixed_workers` in `buildings.json`). **Workers make the room:** 2,000 with all 4 working. The only way to get fewer is a town short of people (2 of 4 = 1,000 room), so build houses
+- **Workers: a fixed 4 low-skilled** ($60/hour), with **no Low / Medium / High choice** (decided 2026-10-02; `fixed_workers` in `buildings.json`). **Workers make the room:** 2,000 with all 4 working. The only way to get fewer is a town short of people (2 of 4 = 1,000 room), so build houses. **Warehouses are staffed before any other building** (§5.6), so this only happens when the town has fewer free people than warehouse posts
 - **More workers only by upgrading** (Phase 2 building upgrades): **Level 2 doubles the workers to 8**, and since workers make the room, the room doubles too (4,000). Upgrade cost and time TBD (see Section 11)
 - The building window shows **every stored item as a tile with its icon and amount** (all warehouses together), above the workers
 - Warehouses are **always working** (they store), so they always pay wages unless suspended. If an empty warehouse sent its workers home it would have no room for the first goods
@@ -317,6 +318,17 @@ Still to decide: whether bracket changes are announced in advance once the serve
 - **Resume is free and instant**; its work starts from the beginning
 - Asks "Are you sure?" first and shows what goes back to the warehouse
 - Rules: `Simulation.can_suspend`, `suspend`, `resume`; `is_producing` is false while suspended, so wages, jobs and later power all follow
+
+### 5.11 Dock — Export & Import (planned 2026-10-02, later in the game; not built)
+
+A coastal building, inspired by Tropico's docks. Unlocked later in the game (when exactly is TBD).
+- **Stores goods like a warehouse:** its room adds to the one shared stock (§5.10)
+- **Fixed workers**, like the warehouse (number TBD)
+- **One dock at first**; more may be allowed later
+- **Export and import any goods:** raw resources, in-between goods (Flour) and finished products
+- **Export = a contract signed directly with the buyer**, so there is **no 3% market fee** (that fee is only for selling on the Market, §5.9). That is the dock's advantage. Before live players exist (Phase 4) the buyers are in-game companies; from Phase 4 they can be other players (Contract channel, §5.2)
+- **Prices follow the cost per unit:** what it costs to make a good sets its export and import price, so a finished product is worth more than the raw materials that went into it (respecting the conversion ratios in §5.4)
+- **Parked for later** (see Section 11): ships and their timing, placing it on the coast, when it unlocks
 
 ## 6. UI/UX Screens
 
@@ -484,6 +496,12 @@ A hidden dev menu (key combo on PC, secret tap sequence on mobile) for testing t
 - [ ] Specific per-building education-tier requirements for Employees
 - [ ] Construction Office upgrade cost curve and exact level-cap relationship to other buildings
 - [ ] Population growth rate tuning and House capacity numbers beyond the first Small House
+- [ ] Dock (5.11): ships and their timing (how often, how much they carry, what happens while the player is offline)
+- [ ] Dock (5.11): placement on the coast (needs a new placement rule; Placement Mode only knows the grass plot)
+- [ ] Dock (5.11): when it unlocks (player level, Construction Office level, phase), its build cost and number of workers
+- [ ] Dock (5.11): how "cost per unit" is worked out (ingredients, wages, power, build cost?)
+- [ ] Dock (5.11): do export contracts pay sales tax, or nothing at all? (Tax-free would make them a way around the money sink, §5.9)
+- [ ] Dock (5.11): should imports cost a little more than making the good yourself, so the production chain stays worth building?
 
 ## 12. Setup Checklist (from-scratch walkthrough)
 
@@ -515,10 +533,14 @@ Both are functional, self-contained HTML/JS artifacts used to validate the tradi
 
 ## 15. Revision Log
 
+**2026-10-02 (Dock planned):**
+- New planned building, the Dock (5.11): stores goods like a warehouse, fixed workers, one at first; exports through direct contracts (no 3% market fee) and imports any goods; prices follow the cost per unit. Ships, coast placement and unlock parked (Section 11). Not built
+
 **2026-10-02 (whole workers, hiring by wage bonus):**
 - Workers are whole people tied to their building (`hired` per building), replacing the even share; full or idle buildings keep them, unpaid (5.6)
 - Fixed minimum wage per worker type + a wage bonus per building (None / +20% / +40% / +60%); free people take the open post with the biggest bonus, equal bonuses take turns; fewer people: smallest bonus loses first
 - Save version 3 (older saves get their workers handed out by the new rules)
+- Warehouses are always staffed first and lose workers last (`staffed_first`), so their room doesn't shrink when other buildings pay bonuses
 
 **2026-10-02 (warehouse: fixed workers, stored goods):**
 - Warehouses have a fixed number of workers (4), with no Low/Medium/High choice; Level 2 (Phase 2 upgrades) will double them (5.10)

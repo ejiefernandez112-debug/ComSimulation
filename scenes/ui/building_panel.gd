@@ -318,8 +318,10 @@ func _refresh_workers(b: Dictionary, def: Dictionary) -> void:
 		note = "Halted: storage full. Its workers wait, unpaid, until you collect. " + note
 	elif not producing:
 		note = "Idle: no jobs queued. Its workers wait, unpaid, for the next job. " + note
+	elif short and def.get("staffed_first", false):
+		note = "Only %d of the %d asked for: it gets free people before any other building, so the town just needs more people. Build houses. " % [int(w.hired), int(w.wanted)] + note
 	elif short:
-		note = "Only %d of the %d asked for: free people go to the biggest bonus first. Build houses, or raise its bonus. " % [int(w.hired), int(w.wanted)] + note
+		note = "Only %d of the %d asked for: free people go to warehouses first, then to the biggest bonus. Build houses, or raise its bonus. " % [int(w.hired), int(w.wanted)] + note
 	_workers_note.text = note
 
 

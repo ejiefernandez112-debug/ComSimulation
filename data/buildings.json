@@ -12,10 +12,10 @@
 		"population_capacity": 10
 	},
 	"warehouse": {
-		"_comment": "Storage: all warehouses together hold the company's goods (one shared stock). capacity = room with all its workers working; when the town is short of people it gets fewer and less room (2 of 4 = half). fixed_workers = no Low/Medium/High choice: it always asks for max_workers (more only by upgrading, Phase 2: level 2 doubles them). Always working, so always paid (plan.md 5.10).",
+		"_comment": "Storage: all warehouses together hold the company's goods (one shared stock). capacity = room with all its workers working; when the town is short of people it gets fewer and less room (2 of 4 = half). fixed_workers = no Low/Medium/High choice: it always asks for max_workers (more only by upgrading, Phase 2: level 2 doubles them). staffed_first = it gets free workers before every other building (whatever their bonus) and loses them last, so the room never shrinks while people are free. Always working, so always paid (plan.md 5.10).",
 		"name": "Warehouse", "category": "storage", "menu_tab": "storage",
 		"description": "Stores your goods. Build more warehouses for more room.",
-		"build_cost": 3000, "buildable": true, "build_time": 5, "max_workers": 4, "fixed_workers": true, "worker_type": "low_skilled",
+		"build_cost": 3000, "buildable": true, "build_time": 5, "max_workers": 4, "fixed_workers": true, "staffed_first": true, "worker_type": "low_skilled",
 		"capacity": 2000
 	},
 	"wheat_farm": {
