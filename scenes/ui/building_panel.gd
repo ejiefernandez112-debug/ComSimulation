@@ -209,12 +209,18 @@ func _build_rows(b: Dictionary, def: Dictionary) -> void:
 func _build_workers(def: Dictionary) -> void:
 	var box := _section("Workers")
 	if def.get("fixed_workers", false):
-		var fixed := _wrapped("Always %d workers, no Low or High choice. Upgrading to Level 2 (coming later) doubles them." % int(def.max_workers))
+		var text := "Always %d workers" % int(def.max_workers)
+		if def.get("fixed_wage", false):
+			text += " at the minimum wage"
+		if def.get("staffed_first", false):
+			text += ", hired before any other building"
+		var fixed := _wrapped(text + ". Upgrading to Level 2 (coming later) doubles them.")
 		fixed.add_theme_font_size_override("font_size", 16)
 		box.add_child(fixed)
 	else:
 		_build_staffing_buttons(box, def)
-	_build_bonus_buttons(box)
+	if not def.get("fixed_wage", false):  # warehouses always pay the minimum wage
+		_build_bonus_buttons(box)
 	_workers_text = _figure_row(box, "Workers:")
 	_rate_text = _figure_row(box, "Usable Room:" if def.category == "storage" else "Production Rate:")
 	_wage_each_text = _figure_row(box, "Wage per worker:")

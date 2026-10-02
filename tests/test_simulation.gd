@@ -60,7 +60,7 @@ func _data() -> Dictionary:
 			# The starter warehouse: 1000 room, no workers (so the other tests' people counts don't change).
 			"store": {"category": "storage", "build_cost": 300, "buildable": true, "capacity": 1000},
 			# A warehouse with workers: 4 of 4 working = 1000 room, 2 of 4 = 500.
-			"crew_store": {"category": "storage", "build_cost": 0, "buildable": true, "capacity": 1000, "max_workers": 4, "fixed_workers": true, "staffed_first": true},
+			"crew_store": {"category": "storage", "build_cost": 0, "buildable": true, "capacity": 1000, "max_workers": 4, "fixed_workers": true, "staffed_first": true, "fixed_wage": true},
 			"farm": {"category": "extractor", "build_cost": 100, "buildable": true, "storage_cap": 100,
 				"recipes": [{"id": "grow", "inputs": {}, "outputs": {"wheat": 10}, "duration": 60}]},
 			"mill": {"category": "processor", "build_cost": 200, "buildable": true, "storage_cap": 16, "queue_size": 4,
@@ -1032,6 +1032,9 @@ func test_warehouses_staffed_first() -> void:
 	state.population.current = 3
 	Sim.settle(state, data, T0)
 	_check(Sim.hired(store) == 3 and Sim.hired(farm) == 0, "fewer people: the farm loses its workers before the warehouse does")
+	_check(not Sim.set_bonus(state, data, store.id, "big", T0).ok, "a warehouse can't get a wage bonus")
+	store["bonus"] = "big"  # as if an older save had given it one
+	_check(is_equal_approx(Sim.wage_per_worker(data, store), 15.0) and Sim.bonus_level(data, store) == "none", "it always pays the minimum wage, whatever a save says")
 
 
 ## Being away gives exactly the same hiring, production and wages as playing all along, with

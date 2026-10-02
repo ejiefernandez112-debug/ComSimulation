@@ -321,6 +321,8 @@ static func can_set_bonus(state: Dictionary, data: Dictionary, building_id: Stri
 		return _fail("Building not found.")
 	if max_workers(data, b) <= 0:
 		return _fail("This building has no workers.")
+	if has_fixed_wage(data, b):
+		return _fail("It always pays the minimum wage: no bonus here.")
 	if not data.config.get("wage_bonuses", {}).has(level):
 		return _fail("Unknown bonus.")
 	return _ok()
@@ -951,13 +953,22 @@ static func minimum_wage(data: Dictionary, b: Dictionary) -> float:
 
 
 ## The building's chosen wage bonus: "none", "small", "good" or "big" (wage_bonuses in config).
+## Always "none" for "fixed_wage" buildings (warehouses), whatever an older save says.
 static func bonus_level(data: Dictionary, b: Dictionary) -> String:
+	if has_fixed_wage(data, b):
+		return "none"
 	return str(b.get("bonus", data.config.get("default_bonus", "none")))
 
 
 ## Its bonus as a share of the minimum wage (0.4 = +40%).
 static func bonus_rate(data: Dictionary, b: Dictionary) -> float:
 	return float(data.config.get("wage_bonuses", {}).get(bonus_level(data, b), 0.0))
+
+
+## True when the building always pays the minimum wage: no bonus choice ("fixed_wage" in
+## buildings.json; warehouses, which are staffed first anyway).
+static func has_fixed_wage(data: Dictionary, b: Dictionary) -> bool:
+	return bool(data.buildings.get(b.type, {}).get("fixed_wage", false))
 
 
 ## What the building's workers cost per hour right now.
