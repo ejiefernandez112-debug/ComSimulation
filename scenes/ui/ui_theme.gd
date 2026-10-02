@@ -160,7 +160,7 @@ static func money(cents: int) -> String:
 	return ("-$" if cents < 0 and whole > 0 else "$") + number(whole)
 
 
-## A price per unit, with cents (the only money shown with cents, plan.md §5.11): 53 -> "$0.53".
+## A price per unit, with cents (the only money shown with cents, plan.md §5.12): 53 -> "$0.53".
 static func price(cents: int) -> String:
 	var whole := absi(cents)
 	return ("-$" if cents < 0 else "$") + number(whole / 100) + ".%02d" % (whole % 100)

@@ -55,7 +55,7 @@ static func _migrate(state: Dictionary, version: int, data: Dictionary) -> void:
 		Simulation._hire(state, data, float(state.get("settled_at", 0.0)))
 		version = 3
 	if version < 4:
-		# Version 4: money is kept in whole cents (plan.md §5.11). Older saves counted dollars.
+		# Version 4: money is kept in whole cents (plan.md §5.12). Older saves counted dollars.
 		_dollars_to_cents(state)
 		version = 4
 	state["save_version"] = version

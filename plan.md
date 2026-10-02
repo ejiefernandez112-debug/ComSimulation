@@ -336,7 +336,7 @@ A coastal building, inspired by Tropico's docks. Unlocked later in the game (whe
 - **Cost per unit = the running costs of making it** (decided 2026-10-02): ingredients, wages, and electricity (what the power costs), plus water if a water utility is added later. **Not** the building's construction cost
 - **Parked for later** (see Section 11): ships and their timing, placing it on the coast, when it unlocks
 
-### 5.11 Prices: cost-based, worked out live (decided 2026-10-02)
+### 5.12 Prices: cost-based, worked out live (decided 2026-10-02)
 
 **Why:** the first fixed prices (Wheat $2, Flour $4, Bread $8) made raw wheat the best business: the Farm paid for itself in 1.9 hours, the Mill in 14 and the Bakery in 30, so processing didn't pay. Prices now follow a rule, so every building pays off the same way, and later costs (power, water) flow into prices by themselves.
 
@@ -363,6 +363,18 @@ A coastal building, inspired by Tropico's docks. Unlocked later in the game (whe
 | Bread | (192 flour at $2.60 + $120 + $666.67) ÷ 144 bread, ÷ 0.9 | **$9.92** | Bakery ≈ $667 ($8,000 in 12 h) |
 
 **Selling** (the Retail building, next): you sell **whole batches** (e.g. 24 bread), with the price shown per batch, to keep it simple.
+
+### 5.13 Water: the public water supply (decided 2026-10-02)
+
+The first **utility** (electricity, §5.5, will work the same way and reuse the same rules).
+- **Source: the government's public water supply only**, piped in from outside the village. Players don't build water sources (no wells for now; maybe later as an upgrade path)
+- **A flow, not a good:** buildings use a steady number of **m³ per hour** while they work; nothing is stored or carried. Automatic, no buttons
+- **Who uses it** (`water_per_hour` in `buildings.json`, PLACEHOLDERS): **Wheat Farm 30 m³/h** (irrigation). Bakery: TBD (Section 11). Flour Mill: none
+- **Only while producing**, the same rule as wages and power: a halted, idle or suspended building uses none. A building at part speed (short of workers) uses that share (6 of 8 workers = 75% of its water)
+- **Unlimited supply, heavy users pay more** (decided 2026-10-02): nobody is ever cut off, so water never slows a building down. The price per m³ is tiered on the company's total use, like the tax brackets: the first **100 m³/h** at the base price, anything above at **+25%** (`water` in `game_config.json`)
+- **Base price ~$2 per m³** (PLACEHOLDER). Later it can drift slowly (market mood), like the electricity price
+- **Paid like wages:** settled over time, also while away, into debt if cash runs out; parts of a cent carry over. Shows as **Water** under money out (Stats → Cash flow) and in the Welcome back window
+- **In prices (§5.12):** a batch's water (at the base price) is one more cost line, so a water price change flows down the chain. Farm: 30 m³/h × $2 = $60/h → Wheat **$0.53 → $0.64**, Flour $2.60 → $2.75, Bread $9.92 → $10.14
 
 ## 6. UI/UX Screens
 
@@ -510,8 +522,11 @@ A hidden dev menu (key combo on PC, secret tap sequence on mobile) for testing t
 - [ ] Localization — which languages, and from which phase
 - [ ] Firebase vs. Nakama — not needed until Phase 4
 - [ ] Whether Market/Exchange stock-style companies get flavored to match in-game industries, or stay generic
-- [x] Retailer prices → **cost-based formula, worked out live, 12-hour payback, cents allowed** (decided 2026-10-02, 5.11)
+- [x] Retailer prices → **cost-based formula, worked out live, 12-hour payback, cents allowed** (decided 2026-10-02, 5.12)
 - [ ] Retail building: instant sale, pre-built, no workers? (proposed 2026-10-02; selling in whole batches)
+- [x] Water → **public government supply only, a flow (m³/h), unlimited, heavy users pay more (+25% above 100 m³/h)**; Wheat Farm 30 m³/h (decided 2026-10-02, 5.13)
+- [ ] Does the Bakery use water (e.g. 5 m³/h for dough)? (5.13, user decides later)
+- [ ] Cost per unit: include a building-cost share (5.12, 12-hour payback) or running costs only (5.11 Dock says "not the construction cost")? The two sections disagree
 - [ ] Land/grid size and expansion cost curve — and whether premium currency may buy land (see Section 7 caution)
 - [ ] Quest content — specific tutorial quest list and daily/weekly quest pool
 - [ ] Onboarding/tutorial flow (concrete first-5-minutes script)

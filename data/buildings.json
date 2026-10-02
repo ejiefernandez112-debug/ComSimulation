@@ -23,7 +23,7 @@
 		"name": "Wheat Farm", "category": "extractor", "menu_tab": "farming",
 		"description": "Grows wheat all by itself until its storage is full.",
 		"build_cost": 2000, "buildable": true, "build_time": 5, "max_workers": 8, "worker_type": "low_skilled",
-		"storage_cap": 900,
+		"storage_cap": 900, "water_per_hour": 30,
 		"recipes": [
 			{ "id": "grow_wheat", "inputs": {}, "outputs": { "wheat": 10 }, "duration": 60 }
 		]

@@ -253,9 +253,20 @@ func currency() -> int:
 
 
 ## What one unit sells for at the Retailer right now, in cents, worked out from its costs
-## (plan.md §5.11).
+## (plan.md §5.12).
 func unit_price(resource_id: String) -> int:
 	return Simulation.unit_price(data(), resource_id)
+
+
+## m³ of water per hour this building draws from the public supply right now (0 when not
+## producing).
+func water_use(building: Dictionary) -> float:
+	return Simulation.water_use(state, data(), building, TimeService.now())
+
+
+## The company's water bill per hour right now, in dollars (heavy users pay more for the extra).
+func water_cost_per_hour() -> float:
+	return Simulation.water_cost_per_hour(state, data(), TimeService.now())
 
 
 ## A building type's price, in cents (buildings.json lists it in dollars).

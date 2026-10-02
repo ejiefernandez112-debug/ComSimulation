@@ -3,7 +3,7 @@ extends RefCounted
 ## every function is handed the game state, the content data and "now".
 ##
 ## Money: the data files use plain dollars (build_cost 2000, wage 15); the state and every
-## function here use whole CENTS (cash 575000 = $5,750.00), so sums never drift (plan.md §5.11).
+## function here use whole CENTS (cash 575000 = $5,750.00), so sums never drift (plan.md §5.12).
 ## Keeping it pure makes it testable, and it's the part a Phase 4 server would port (plan.md §3.1).
 ##
 ## `data`  = { "resources": {...}, "buildings": {...}, "config": {...} } from data/*.json
@@ -44,8 +44,8 @@ static func new_game(data: Dictionary, now: float) -> Dictionary:
 # --- Settling time ------------------------------------------------------------
 
 ## Brings every building, the population and wages up to `now`.
-## Returns everything produced, e.g. {"wheat": 30, "population": 2, "wages": 120} (for the
-## offline summary).
+## Returns everything produced, e.g. {"wheat": 30, "population": 2, "wages": 12000, "water": 600}
+## (money in cents; for the offline summary).
 ##
 ## A building's speed depends on how many workers are actually working in it (see
 ## building_speed), and wages are paid for each of them. That only changes at a few moments
@@ -58,6 +58,7 @@ static func settle(state: Dictionary, data: Dictionary, now: float) -> Dictionar
 	var report := {}
 	var grown := 0
 	var wages := 0
+	var water := 0
 	var t := float(state.get("settled_at", state.get("last_saved_at", now)))
 	if now <= t:
 		# No time to add (or the clock moved backwards): only settle what can happen instantly,
@@ -76,9 +77,11 @@ static func settle(state: Dictionary, data: Dictionary, now: float) -> Dictionar
 			for b in state.buildings:
 				speeds.append(building_speed(state, data, b, t))
 			var wage_rate := _wages_per_hour(state, data, t)
+			var water_rate := water_cost_per_hour(state, data, t)
 			for i in state.buildings.size():
 				_add_to(report, _settle_span(state, state.buildings[i], data, t, next, speeds[i]))
 			wages += _pay_wages(state, wage_rate * (next - t) / 3600.0)
+			water += _pay_water(state, water_rate * (next - t) / 3600.0)
 			grown += _grow_population(state, data, next)
 			t = next
 		state["settled_at"] = now
@@ -87,6 +90,8 @@ static func settle(state: Dictionary, data: Dictionary, now: float) -> Dictionar
 		report["population"] = grown
 	if wages > 0:
 		report["wages"] = wages
+	if water > 0:
+		report["water"] = water
 	_record_history(state, data, now)
 	return report
 
@@ -108,14 +113,25 @@ static func _settle_span(state: Dictionary, b: Dictionary, data: Dictionary, t0:
 ## cent are kept in "wage_carry" until they add up, so many short settles cost exactly the same
 ## as one long one. Returns the cents paid.
 static func _pay_wages(state: Dictionary, dollars: float) -> int:
+	return _pay_over_time(state, dollars, "wage_carry", "wages")
+
+
+## The water bill (`dollars`), paid the same way as wages; parts of a cent wait in "water_carry".
+static func _pay_water(state: Dictionary, dollars: float) -> int:
+	return _pay_over_time(state, dollars, "water_carry", "water")
+
+
+## A running cost paid out of cash over time (into debt if need be), counted in the statistics
+## under `spending_key`; parts of a cent wait in `carry_key`. Returns the cents paid.
+static func _pay_over_time(state: Dictionary, dollars: float, carry_key: String, spending_key: String) -> int:
 	if dollars <= 0.0:
 		return 0
-	var owed := float(state.get("wage_carry", 0.0)) + dollars * 100.0  # in cents
+	var owed := float(state.get(carry_key, 0.0)) + dollars * 100.0  # in cents
 	var whole := floori(owed)
-	state["wage_carry"] = owed - whole
+	state[carry_key] = owed - whole
 	state.profile.currency -= whole
 	var spending: Dictionary = stats(state).spending
-	spending["wages"] = int(spending.get("wages", 0)) + whole
+	spending[spending_key] = int(spending.get(spending_key, 0)) + whole
 	return whole
 
 
@@ -600,7 +616,7 @@ static func demolish(state: Dictionary, data: Dictionary, building_id: String, n
 	return check
 
 
-## Sell to the NPC Retailer at its price (plan.md §5.2 channel 1, price §5.11), minus sales tax
+## Sell to the NPC Retailer at its price (plan.md §5.2 channel 1, price §5.12), minus sales tax
 ## (§5.9). Returns, in cents: "earned" (what reaches cash), "gross" (before tax), "tax", and
 ## "rate" (tax ÷ gross).
 static func sell(state: Dictionary, data: Dictionary, resource_id: String, qty: int, now: float) -> Dictionary:
@@ -670,14 +686,15 @@ static func tax_bracket(state: Dictionary, data: Dictionary, now: float) -> Dict
 	return result
 
 
-# --- Prices (plan.md §5.11) ------------------------------------------------------
+# --- Prices (plan.md §5.12) ------------------------------------------------------
 
 ## Retail price of one unit, in cents, worked out live from what it costs to make (plan.md
-## §5.11): for the building that makes it, at full staff, one batch costs its ingredients (at
-## their own prices) + wages (max_workers at the minimum wage) + a share of the build cost (so it
-## pays for itself in pricing.payback_hours of production); divided by the units made, then by
-## (1 - pricing.typical_tax_rate) so a typical company keeps that after sales tax. Rounded to the
-## cent. A resource with a fixed "price" (dollars) in resources.json uses that instead.
+## §5.12): for the building that makes it, at full staff, one batch costs its ingredients (at
+## their own prices) + wages (max_workers at the minimum wage) + water (at the base price) + a
+## share of the build cost (so it pays for itself in pricing.payback_hours of production);
+## divided by the units made, then by (1 - pricing.typical_tax_rate) so a typical company keeps
+## that after sales tax. Rounded to the cent. A resource with a fixed "price" (dollars) in
+## resources.json uses that instead.
 static func unit_price(data: Dictionary, resource_id: String) -> int:
 	return _unit_price(data, resource_id, {})
 
@@ -703,6 +720,7 @@ static func _unit_price(data: Dictionary, resource_id: String, visiting: Diction
 			for input in recipe.get("inputs", {}):
 				cost += int(recipe.inputs[input]) * _unit_price(data, input, visiting) / 100.0
 			cost += int(def.get("max_workers", 0)) * _minimum_wage_of(data, def) * hours
+			cost += float(def.get("water_per_hour", 0.0)) * hours * float(data.config.get("water", {}).get("price_per_m3", 0.0))
 			cost += float(def.get("build_cost", 0)) / payback * hours
 			price = cents(cost / maxf(_total(recipe.outputs), 1) / keep)
 			visiting.erase(resource_id)
@@ -1042,6 +1060,46 @@ static func _wages_per_hour(state: Dictionary, data: Dictionary, now: float) -> 
 	return total
 
 
+# --- Water (plan.md §5.13) ------------------------------------------------------
+# The government's public water supply: unlimited, so it never slows a building down; buildings
+# just pay for what they draw, and heavy users pay more for the extra.
+
+## m³ of water per hour this building draws right now: its water_per_hour while producing, times
+## its speed (6 of 8 workers = 75% of it). 0 while built, halted, idle or suspended.
+static func water_use(state: Dictionary, data: Dictionary, b: Dictionary, now: float) -> float:
+	var per_hour := float(data.buildings.get(b.type, {}).get("water_per_hour", 0.0))
+	if per_hour <= 0.0 or not is_built(b, now) or not is_producing(data, b):
+		return 0.0
+	return per_hour * building_speed(state, data, b, now)
+
+
+## The whole company's water use right now, m³ per hour.
+static func water_use_total(state: Dictionary, data: Dictionary, now: float) -> float:
+	var total := 0.0
+	for b in state.buildings:
+		total += water_use(state, data, b, now)
+	return total
+
+
+## What drawing `m3_per_hour` costs per hour (dollars): the base price per m³, plus each tier's
+## extra on the part of the use above where that tier starts (first 100 m³/h normal, above +25%).
+static func water_cost(data: Dictionary, m3_per_hour: float) -> float:
+	var water: Dictionary = data.config.get("water", {})
+	var price := float(water.get("price_per_m3", 0.0))
+	var tiers: Array = water.get("tiers", [{"from": 0, "extra": 0.0}])
+	var cost := 0.0
+	for i in tiers.size():
+		var low := float(tiers[i].from)
+		var high: float = float(tiers[i + 1].from) if i + 1 < tiers.size() else INF
+		cost += maxf(minf(m3_per_hour, high) - low, 0.0) * price * (1.0 + float(tiers[i].extra))
+	return cost
+
+
+## The company's water bill per hour right now (dollars).
+static func water_cost_per_hour(state: Dictionary, data: Dictionary, now: float) -> float:
+	return water_cost(data, water_use_total(state, data, now))
+
+
 # --- Statistics ---------------------------------------------------------------
 # Lifetime counters live in state.stats and are updated by the actions above; rates and
 # employment are worked out from the buildings on the spot, so they never go stale.
@@ -1164,7 +1222,7 @@ static func _record_history(state: Dictionary, data: Dictionary, now: float) -> 
 static func _new_stats() -> Dictionary:
 	return {
 		"income": {"sales": 0, "demolish": 0},  # money in (cents), by where it came from
-		"spending": {"construction": 0, "wages": 0, "tax": 0},  # money out (cents), by what it went on
+		"spending": {"construction": 0, "wages": 0, "water": 0, "tax": 0},  # money out (cents), by what it went on
 		"sales_by_item": {},  # resource -> cents earned selling it
 		"made": {},  # resource -> amount ever produced
 		"sold": {},  # resource -> amount ever sold

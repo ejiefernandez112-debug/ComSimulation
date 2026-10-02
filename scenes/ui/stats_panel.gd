@@ -113,6 +113,7 @@ func _cash_page() -> VBoxContainer:
 	var money_out := _section(page, "All time: money out")
 	_value_row(money_out, "Construction", "out_construction")
 	_value_row(money_out, "Wages", "out_wages")
+	_value_row(money_out, "Water", "out_water")
 	_value_row(money_out, "Sales tax", "out_tax")
 	_value_row(money_out, "Total", "out_total")
 	var tax := _section(page, "Sales tax")
@@ -241,8 +242,12 @@ func _refresh_cash() -> void:
 	_show("in_total", UITheme.money(total_in + int(st.income.demolish)), UP)
 	_show("out_construction", UITheme.money(int(st.spending.construction)))
 	_show("out_wages", UITheme.money(int(st.spending.get("wages", 0))))
+	_show("out_water", UITheme.money(int(st.spending.get("water", 0))))
 	_show("out_tax", UITheme.money(int(st.spending.get("tax", 0))))
-	_show("out_total", UITheme.money(int(st.spending.construction) + int(st.spending.get("wages", 0)) + int(st.spending.get("tax", 0))), DOWN)
+	var total_out := 0
+	for key in st.spending:
+		total_out += int(st.spending[key])
+	_show("out_total", UITheme.money(total_out), DOWN)
 	var bracket := Economy.tax_bracket()
 	_show("tax_sold", UITheme.money(int(bracket.sold)))
 	var rate := "%d%%" % roundi(float(bracket.rate) * 100.0)

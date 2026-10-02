@@ -30,6 +30,7 @@ var _fill: Button
 var _staff_buttons := {}  # staffing level -> its button
 var _bonus_buttons := {}  # wage bonus level -> its button
 var _wage_each_text: Label
+var _water_text: Label  # buildings that draw water from the public supply (plan.md §5.13)
 var _workers_text: Label
 var _wages_text: Label
 var _rate_text: Label
@@ -67,6 +68,7 @@ func _build_rows(b: Dictionary, def: Dictionary) -> void:
 	_staff_buttons.clear()
 	_bonus_buttons.clear()
 	_workers_text = null
+	_water_text = null
 	_suspend = null
 	_stock_bar = null
 	_goods_grid = null
@@ -225,6 +227,7 @@ func _build_workers(def: Dictionary) -> void:
 	_rate_text = _figure_row(box, "Usable Room:" if def.category == "storage" else "Production Rate:")
 	_wage_each_text = _figure_row(box, "Wage per worker:")
 	_wages_text = _figure_row(box, "Wage bill:")
+	_water_text = _figure_row(box, "Water:") if float(def.get("water_per_hour", 0.0)) > 0.0 else null
 	_workers_note = _wrapped("")
 	_workers_note.add_theme_font_size_override("font_size", 15)
 	box.add_child(_workers_note)
@@ -303,6 +306,11 @@ func _refresh_workers(b: Dictionary, def: Dictionary) -> void:
 	else:
 		_wage_each_text.text = "%s (minimum)" % UITheme.dollars(w.minimum)
 	_wages_text.text = "%s / hour" % UITheme.dollars(w.wages)
+	if _water_text:
+		# Its share of the bill at the base price (the company pays +25% above 100 m³/h in all).
+		var m3 := Economy.water_use(b)
+		var price := float(GameData.config.get("water", {}).get("price_per_m3", 0.0))
+		_water_text.text = "%s m³/h · %s / hour" % [UITheme.number(roundi(m3)), UITheme.dollars(m3 * price)]
 	var speed := Economy.building_speed(b)
 	_rate_text.text = "%d%%" % floori(speed * 100.0 + 0.001)
 	# The details: why it isn't full speed and what that rate makes.

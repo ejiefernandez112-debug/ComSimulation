@@ -1,5 +1,5 @@
 {
-	"_note": "No prices here: the game works out each item's Retail price live from what it costs to make (plan.md 5.11; pricing in game_config.json). An item no building makes can have a fixed \"price\" in dollars.",
+	"_note": "No prices here: the game works out each item's Retail price live from what it costs to make (plan.md 5.12; pricing in game_config.json). An item no building makes can have a fixed \"price\" in dollars.",
 	"wheat": { "name": "Wheat", "tier": 0 },
 	"flour": { "name": "Flour", "tier": 1 },
 	"bread": { "name": "Bread", "tier": 2 }

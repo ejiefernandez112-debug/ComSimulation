@@ -1067,7 +1067,53 @@ func test_hiring_away_matches_playing() -> void:
 	_check(Sim.hired(away.buildings[4]) == 2 and Sim.hired(away.buildings[5]) == 2, "the buildings with bonuses were filled")
 
 
-## Retail prices come from costs (plan.md §5.11): ingredients + standard wages + building share
+## The public water supply (plan.md §5.13): buildings pay for the water they draw while they
+## produce, heavy users pay more for the extra, and it never slows anything down.
+func test_water_supply() -> void:
+	var data := _bonus_data()  # people only change when the test says so
+	data.config["water"] = {"price_per_m3": 2.0, "tiers": [{"from": 0, "extra": 0.0}, {"from": 100, "extra": 0.25}]}
+	data.buildings["wet_farm"] = {"category": "extractor", "build_cost": 0, "buildable": true, "max_workers": 2,
+		"storage_cap": 50, "water_per_hour": 60,
+		"recipes": [{"id": "grow", "inputs": {}, "outputs": {"wheat": 10}, "duration": 60}]}
+	_check(is_equal_approx(Sim.water_cost(data, 60.0), 120.0), "60 m³/h at $2 = $120/hour")
+	_check(is_equal_approx(Sim.water_cost(data, 140.0), 100 * 2.0 + 40 * 2.5), "above 100 m³/h the extra costs 25% more: $200 + $100")
+	var state := Sim.new_game(data, T0)
+	var farm := Sim.find_building(state, Sim.build(state, data, "wet_farm", Vector2i(5, 5), T0).building_id)
+	_check(Sim.water_use(state, data, farm, T0) == 0.0, "nobody working yet: no water drawn")
+	state.population.current = 1  # 1 of 2 workers: half speed, half the water
+	Sim.settle(state, data, T0)
+	_check(is_equal_approx(Sim.water_use(state, data, farm, T0), 30.0), "at half speed it draws half its water")
+	state.population.current = 2
+	Sim.settle(state, data, T0 + 1)
+	# Water follows the work done: its 5 batches (storage 50) take 5 minutes of full-speed work,
+	# so 5 m³ = $10 in all, whatever the speed was along the way.
+	var report := Sim.settle(state, data, T0 + 1 + 300)
+	_check(int(Sim.stats(state).spending.water) == 1000 and int(report.get("water", 0)) > 0, "water is paid over time, in the report and the statistics ($10)")
+	Sim.settle(state, data, T0 + 3600)
+	_check(int(Sim.stats(state).spending.water) == 1000 and Sim.is_halted(data, farm), "full storage: no more water drawn")
+
+	var steps := Sim.new_game(data, T0)
+	Sim.build(steps, data, "wet_farm", Vector2i(5, 5), T0)
+	Sim.build(steps, data, "wet_farm", Vector2i(6, 6), T0)
+	steps.population.current = 4
+	var away := steps.duplicate(true)
+	var at := T0
+	while at < T0 + 3600:
+		at = minf(at + 7.0, T0 + 3600)
+		Sim.settle(steps, data, at)
+	Sim.settle(away, data, T0 + 3600)
+	_check(int(steps.stats.spending.water) == int(away.stats.spending.water) and steps.profile.currency == away.profile.currency, "same water bill in 7-second steps as in one go")
+
+	data.resources.wheat.erase("price")
+	data.buildings.erase("farm")
+	data.buildings.erase("slow_farm")
+	data.buildings.erase("crew_farm")
+	data.config["pricing"] = {"payback_hours": 10, "typical_tax_rate": 0.0}
+	# wet_farm: 2 workers x $15 x 1/60 h = $0.50, water 60 m³/h x 1/60 h x $2 = $2: $2.50 / 10
+	_check(Sim.unit_price(data, "wheat") == 25, "water is part of the price per unit ($0.25)")
+
+
+## Retail prices come from costs (plan.md §5.12): ingredients + standard wages + building share
 ## (pays back in payback_hours), ÷ units, ÷ (1 - typical tax). In cents, rounded.
 func test_cost_based_prices() -> void:
 	var data := _bonus_data()  # minimum wage $15
