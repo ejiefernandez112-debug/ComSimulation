@@ -60,7 +60,7 @@ func _data() -> Dictionary:
 			# The starter warehouse: 1000 room, no workers (so the other tests' people counts don't change).
 			"store": {"category": "storage", "build_cost": 300, "buildable": true, "capacity": 1000},
 			# A warehouse with workers: 4 of 4 working = 1000 room, 2 of 4 = 500.
-			"crew_store": {"category": "storage", "build_cost": 0, "buildable": true, "capacity": 1000, "max_workers": 4},
+			"crew_store": {"category": "storage", "build_cost": 0, "buildable": true, "capacity": 1000, "max_workers": 4, "fixed_workers": true},
 			"farm": {"category": "extractor", "build_cost": 100, "buildable": true, "storage_cap": 100,
 				"recipes": [{"id": "grow", "inputs": {}, "outputs": {"wheat": 10}, "duration": 60}]},
 			"mill": {"category": "processor", "build_cost": 200, "buildable": true, "storage_cap": 16, "queue_size": 4,
@@ -857,9 +857,12 @@ func test_warehouse_buildings() -> void:
 	state.population.current = 4
 	Sim.settle(state, data, T0 + 1)
 	_check(Sim.warehouse_cap(state, data) == 2000 and Sim.storage_capacity(state, data, crew) == 1000, "4 of 4 workers: its full room is added")
-	Sim.set_staffing(state, data, crew.id, "low", T0 + 1)
+	_check(not Sim.set_staffing(state, data, crew.id, "low", T0 + 1).ok, "a warehouse's workers are fixed: no Low / High choice")
+	crew["staffing"] = "low"  # as if an older save had chosen Low before the workers were fixed
+	_check(Sim.workers_wanted(data, crew) == 4, "it always asks for all 4, whatever a save says")
+	state.population.current = 2
 	Sim.settle(state, data, T0 + 2)
-	_check(Sim.warehouse_cap(state, data) == 1500, "Low staffing (2 of 4): half the room")
+	_check(Sim.warehouse_cap(state, data) == 1500, "only 2 people for its 4 jobs: half its room")
 	Sim.settle(state, data, T0 + 1002)  # 2 workers x $36/h x 1000 s = $20
 	_check(int(Sim.stats(state).spending.wages) == 20, "warehouse workers are paid even with nothing stored")
 	state.inventory["wheat"] = 1400

@@ -34,6 +34,8 @@ var _workers_note: Label
 var _suspend: Button  # Suspend / Resume
 var _stock_text: Label  # warehouses: goods stored in all warehouses / their room
 var _stock_bar: ProgressBar
+var _goods_grid: HFlowContainer  # warehouses: one [icon] amount tile per item in stock
+var _shown_stock := {}  # what the grid shows now, so it's only rebuilt when the stock changes
 
 
 func _ready() -> void:
@@ -63,6 +65,7 @@ func _build_rows(b: Dictionary, def: Dictionary) -> void:
 	_workers_text = null
 	_suspend = null
 	_stock_bar = null
+	_goods_grid = null
 	var about := _body(def.get("description", ""))
 	about.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	about.custom_minimum_size.x = WIDTH - 70  # wrapped text needs a width, or it measures one word per line
@@ -115,12 +118,10 @@ func _build_rows(b: Dictionary, def: Dictionary) -> void:
 		for i in int(def.queue_size):
 			slots.add_child(_queue_slot(i, BuildingInfo.output_of(r)))
 
-	if int(def.get("max_workers", 0)) > 0:
-		_build_workers(def)
-
 	if def.category == "storage":
-		# All warehouses share one stock, so show the whole stock, not just this building's part.
-		var stock := _section("All warehouses")
+		# All warehouses share one stock, so show the whole stock (every item with its icon and
+		# amount), not just this building's part.
+		var stock := _section("Stored goods (all warehouses)")
 		var row := HBoxContainer.new()
 		row.add_theme_constant_override("separation", 10)
 		stock.add_child(row)
@@ -134,6 +135,14 @@ func _build_rows(b: Dictionary, def: Dictionary) -> void:
 		row.add_child(_stock_bar)
 		_stock_text = _body("")
 		row.add_child(_stock_text)
+		_goods_grid = HFlowContainer.new()  # wraps onto more rows when there are many goods
+		_goods_grid.add_theme_constant_override("h_separation", 8)
+		_goods_grid.add_theme_constant_override("v_separation", 8)
+		stock.add_child(_goods_grid)
+		_shown_stock = {"never shown": 1}  # so the first refresh fills the grid
+
+	if int(def.get("max_workers", 0)) > 0:
+		_build_workers(def)
 
 	if def.has("storage_cap"):
 		var store := _section("Storage")
@@ -191,9 +200,26 @@ func _build_rows(b: Dictionary, def: Dictionary) -> void:
 
 
 ## Workers: the staffing choice (Low / Medium / High, with how many workers each means), who's
-## working, what they cost, and how fast the building produces with them.
+## working, what they cost, and how fast the building produces with them. Buildings with fixed
+## workers (warehouses) get no choice, just a line saying how many they always employ.
 func _build_workers(def: Dictionary) -> void:
 	var box := _section("Workers")
+	if def.get("fixed_workers", false):
+		var fixed := _wrapped("Always %d workers, no Low or High choice. Upgrading to Level 2 (coming later) doubles them." % int(def.max_workers))
+		fixed.add_theme_font_size_override("font_size", 16)
+		box.add_child(fixed)
+	else:
+		_build_staffing_buttons(box, def)
+	_workers_text = _figure_row(box, "Workers:")
+	_rate_text = _figure_row(box, "Usable Room:" if def.category == "storage" else "Production Rate:")
+	_wages_text = _figure_row(box, "Wage:")
+	_workers_note = _wrapped("")
+	_workers_note.add_theme_font_size_override("font_size", 15)
+	box.add_child(_workers_note)
+
+
+## Low / Medium / High, each with how many workers it means ("Medium  6").
+func _build_staffing_buttons(box: VBoxContainer, def: Dictionary) -> void:
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 6)
 	box.add_child(row)
@@ -208,12 +234,6 @@ func _build_workers(def: Dictionary) -> void:
 		button.pressed.connect(func(): staffing_requested.emit(building_id, level))
 		row.add_child(button)
 		_staff_buttons[level] = button
-	_workers_text = _figure_row(box, "Workers:")
-	_rate_text = _figure_row(box, "Usable Room:" if def.category == "storage" else "Production Rate:")
-	_wages_text = _figure_row(box, "Wage:")
-	_workers_note = _wrapped("")
-	_workers_note.add_theme_font_size_override("font_size", 15)
-	box.add_child(_workers_note)
 
 
 ## "Title ........ value" with the value in bigger type. Returns the value label.
@@ -248,7 +268,7 @@ func _refresh_workers(b: Dictionary, def: Dictionary) -> void:
 	var note := "%s workers at %s / hour each" % [w.type, UITheme.money(roundi(w.wage_each))]
 	if def.category == "storage":
 		_rate_text.text = "%s of %s" % [UITheme.number(Economy.storage_capacity(b)), UITheme.number(int(def.get("capacity", 0)))]
-		note += " · fewer workers = less room"
+		note += " · short of workers = less room"
 	else:
 		var r := BuildingInfo.recipe(b.type)
 		var per_minute := 0.0
@@ -322,6 +342,8 @@ func _refresh() -> void:
 		var cap := Economy.warehouse_cap()
 		_stock_bar.value = 100.0 * Economy.warehouse_total() / maxf(cap, 1.0)
 		_stock_text.text = "%s / %s" % [UITheme.number(Economy.warehouse_total()), UITheme.number(cap)]
+	if _goods_grid and Economy.state.inventory != _shown_stock:
+		_fill_goods_grid()
 	if _storage_bar:
 		var stored := BuildingInfo.stored(b)
 		_storage_bar.value = 100.0 * stored / float(def.storage_cap)
@@ -338,6 +360,36 @@ func _refresh() -> void:
 		_fill.text = "Fill x%d" % count if count > 0 else "Fill"
 		# Greyed when nothing fits, but still tappable, so the player is told why.
 		_fill.theme_type_variation = "YellowButton" if count > 0 else "GreyButton"
+
+
+## Warehouses: one dark tile per item in stock, [icon] amount like the HUD's item counters, in
+## the order of resources.json (raw goods first). Its name shows when pointing at it.
+func _fill_goods_grid() -> void:
+	_shown_stock = Economy.state.inventory.duplicate()
+	for child in _goods_grid.get_children():
+		_goods_grid.remove_child(child)
+		child.queue_free()
+	for res in GameData.resources:
+		var qty := int(_shown_stock.get(res, 0))
+		if qty <= 0:
+			continue
+		var tile := PanelContainer.new()
+		tile.theme_type_variation = "HudPill"
+		tile.tooltip_text = BuildingInfo.resource_name(res)
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 4)
+		tile.add_child(row)
+		row.add_child(_icon(res, 34))
+		var amount := Label.new()
+		amount.text = UITheme.number(qty)
+		amount.add_theme_font_size_override("font_size", 20)
+		row.add_child(amount)
+		_goods_grid.add_child(tile)
+	if _goods_grid.get_child_count() == 0:
+		var empty := _body("Nothing stored yet. Collect goods from your buildings.")
+		empty.add_theme_font_size_override("font_size", 16)
+		_goods_grid.add_child(empty)
+	_layout.call_deferred()  # the window may need to grow or shrink for the new rows
 
 
 ## A titled, sunken box in the window. Returns the column to add rows to; its first child is the

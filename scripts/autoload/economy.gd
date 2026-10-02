@@ -318,7 +318,7 @@ func staffing() -> float:
 
 ## A building's workers: {"level" (low/medium/high), "wanted" (asked for at that level),
 ## "working" (actually working, can be a fraction when short), "max", "wage_each" (per hour),
-## "wages" (per hour now), "type" (worker type name)}.
+## "wages" (per hour now), "type" (worker type name), "fixed" (true = no staffing choice)}.
 func workers(building: Dictionary) -> Dictionary:
 	var now := TimeService.now()
 	var d := data()
@@ -331,6 +331,7 @@ func workers(building: Dictionary) -> Dictionary:
 		"wage_each": Simulation.wage_per_worker(d, building),
 		"wages": Simulation.building_wages(state, d, building, now),
 		"type": str(d.config.get("worker_types", {}).get(type_id, {}).get("name", type_id)),
+		"fixed": Simulation.has_fixed_workers(d, building),  # no Low/Medium/High choice (warehouses)
 	}
 
 

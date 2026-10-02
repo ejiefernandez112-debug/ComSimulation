@@ -287,11 +287,13 @@ Still to decide: whether bracket changes are announced in advance once the serve
 **Warehouse** (`warehouse` in `buildings.json`, category `storage`, Build Menu tab "Storage"):
 - All warehouses together hold the company's goods: **one shared stock**, no moving goods between them. Room = the sum of every finished, working warehouse
 - One comes **pre-built** in the starting kit; more cost **$3,000** each (5 s to build). PLACEHOLDERS
-- **Workers:** up to **4 low-skilled** (Low 2 / Medium 3 / High 4). **Workers make the room:** 2,000 at 4 of 4, 1,000 at 2 of 4. So lowering staffing saves wages when the room isn't needed, and too few people in town means less room
+- **Workers: a fixed 4 low-skilled** ($60/hour), with **no Low / Medium / High choice** (decided 2026-10-02; `fixed_workers` in `buildings.json`). **Workers make the room:** 2,000 with all 4 working. The only way to get fewer is a town short of people (2 of 4 = 1,000 room), so build houses
+- **More workers only by upgrading** (Phase 2 building upgrades): **Level 2 doubles the workers to 8**, and since workers make the room, the room doubles too (4,000). Upgrade cost and time TBD (see Section 11)
+- The building window shows **every stored item as a tile with its icon and amount** (all warehouses together), above the workers
 - Warehouses are **always working** (they store), so they always pay wages unless suspended. If an empty warehouse sent its workers home it would have no room for the first goods
 - **Less room never destroys goods:** if room shrinks below what's stored, nothing new comes in (Collect is refused) until there's room again
 - You can't demolish or suspend your last warehouse's room away: demolishing needs at least one warehouse to remain and the others to have room for everything stored; suspending a warehouse needs the same room
-- Screens: the **Warehouse** card in the bottom menu lists the stock (amount, worth at today's price) and the room; tapping a warehouse opens its building window (workers, usable room, all warehouses' fill)
+- Screens: the **Warehouse** card in the bottom menu lists the stock (amount, worth at today's price) and the room; tapping a warehouse opens its building window (stored goods with icons, workers, usable room, all warehouses' fill)
 - **Selling is not done here:** a separate **Retail** building comes later (decided 2026-10-02). The temporary Sell test buttons stay until then
 - Save format version 2: older saves get the starter warehouse added (`save_format.gd` `_migrate`)
 - Later ideas: special storage (cold store for bread, grain silo), power for cold storage
@@ -460,6 +462,8 @@ A hidden dev menu (key combo on PC, secret tap sequence on mobile) for testing t
 - [ ] Marketing/launch plan
 - [x] Power plants and the public grid → **planned 2026-10-02** (5.5): power is a flow (MW), and shortages slow every building by the same share; Thermal 40 MW first, then Wind, Solar, Nuclear; automatic public grid with Small/Medium/Large connection and a price that changes with time of day, market mood and usage; one game day = 12 real hours. Numbers are placeholders
 - [x] Does the Wheat Farm use power? → **No, 0 MW** (decided 2026-10-02, 5.5.1)
+- [x] Warehouse staffing → **fixed workers, no Low/High choice; Level 2 doubles them** (decided 2026-10-02, 5.10)
+- [ ] Warehouse Level 2 upgrade: cost and build time; confirm the room doubles with the workers (4,000); Level 3 and beyond?
 - [ ] Dynamic pricing: Retailer prices move with supply (selling a lot lowers the price, recovering over hours), market mood, and input costs like the grid price; swings kept modest (~±10–30%) and shown with a reason
 - [x] Employee hiring cost, wage amount, and headcount-per-building numbers → **no hiring cost; wages Low-skilled 15 / High-skilled 30 / Professional 60 per hour; max 8 workers per production building at level 1, staffing Low 4 / Medium 6 / High 8** (decided 2026-10-01, placeholders, wages to move to the backend later)
 - [x] What happens when the player can't pay wages (especially while offline) → **debt**: cash goes below 0 and sales pay it back; nothing can be built while in debt; buildings keep working (decided 2026-10-01)
@@ -498,6 +502,10 @@ A hidden dev menu (key combo on PC, secret tap sequence on mobile) for testing t
 Both are functional, self-contained HTML/JS artifacts used to validate the trading-mechanic math and UX before porting logic into Godot.
 
 ## 15. Revision Log
+
+**2026-10-02 (warehouse: fixed workers, stored goods):**
+- Warehouses have a fixed number of workers (4), with no Low/Medium/High choice; Level 2 (Phase 2 upgrades) will double them (5.10)
+- The warehouse window shows every stored item with its icon and amount
 
 **2026-10-02 (warehouse buildings, suspend):**
 - The warehouse is a real building (5.10): pre-built starter, more for $3,000, 4 workers who make its room; one shared stock; Warehouse card in the bottom menu now opens the stock list. `warehouse_cap` in `game_config.json` is gone

@@ -291,6 +291,8 @@ static func can_set_staffing(state: Dictionary, data: Dictionary, building_id: S
 		return _fail("Building not found.")
 	if max_workers(data, b) <= 0:
 		return _fail("This building has no workers.")
+	if has_fixed_workers(data, b):
+		return _fail("Its number of workers is fixed. Upgrading it adds more.")
 	if not data.config.get("staffing_levels", DEFAULT_STAFFING_LEVELS).has(level):
 		return _fail("Unknown staffing level.")
 	return _ok()
@@ -747,9 +749,18 @@ static func staffing_level(data: Dictionary, b: Dictionary) -> String:
 
 
 ## How many workers the building asks for at its staffing level (Low 4 / Medium 6 / High 8 of 8).
+## Buildings with "fixed_workers" (warehouses) have no choice: they always ask for all of them.
 static func workers_wanted(data: Dictionary, b: Dictionary) -> int:
+	if has_fixed_workers(data, b):
+		return max_workers(data, b)
 	var levels: Dictionary = data.config.get("staffing_levels", DEFAULT_STAFFING_LEVELS)
 	return roundi(max_workers(data, b) * float(levels.get(staffing_level(data, b), 1.0)))
+
+
+## True when the player can't choose Low / Medium / High here: the number of workers is set by
+## the building (and later by its level: upgrading a warehouse to level 2 doubles them).
+static func has_fixed_workers(data: Dictionary, b: Dictionary) -> bool:
+	return bool(data.buildings.get(b.type, {}).get("fixed_workers", false))
 
 
 ## How many people are actually working there: what it asks for, cut back evenly across all

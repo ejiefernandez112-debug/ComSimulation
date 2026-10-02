@@ -64,10 +64,9 @@ static func status(b: Dictionary) -> Dictionary:
 		"storage":
 			var room := Economy.storage_capacity(b)
 			var full := int(def.get("capacity", 0))
-			if room < full:
+			if room < full:  # its workers are fixed, so only a lack of people can cut its room
 				var w := Economy.workers(b)
-				var why := "not enough people, build houses" if Economy.staffing() < 1.0 else "lower staffing"
-				return {"text": "Room for %s of %s goods (%s of %d workers: %s)" % [UITheme.number(room), UITheme.number(full), _count(w.working), int(w.max), why], "progress": -1.0, "good": Economy.staffing() >= 1.0}
+				return {"text": "Room for %s of %s goods (%s of %d workers: not enough people, build houses)" % [UITheme.number(room), UITheme.number(full), _count(w.working), int(w.max)], "progress": -1.0, "good": false}
 			return {"text": "Room for %s goods" % UITheme.number(room), "progress": -1.0, "good": true}
 		"extractor":
 			var per_cycle := 0
