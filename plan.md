@@ -261,7 +261,7 @@ Everything stays **one calculation**, never a replay. Anything that changes powe
 
 | Charge | What | When | Status |
 |---|---|---|---|
-| **Sales tax** | Progressive tax on Retailer sales, taken from the proceeds | At each sale | ✅ Built 2026-10-02 |
+| **Sales tax** | Progressive tax on Retailer sales, taken from the proceeds | At each sale | ✅ Built 2026-10-02; to be replaced by the Company Tax (5.9.1) |
 | **Market fee** | **3% per trade** on the player market, paid by the seller; counts as the Market's sales tax | At each trade | Phase 4 (`market_fee` already in `game_config.json`, unused) |
 | **Contract tax** | Flat, below 3% (placeholder 1.5%) on Dock export contracts (§5.11) | At each contract sale | Later, with the Dock |
 
@@ -278,7 +278,7 @@ Everything stays **one calculation**, never a replay. Anything that changes powe
 - **Marginal, like income-tax brackets:** each part of a sale pays the rate of the bracket it falls in, so selling more never leaves you with less money
 - **Taxes grow as the company grows** automatically: more buildings → more sales → higher brackets. No separate "company size" count is needed (this replaced the earlier proposal of 5% + 1% per building)
 - **Market trades pay the 3% fee only**, not sales tax as well: the fee *is* the Market's sales tax (confirmed 2026-10-02), so each sale is taxed once
-- **No property tax or profit tax** for now
+- **No property tax or profit tax** for now (a profit tax by company size is planned to replace these brackets: 5.9.1)
 - **Where it shows:** the sell message ("Sold 100 Bread for $744 ($56 sales tax)"); Stats → Cash flow ("Sales tax" under money out, plus a box with 24 h sales, the current rate and the next bracket)
 - **Rules:** `Simulation.sell`, `sales_tax`, `tax_bracket` in `scripts/sim/simulation.gd`; sales are logged in `state.sales_log` as [time, amount], entries older than the window are dropped
 
@@ -295,6 +295,44 @@ Everything stays **one calculation**, never a replay. Anything that changes powe
 | Large (10 chains) | $495k | — | $99,750 | 20.2% | ~$308.9k |
 
 Still to decide: whether bracket changes are announced in advance once the server sets them (Phase 4).
+
+#### 5.9.1 Company size and Company Tax (planned 2026-10-02; replaces the sales brackets above; not built)
+
+**Why it replaces the brackets:** the brackets only look at the last 24 h of sales, so a big company that sells little that day pays almost nothing. Real taxes (e.g. Philippine corporate income tax, used only as inspiration) tax **profit**, at a rate that depends on **how big the company is**. Our own version, not a copy of any real law or of Sim Companies.
+
+**Company size: the company score**
+- **Company score = assets + sales in the last 30 days**
+  - **Assets** = what all the company's buildings cost to build (houses, warehouses and starter buildings included). Cash and goods in stock are **not** counted, so saving is never punished
+  - **Sales** = everything sold in the last 30 days (a long window, so storing goods and dumping them in one day can't buy a size the company hasn't earned)
+- Checked **continuously**: the moment the score passes a limit the company moves up, with a message ("Your company is now a Corporation!")
+- **The size never goes down**, like a reputation: a slow month doesn't demote you
+
+**Size tiers** (names decided 2026-10-02; limits and rates are PLACEHOLDERS, in `game_config.json`):
+
+| Size | Company score | Company Tax on profit |
+|---|---|---|
+| **Startup** | under $50,000 | 10% |
+| **Small Business** | $50,000 – $250,000 | 15% |
+| **Company** | $250,000 – $1,000,000 | 20% |
+| **Corporation** | $1,000,000 – $5,000,000 | 25% |
+| **Conglomerate** | $5,000,000 and up | 30% |
+
+**Company Tax**
+- Taxed on **profit**: sale price − what the goods cost you to make (their cost tag, §5.14). The whole profit pays the rate of your current size (no brackets inside a size)
+- **Worked out at each sale**, at the size you have at that moment (so building right after a bill can't dodge a cycle at the new rate), and **collected every 12 hours together with the water bill** (§5.13): one shared bill time. Unpaid = debt, no late fee
+- **No minimum tax for now**: selling prices always cover costs and nothing can be bought yet, so a sale can't make a loss. Add a small minimum (e.g. 1% of sales) when buying goods arrives
+- **Moving up must feel like a reward, not a punishment:** each size will later unlock things (new buildings, more building slots, bigger loans, better contracts). Until unlocks exist, only the tax changes
+- **Where it shows:** a size badge in the HUD; Stats → "Company score $85,000 · next: Small Business at $50,000…" with a progress bar; the Build Menu warns when a building would move you up; the sell message and bills show the tax
+- **Knock-on changes when built:** the selling price formula (§5.12) assumes a 10% tax on sales and must switch to a tax on profit; the Dock's contract tax and the Market fee (§5.11, Phase 4) were compared against the brackets and need a second look
+- Example, one cycle with $3,000 sales and goods made for $1,800 ($1,200 profit): Startup pays $120, Company $240, Conglomerate $360
+
+**Critique that shaped it (2026-10-02):** fixed tiers make a jump at each limit (one more farm can raise the tax on *all* profit). Accepted on purpose because a size is something players will want for its rewards; a smooth rate (10% + 1% per $20k of assets) was the alternative.
+
+#### 5.9.2 Later: administration overhead, credit rating, reputation (ideas, not planned in detail)
+Three other ways "bigger" or "trusted" could matter. None is built or scheduled.
+- **Administration overhead** (Sim Companies-style): an extra % on all wages that grows with the number of production buildings (e.g. 2% per building after the first), shown as an "Admin" line in cost per unit. Makes big companies' goods cost more to make. Maybe later, once there are many buildings to grow into
+- **Credit rating** (with loans/bonds): the game's own "rating agency" judges whether the company can be **trusted with money**, from bills paid on time, debt, cash flow and activity. Unlike the size it **can go down**. It sets loan interest and how much can be borrowed, and finally gives unpaid bills a consequence. Sim Companies has a similar secret-formula rating for bonds; ours gets its own design
+- **Reputation** (multiplayer, Phase 4+): **players rate each other** after each deal. Fits **contracts** (promises to deliver, pay, meet quality), not instant market buys where nothing can go wrong. Simple 👍/👎 with an optional reason; no rating in 24 h = 👍; shown as "97% 👍 (312 deals)" over the last 90 days. Against abuse: blind ratings (shown only after both sides rated or 24 h passed), only real completed deals, big deals count more. Good reputation lists your offers higher; players can block low-rated companies
 
 ### 5.10 Warehouse Buildings & Suspending (built 2026-10-02)
 
@@ -627,6 +665,9 @@ A hidden dev menu (key combo on PC, secret tap sequence on mobile) for testing t
 - [x] Dock (5.11), Phase 4 anti-abuse: a cheap direct contract could be used to pass money between a player's own accounts (selling at a silly price) → **contract prices have a floor and a cap; unrealistically low or high prices are refused** (decided 2026-10-02)
 - [ ] Dock (5.11): what the contract price limits are measured from (cost per unit? recent Market price?) and how wide they are (e.g. 50%–200%)
 - [ ] Dock (5.11): should imports cost a little more than making the good yourself, so the production chain stays worth building?
+- [x] How is tax tied to company size? → **Company Tax on profit, rate by size tier (Startup / Small Business / Company / Corporation / Conglomerate); size = assets + 30-day sales, never goes down; collected with the water bill** (decided 2026-10-02, 5.9.1; replaces the sales brackets; not built)
+- [ ] Company size: what each size unlocks (5.9.1); limits and tax rates are placeholders
+- [ ] Administration overhead, credit rating and player reputation: if and when (5.9.2)
 
 ## 12. Setup Checklist (from-scratch walkthrough)
 
@@ -657,6 +698,10 @@ A hidden dev menu (key combo on PC, secret tap sequence on mobile) for testing t
 Both are functional, self-contained HTML/JS artifacts used to validate the trading-mechanic math and UX before porting logic into Godot.
 
 ## 15. Revision Log
+
+**2026-10-02 (company size and Company Tax planned):**
+- New 5.9.1: Company Tax on profit at a rate set by company size (Startup 10% → Conglomerate 30%, placeholders); size = assets + last 30 days of sales, checked continuously, never goes down; worked out at each sale, collected every 12 h with the water bill; no minimum tax yet. Replaces the 0/8/15/22% sales brackets once built
+- New 5.9.2: future ideas kept apart from size: administration overhead, a credit rating (with loans) and player-to-player reputation (multiplayer contracts)
 
 **2026-10-02 (cost per unit planned):**
 - New 5.14 Cost per unit: running costs only (ingredients at their cost tag, your wages incl. bonus, metered water, later electricity) per batch ÷ units, with warehouse cost tags (averaged when mixed) and a worked wheat → flour → bread example ($0.30 / $0.75 / $1.83)
