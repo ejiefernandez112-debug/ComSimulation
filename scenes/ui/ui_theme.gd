@@ -158,9 +158,11 @@ static func money(value: int) -> String:
 	return ("-$" if value < 0 else "$") + number(absi(value))
 
 
-## "2m 05s" / "45s" / "1h 20m" for time left.
+## "2m 05s" / "45s" / "1h 20m" / "2d 03h" for time left (or time away).
 static func duration(seconds: float) -> String:
 	var s := maxi(ceili(seconds), 0)
+	if s >= 86400:
+		return "%dd %02dh" % [s / 86400, (s % 86400) / 3600]
 	if s >= 3600:
 		return "%dh %02dm" % [s / 3600, (s % 3600) / 60]
 	if s >= 60:

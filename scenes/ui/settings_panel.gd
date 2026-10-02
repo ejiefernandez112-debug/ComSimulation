@@ -2,6 +2,9 @@ extends ModalWindow
 ## The Settings window (gear button): sound and display options. Each switch saves straight away
 ## through the Settings autoload, which remembers it between sessions.
 
+## "Start over" was pressed; main asks "Are you sure?" before anything is thrown away.
+signal new_game_requested
+
 var _switches := {}  # setting key -> [Button, on text, off text]
 
 
@@ -15,6 +18,18 @@ func _ready() -> void:
 	_switch("water_detail", "water", "Water detail", "High", "Low")
 	if Settings.can_go_fullscreen():
 		_switch("fullscreen", "screen", "Full screen")
+	_heading("Game")
+	var note := Label.new()
+	note.theme_type_variation = "BodyLabel"
+	note.text = "Your game saves by itself on this device."
+	content.add_child(note)
+	var restart := Button.new()
+	restart.theme_type_variation = "RedButton"
+	restart.text = "Start over"
+	restart.custom_minimum_size = Vector2(200, 56)
+	restart.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	restart.pressed.connect(new_game_requested.emit)
+	content.add_child(restart)
 	_heading("About")
 	var about := Label.new()
 	about.theme_type_variation = "BodyLabel"

@@ -298,9 +298,10 @@ Still to decide: whether bracket changes are announced in advance once the serve
 - **Inventory/Warehouse** — all resources held, quantities, storage caps
 - **Retailer/Sell Screen** — sellable resources, current NPC price, quantity selector, sell button
 - **Offline Summary** — "While you were away…" popup listing what was produced (and, from Phase 2/3, wages paid)
+  - ✅ Built 2026-10-02 as **Welcome back!** (`scenes/ui/welcome_back.gd`): shows at start-up after at least `welcome_back_after_seconds` (120) away. Time away, goods made, people who moved in, wages paid, cash now, plus warnings for full (halted) buildings and debt
 - **Settings** — sound/music volume, save reset, language (if localized)
 - **Statistics** (✅ built 2026-10-01, "Stats" card in the bottom menu) — four tabs: **Production** (made / used / net per minute right now from working buildings, how many buildings are working / idle / full / being built, all-time made / sold / earned per item), **People** (population, employed, unemployed, open jobs, jobs per building type), **Cash flow** (last hour and all-time money in by source and out by category), **Graphs** (cash, cash flow, people, production over 15 min / 1 h / 6 h; rates are 10-minute averages; point at or drag across a graph for values). Counters and the graph history live in the save (`state.stats`, updated by the game rules); a graph point is added every `stats_sample_seconds` (60) and time away becomes one point, never a minute-by-minute replay. Keeps `stats_history_size` (360) points
-  - ✅ Built 2026-10-01 (the "Menu" card in the bottom menu bar): Music, Sound effects, Building names, Water detail (High/Low, for slow phones), Full screen (PC), About, Quit (PC). Saved in `user://settings.json` by the `Settings` autoload, separate from the game save. Still to add: save reset (needs the save system), language (if localized). Music/Sound switches mute the "Music"/"SFX" audio buses, ready for when the game has sound
+  - ✅ Built 2026-10-01 (the "Menu" card in the bottom menu bar): Music, Sound effects, Building names, Water detail (High/Low, for slow phones), Full screen (PC), About, Quit (PC). Saved in `user://settings.json` by the `Settings` autoload, separate from the game save. **Start over** (2026-10-02, asks "Are you sure?" first) starts a new game. Still to add: language (if localized). Music/Sound switches mute the "Music"/"SFX" audio buses, ready for when the game has sound
 - **Quest Log** (Phase 1b) — active tutorial + daily/weekly quests, progress, claim-reward button
 - **Profile** (Phase 1b) — XP/level, badges earned (Phase 4 adds rating)
 - **Persistent HUD** — currency balance, XP bar, active quest progress (compact), Population (current/capacity), notification icons
@@ -358,6 +359,14 @@ PlayerSave
 - Buildings store **timestamps** (`started_at`/`finishes_at`), not countdowns, so offline production can be calculated from elapsed real time
 - In single-player, timestamps come from the device clock, so a player can fast-forward by changing it. Acceptable for Phase 1–3 (it only affects their own game); just make sure a clock set *backwards* never causes negative progress or crashes
 - Structure intentionally close to what a Phase 4 cloud backend would need
+
+**✅ Built 2026-10-02:**
+- `scripts/sim/save_format.gd` turns the state into JSON text and back (pure, tested in `tests/test_simulation.gd`). Times are written at full precision; whole numbers come back as whole numbers; a save from a **newer** game version is refused rather than misread; buildings or goods no longer in `data/*.json` are dropped with a note. Format changes: raise `Simulation.SAVE_VERSION` and add a step to `_migrate()`
+- `Economy` loads `user://save.json` at start-up and catches up the time away in one settle (its report feeds the Welcome back window). It saves every `autosave_seconds` (30), within a second of any player action, and when the window closes, the phone app goes to the background, Android Back is pressed, or the game quits
+- **Safe writing:** the new save goes to `save.tmp` first and is then swapped in; the previous save is kept as `save.backup.json`. A damaged save is renamed `save.unreadable-<time>.json` (never overwritten) and the backup is loaded instead; if both fail, a new game starts and the player is told
+- Test runs never touch the real save (`Engine` meta `running_tests`)
+- Dev clock: if a save was made after the dev panel skipped time ahead, a debug build skips ahead again on loading
+- Saved as-is today: `profile.currency`, `plot`, `next_building_id`, `buildings` (with `job_started_at`, `built_at`, `blocked`, `staffing`), `inventory`, `population`, `settled_at`, `wage_carry`, `sales_log`, `stats`. Not yet: xp/level, quests, badges (later phases)
 
 **Phase 4 additions:**
 - Market/Exchange and Contract data are shared/global state — not part of an individual player's save
@@ -466,6 +475,10 @@ A hidden dev menu (key combo on PC, secret tap sequence on mobile) for testing t
 Both are functional, self-contained HTML/JS artifacts used to validate the trading-mechanic math and UX before porting logic into Godot.
 
 ## 15. Revision Log
+
+**2026-10-02 (save and load):**
+- The game now saves and loads (Section 8): versioned JSON in `user://`, autosave, safe writing with a backup, damaged-save recovery
+- Welcome back window (the Offline Summary, Section 6) and Settings → Start over
 
 **2026-10-02 (taxes, costs, halt):**
 - Built the progressive daily-sales tax (5.9): 0/8/15/22% brackets on the last 24 h of Retailer sales; replaced the building-count proposal

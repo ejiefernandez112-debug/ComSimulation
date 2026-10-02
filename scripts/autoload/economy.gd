@@ -6,18 +6,52 @@ extends Node
 signal changed
 
 const Simulation = preload("res://scripts/sim/simulation.gd")
+const SaveFormat = preload("res://scripts/sim/save_format.gd")
+
+## The save, plus the one before it in case the newest gets damaged (plan.md §8).
+const SAVE_PATH := "user://save.json"
+const BACKUP_PATH := "user://save.backup.json"
+const TEMP_PATH := "user://save.tmp"
 
 var state: Dictionary = {}
+## What happened while the game was closed, worked out once at start-up (for the welcome-back
+## screen): the settle report ({"wheat": 30, "wages": 120, ...}) and how long the player was away.
+var offline_report: Dictionary = {}
+var offline_seconds: float = 0.0
+## Messages for the player about the save (couldn't be read, something was dropped). Empty = fine.
+var save_notes: Array[String] = []
+
+var _dirty := false  # a player action changed the state since the last save
 
 
 func _ready() -> void:
-	# Step 3 will load the save file here instead of always starting fresh.
-	state = Simulation.new_game(data(), TimeService.now())
+	if Engine.has_meta("running_tests"):  # tests/test_simulation.gd: never touch the real save
+		state = Simulation.new_game(data(), TimeService.now())
+		return
+	_load_game()
 	var timer := Timer.new()
 	timer.wait_time = 1.0
 	timer.timeout.connect(tick)
 	add_child(timer)
 	timer.start()
+	# Saving often is cheap and means a crash or a dead battery loses almost nothing.
+	var autosave := Timer.new()
+	autosave.wait_time = maxf(float(GameData.config.get("autosave_seconds", 30)), 5.0)
+	autosave.timeout.connect(save_game)
+	add_child(autosave)
+	autosave.start()
+
+
+## Save whenever the game might be about to stop: window closed, phone app sent to the
+## background (phones may kill it there without warning), Android back button, or quitting.
+func _notification(what: int) -> void:
+	match what:
+		NOTIFICATION_WM_CLOSE_REQUEST, NOTIFICATION_APPLICATION_PAUSED, NOTIFICATION_APPLICATION_FOCUS_OUT, NOTIFICATION_WM_GO_BACK_REQUEST:
+			save_game()
+
+
+func _exit_tree() -> void:
+	save_game()  # covers get_tree().quit() (the Quit button), which sends no close request
 
 
 ## Content data bundled the way Simulation expects it.
@@ -28,8 +62,89 @@ func data() -> Dictionary:
 ## Brings everything up to date. Returns what was produced (the offline summary uses this).
 func tick() -> Dictionary:
 	var report: Dictionary = Simulation.settle(state, data(), TimeService.now())
+	if _dirty:
+		save_game()  # once per second at most, so a burst of taps is one write
 	changed.emit()
 	return report
+
+
+# --- Saving and loading ---
+
+## Writes the save file. Writes a temporary file first and only then swaps it in, so a crash
+## halfway through never leaves a half-written save; the previous save is kept as the backup.
+func save_game() -> bool:
+	if state.is_empty() or Engine.has_meta("running_tests"):
+		return false
+	var text := SaveFormat.to_text(state, TimeService.now())
+	var file := FileAccess.open(TEMP_PATH, FileAccess.WRITE)
+	if file == null:
+		push_warning("Couldn't write the save: %s" % error_string(FileAccess.get_open_error()))
+		return false
+	file.store_string(text)
+	var failed := file.get_error() != OK
+	file.close()
+	if failed:
+		push_warning("Couldn't write the save (disk full?)")
+		return false
+	var dir := DirAccess.open("user://")
+	if dir.file_exists(SAVE_PATH.get_file()):
+		if dir.file_exists(BACKUP_PATH.get_file()):
+			dir.remove(BACKUP_PATH.get_file())
+		dir.rename(SAVE_PATH.get_file(), BACKUP_PATH.get_file())
+	if dir.rename(TEMP_PATH.get_file(), SAVE_PATH.get_file()) != OK:
+		push_warning("Couldn't swap in the new save")
+		return false
+	_dirty = false
+	return true
+
+
+## Throws the current game away and starts over (Settings → Start over). The old save stays
+## as the backup until the next save replaces it.
+func start_new_game() -> void:
+	state = Simulation.new_game(data(), TimeService.now())
+	offline_report = {}
+	offline_seconds = 0.0
+	save_game()
+	changed.emit()
+
+
+## Start-up: open the save (or its backup), work out everything that happened while the game was
+## closed in one calculation, or start a new game if there's no save yet.
+func _load_game() -> void:
+	var now := TimeService.now()
+	var main := _read_save(SAVE_PATH)
+	var result := main
+	if not main.ok and main.error != "":
+		# Keep the unreadable save under another name, so later saves never overwrite it.
+		var keep := "save.unreadable-%d.json" % int(now)
+		DirAccess.open("user://").rename(SAVE_PATH.get_file(), keep)
+		result = _read_save(BACKUP_PATH)
+		if result.ok:
+			save_notes.append("%s The save before it was loaded instead (the damaged file was kept as %s)." % [main.error, keep])
+		else:
+			save_notes.append("%s A new game was started (the old file was kept as %s)." % [main.error, keep])
+	elif not main.ok:
+		result = _read_save(BACKUP_PATH)  # no save, but maybe a crash right after the backup step
+	if not result.ok:
+		state = Simulation.new_game(data(), now)
+		return
+	state = result.state
+	save_notes.append_array(result.warnings)
+	var settled := float(state.get("settled_at", now))
+	if settled > now and OS.is_debug_build():
+		# The save was made after the dev panel skipped time ahead: skip ahead again, or nothing
+		# would happen until the real clock caught up. (Real players never warp the clock.)
+		TimeService.warp(settled - now)
+		now = settled
+	offline_seconds = maxf(now - settled, 0.0)
+	offline_report = Simulation.settle(state, data(), now)
+
+
+## {"ok", "error" ("" when there simply is no file), "state", "warnings"}
+func _read_save(path: String) -> Dictionary:
+	if not FileAccess.file_exists(path):
+		return {"ok": false, "error": "", "state": {}, "warnings": []}
+	return SaveFormat.from_text(FileAccess.get_file_as_string(path), data())
 
 
 # --- Player actions (each returns {"ok", "error", ...}) ---
@@ -226,5 +341,6 @@ func construction_left(building: Dictionary) -> float:
 
 func _after(result: Dictionary) -> Dictionary:
 	if result.ok:
+		_dirty = true
 		changed.emit()
 	return result

@@ -43,12 +43,40 @@ func _ready() -> void:
 	# The bottom menu steps aside for anything else that uses the bottom of the screen.
 	menu_bar.hide_while_visible([building_bar, build_menu.placing_bar, build_menu.window()])
 	test_panel.message.connect(hud.toast)
+	settings_panel.new_game_requested.connect(_ask_new_game)
 	# Developer tools exist only in test builds (plan.md §10): never loaded for real players.
 	if OS.is_debug_build():
 		var dev_panel: Control = load("res://scenes/debug/dev_panel.gd").new()
 		dev_panel.name = "DevPanel"
 		ui_root.add_child(dev_panel)
 		dev_panel.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)  # made in code, so give it the whole screen
+	_welcome_back.call_deferred()  # once the screen has its real size
+
+
+## Start-up: what happened while the game was closed, and any problem reading the save.
+func _welcome_back() -> void:
+	var welcome: ModalWindow = load("res://scenes/ui/welcome_back.gd").new()
+	welcome.name = "WelcomeBack"
+	ui_root.add_child(welcome)
+	welcome.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	welcome.show_if_away()
+	for note in Economy.save_notes:
+		hud.toast(note, true)
+
+
+## Settings → Start over: everything is lost, so ask first.
+func _ask_new_game() -> void:
+	settings_panel.close()
+	confirm_dialog.ask("Start over?",
+		"Your buildings, goods and cash are gone for good, and you begin again with the starting kit.",
+		0, {}, "Start over", _new_game)
+
+
+func _new_game() -> void:
+	_deselect()
+	building_panel.close()
+	Economy.start_new_game()
+	hud.toast("New game started. Good luck!")
 
 
 ## A card in the bottom menu bar was tapped.

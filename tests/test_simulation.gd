@@ -6,6 +6,7 @@ extends SceneTree
 
 const Sim = preload("res://scripts/sim/simulation.gd")
 const GameDataScript = preload("res://scripts/autoload/game_data.gd")
+const SaveFormat = preload("res://scripts/sim/save_format.gd")
 const T0 := 1_000_000.0  # a fixed "now" so results never depend on the real clock
 
 var _checks := 0
@@ -13,6 +14,9 @@ var _failures := 0
 
 
 func _initialize() -> void:
+	# Godot still starts the game's autoloads after the tests; this keeps Economy away from the
+	# player's real save file.
+	Engine.set_meta("running_tests", true)
 	var sim_script: Script = Sim
 	if not sim_script.can_instantiate():  # the rules script has an error: don't report "0 failed"
 		print("FAIL: scripts/sim/simulation.gd doesn't compile (see the error above)")
@@ -683,6 +687,98 @@ func test_offline_report() -> void:
 	var s: Array = _setup("farm")
 	var report := Sim.settle(s[0], s[1], T0 + 300)
 	_check(report.get("wheat", 0) == 50, "report lists what was produced while away")
+
+
+## Saving and loading part-way through changes nothing: the loaded game carries on exactly like
+## one that was never closed (cash, wages, tax, storage, queues, people, statistics).
+func test_save_round_trip() -> void:
+	var data := _data()
+	data.config["worker_types"] = {"low_skilled": {"name": "Low-skilled", "wage_per_hour": 36}}
+	data.config["sales_tax_brackets"] = [{"from": 0, "rate": 0.0}, {"from": 6, "rate": 0.5}]
+	var kept := Sim.new_game(data, T0)
+	for x in 3:
+		Sim.build(kept, data, "crew_farm", Vector2i(x, 5), T0)
+	var mill_id: String = Sim.build(kept, data, "crew_mill", Vector2i(6, 6), T0).building_id
+	Sim.build(kept, data, "cabin", Vector2i(8, 8), T0)  # finishes after the save
+	kept.inventory["wheat"] = 60
+	Sim.fill_queue(kept, data, mill_id, "mill", T0)
+	var saved_at := T0 + 123.456789  # an awkward time, to catch rounding in the file
+	Sim.settle(kept, data, saved_at)
+	Sim.set_staffing(kept, data, mill_id, "low", saved_at)
+	kept.inventory["wheat"] = int(kept.inventory.get("wheat", 0)) + 5  # the mill's queue took the rest
+	_check(Sim.sell(kept, data, "wheat", 5, saved_at).ok, "(setup) a sale before saving")
+	var text := SaveFormat.to_text(kept, saved_at)
+	var result := SaveFormat.from_text(text, data)
+	_check(result.ok and result.warnings.is_empty(), "a save loads back without problems")
+	var loaded: Dictionary = result.state
+	_check(typeof(loaded.profile.currency) == TYPE_INT and typeof(loaded.next_building_id) == TYPE_INT, "cash and counters come back as whole numbers")
+	_check(float(loaded.last_saved_at) == saved_at and int(loaded.save_version) == Sim.SAVE_VERSION, "the file says when it was saved, and its version")
+	_check(_difference(kept, loaded, "") == "" or _difference(kept, loaded, "") == "last_saved_at", "the loaded game is the same as the one saved")
+	Sim.settle(kept, data, T0 + 5000)
+	Sim.settle(loaded, data, T0 + 5000)
+	var diff := _difference(kept, loaded, "")
+	_check(diff == "" or diff == "last_saved_at", "after an hour more, the loaded game still matches (first difference: %s)" % diff)
+	_check(Sim.sales_last_day(loaded, data, T0 + 5000) == 10, "the tax window remembers sales made before the save")
+
+
+## Path of the first place two states differ ("" = same). Numbers only need to be equal to 6
+## decimals, because the file stores whole numbers as whole numbers.
+func _difference(a: Variant, b: Variant, path: String) -> String:
+	var numbers := [TYPE_INT, TYPE_FLOAT]
+	if typeof(a) in numbers and typeof(b) in numbers:
+		return "" if absf(float(a) - float(b)) < 0.000001 else path
+	if typeof(a) != typeof(b):
+		return path
+	if a is Dictionary:
+		for key in a.keys() + b.keys():
+			if not (a.has(key) and b.has(key)):
+				return "%s.%s" % [path, key] if path != "" else str(key)
+			var d := _difference(a[key], b[key], "%s.%s" % [path, key] if path != "" else str(key))
+			if d != "":
+				return d
+		return ""
+	if a is Array:
+		if a.size() != b.size():
+			return path
+		for i in a.size():
+			var d := _difference(a[i], b[i], "%s[%d]" % [path, i])
+			if d != "":
+				return d
+		return ""
+	return "" if a == b else path
+
+
+func test_save_rejects_bad_files() -> void:
+	var data := _data()
+	var good := JSON.parse_string(SaveFormat.to_text(Sim.new_game(data, T0), T0)) as Dictionary
+	_check(not SaveFormat.from_text("{ not json", data).ok, "a damaged file is refused")
+	_check(not SaveFormat.from_text("[1, 2]", data).ok, "a file that isn't a save is refused")
+	var newer := good.duplicate(true)
+	newer.save_version = Sim.SAVE_VERSION + 1
+	var refused := SaveFormat.from_text(JSON.stringify(newer), data)
+	_check(not refused.ok and "newer" in refused.error, "a save from a newer game version is refused, not misread")
+	var no_buildings := good.duplicate(true)
+	no_buildings.erase("buildings")
+	_check(not SaveFormat.from_text(JSON.stringify(no_buildings), data).ok, "a save missing its buildings is refused")
+	var broken_building := good.duplicate(true)
+	broken_building.buildings[0].erase("job_started_at")
+	_check(not SaveFormat.from_text(JSON.stringify(broken_building), data).ok, "a building missing its timer is refused")
+	_check(SaveFormat.from_text(JSON.stringify(good), data).ok, "the untouched save still loads")
+
+
+## Buildings or goods removed from the data files are left out (with a note), instead of
+## crashing the screens that look them up.
+func test_save_drops_unknown_things() -> void:
+	var data := _data()
+	var state := Sim.new_game(data, T0)
+	Sim.build(state, data, "farm", Vector2i(5, 5), T0)
+	state.inventory["wheat"] = 5
+	var text := SaveFormat.to_text(state, T0)
+	data.buildings.erase("farm")
+	data.resources.erase("wheat")
+	var result := SaveFormat.from_text(text, data)
+	_check(result.ok and result.state.buildings.size() == 2 and not result.state.inventory.has("wheat"), "an unknown building and unknown goods are dropped")
+	_check(result.warnings.size() == 2, "the player is told what was dropped")
 
 
 ## The real data files must be valid: every recipe uses known resources, numbers make sense.
