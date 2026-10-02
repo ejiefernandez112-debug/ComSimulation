@@ -352,7 +352,7 @@ A coastal building, inspired by Tropico's docks. Unlocked later in the game (whe
 
 **Worked out live** by the game rules from the data (`Simulation.unit_price`), never typed in by hand: change a wage, a build cost or a timer, and prices follow. Later, dynamic prices multiply this by supply and market mood (see Section 11). An item can have a fixed `price` (dollars) in `resources.json`, which wins over the formula: for goods no building makes, and in tests.
 
-**Cents:** prices and all money have cents, like a real bank balance ("$5,750.00"). Internally money is stored as whole **cents** (575000), so adding and subtracting never drifts. Unit prices are rounded to the cent; a sale's total is units × unit price.
+**Cents (decided 2026-10-02):** only **prices and costs per unit** show cents ("$0.53 each"). Everything else shows **whole dollars, rounded**: cash in the HUD ("$1,876"), building costs ("$8,000"), totals, wages and statistics. Internally the game rules still count money in whole **cents** (575000 = $5,750), so adding and subtracting never drifts; it just isn't shown. Unit prices are rounded to the cent; a sale's total is units × unit price (shown rounded to the dollar).
 
 **Today's numbers** (PLACEHOLDERS, from the formula):
 

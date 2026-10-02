@@ -26,7 +26,7 @@ func show_if_away() -> bool:
 			row.add_child(_amount(res, "+" + UITheme.number(made[res])))
 	if int(report.get("population", 0)) > 0:
 		_row("Moved in").add_child(_amount("population", "+%d people" % int(report.population)))
-	if int(report.get("wages", 0)) > 0:
+	if roundi(int(report.get("wages", 0)) / 100.0) > 0:  # at least $1 (money is in cents)
 		_row("Wages paid").add_child(_amount("cash", "-" + UITheme.money(int(report.wages))))
 	_row("Cash now").add_child(_amount("cash", UITheme.money(Economy.currency())))
 

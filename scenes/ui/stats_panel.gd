@@ -225,10 +225,13 @@ func _refresh_cash() -> void:
 		_values.flow_title.text = "Last hour"
 	else:
 		_values.flow_title.text = "Last %s" % LineChart._ago(span)  # shorter at first; longer right after time away
-	_show("flow_in", ("+" if flow.income > 0 else "") + UITheme.money(flow.income), UP if flow.income > 0 else LineChart.INK)
-	_show("flow_out", ("-" if flow.spending > 0 else "") + UITheme.money(flow.spending), DOWN if flow.spending > 0 else LineChart.INK)
+	# Signs and colours follow the whole dollars shown, so a few cents never show as "-$0".
+	var income := roundi(flow.income / 100.0)
+	var spent := roundi(flow.spending / 100.0)
+	_show("flow_in", ("+" if income > 0 else "") + UITheme.money(flow.income), UP if income > 0 else LineChart.INK)
+	_show("flow_out", ("-" if spent > 0 else "") + UITheme.money(flow.spending), DOWN if spent > 0 else LineChart.INK)
 	var net: int = flow.income - flow.spending
-	_show("flow_net", ("+" if net > 0 else "") + UITheme.money(net), _signed_color(net))
+	_show("flow_net", ("+" if roundi(net / 100.0) > 0 else "") + UITheme.money(net), _signed_color(roundi(net / 100.0)))
 	var total_in := 0
 	for res in GameData.resources:
 		var earned := int(st.sales_by_item.get(res, 0))

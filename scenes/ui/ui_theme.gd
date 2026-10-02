@@ -153,14 +153,20 @@ static func number(value: int) -> String:
 	return ("-" if value < 0 else "") + digits + out
 
 
-## Money, from whole CENTS (how the game rules keep it): 125050 -> "$1,250.50", or "-$202.00"
-## when in debt. Use this wherever cash is shown.
+## Money in whole dollars, from CENTS (how the game rules keep it), rounded: 125050 -> "$1,251",
+## or "-$202" when in debt. Use this for cash, building costs, totals and wages.
 static func money(cents: int) -> String:
+	var whole := roundi(absi(cents) / 100.0)
+	return ("-$" if cents < 0 and whole > 0 else "$") + number(whole)
+
+
+## A price per unit, with cents (the only money shown with cents, plan.md §5.11): 53 -> "$0.53".
+static func price(cents: int) -> String:
 	var whole := absi(cents)
 	return ("-$" if cents < 0 else "$") + number(whole / 100) + ".%02d" % (whole % 100)
 
 
-## Money from an amount in dollars, like the data files and wages per hour use (15.0 -> "$15.00").
+## Money from an amount in dollars, like the data files and wages per hour use (15.0 -> "$15").
 static func dollars(amount: float) -> String:
 	return money(roundi(amount * 100.0))
 

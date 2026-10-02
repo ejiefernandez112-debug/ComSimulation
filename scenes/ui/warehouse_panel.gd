@@ -68,7 +68,7 @@ func _refresh() -> void:
 		_list.add_child(empty)
 
 
-## [icon] Wheat ............ 1,250   worth $2,500
+## [icon] Wheat ........ 1,250   $0.53 each   worth $663
 func _row(res: String, qty: int) -> PanelContainer:
 	var box := PanelContainer.new()
 	box.theme_type_variation = "Inset"
@@ -85,6 +85,11 @@ func _row(res: String, qty: int) -> PanelContainer:
 	name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	row.add_child(name_label)
 	row.add_child(_label(UITheme.number(qty), 20))
+	var each := _label("%s each" % UITheme.price(Economy.unit_price(res)), 16)
+	each.theme_type_variation = "BodyLabel"
+	each.custom_minimum_size.x = 100
+	each.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	row.add_child(each)
 	var worth := _label("worth %s" % UITheme.money(qty * Economy.unit_price(res)), 16)
 	worth.theme_type_variation = "BodyLabel"
 	worth.custom_minimum_size.x = 130
