@@ -389,6 +389,9 @@ func _show_details(type_id: String) -> void:
 		"residential":
 			_makes.add_child(_icon("population", 26))
 			_makes.add_child(_body("Home for %d people" % int(def.get("population_capacity", 0))))
+		"storage":
+			_makes.add_child(_icon("warehouse", 26))
+			_makes.add_child(_body("Room for %s goods (%d workers)" % [UITheme.number(int(def.get("capacity", 0))), int(def.get("max_workers", 0))]))
 	if def.has("storage_cap"):
 		var spacer := Control.new()
 		spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL

@@ -177,6 +177,30 @@ func demolish(building_id: String) -> Dictionary:
 	return _after(Simulation.demolish(state, data(), building_id, TimeService.now()))
 
 
+## Switch a building off: progress lost, goods to the warehouse ({"moved", "kept"}), no wages.
+func suspend(building_id: String) -> Dictionary:
+	return _after(Simulation.suspend(state, data(), building_id, TimeService.now()))
+
+
+## Switch it back on: workers return, work starts from the beginning. Free.
+func resume(building_id: String) -> Dictionary:
+	return _after(Simulation.resume(state, data(), building_id, TimeService.now()))
+
+
+## Whether it could be suspended ({"ok", "error", "goods" going to the warehouse}); changes nothing.
+func can_suspend(building_id: String) -> Dictionary:
+	return Simulation.can_suspend(state, data(), building_id)
+
+
+func is_suspended(building: Dictionary) -> bool:
+	return Simulation.is_suspended(building)
+
+
+## The room this warehouse adds right now (fewer workers = less room); 0 for other buildings.
+func storage_capacity(building: Dictionary) -> int:
+	return Simulation.storage_capacity(state, data(), building)
+
+
 ## Halted: storage full, so it makes nothing and pays no wages until collected.
 func is_halted(building: Dictionary) -> bool:
 	return Simulation.is_halted(data(), building)
@@ -235,7 +259,7 @@ func warehouse_total() -> int:
 
 
 func warehouse_cap() -> int:
-	return Simulation.warehouse_cap(data())
+	return Simulation.warehouse_cap(state, data())
 
 
 ## Whether type_id could be built on cell right now ({"ok", "error"}); changes nothing.

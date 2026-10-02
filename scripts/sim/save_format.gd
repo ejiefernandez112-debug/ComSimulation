@@ -31,18 +31,45 @@ static func from_text(text: String, data: Dictionary) -> Dictionary:
 	if version < 1:
 		return _fail("This isn't a save file.")
 	var warnings: Array[String] = []
-	_migrate(state, version)
 	var problem := _check_shape(state)
 	if problem != "":
 		return _fail("The save file is damaged (%s)." % problem)
 	_drop_unknown(state, data, warnings)
+	_migrate(state, version, data)
 	return {"ok": true, "error": "", "state": state, "warnings": warnings}
 
 
-## Upgrades an older save one version at a time. Nothing to do yet: version 1 is the first.
-## Example for later: `if version < 2: state["new_thing"] = default; version = 2`.
-static func _migrate(state: Dictionary, version: int) -> void:
-	state["save_version"] = maxi(version, Simulation.SAVE_VERSION)
+## Upgrades an older save one version at a time, so old saves keep working.
+static func _migrate(state: Dictionary, version: int, data: Dictionary) -> void:
+	if version < 2:
+		# Version 2: the warehouse became a real building (plan.md §5.10). Older saves get the
+		# starter warehouse, or they would have no room for goods at all.
+		_add_starter_warehouse(state, data)
+		version = 2
+	state["save_version"] = version
+
+
+## Puts the starting kit's warehouse where the kit says, or on the first free tile.
+static func _add_starter_warehouse(state: Dictionary, data: Dictionary) -> void:
+	for entry in data.config.get("starting_buildings", []):
+		if data.buildings.get(entry.type, {}).get("category", "") != "storage":
+			continue
+		var cell := Vector2i(int(entry.position[0]), int(entry.position[1]))
+		if not Simulation.building_at(state, cell).is_empty():
+			cell = _first_free_cell(state)
+		if cell.x >= 0:
+			Simulation._add_building(state, entry.type, cell, float(state.get("settled_at", 0.0)), 0.0)
+		return
+
+
+## The first empty tile of the plot, row by row; (-1, -1) if every tile is taken.
+static func _first_free_cell(state: Dictionary) -> Vector2i:
+	var grid: Array = state.plot.grid_size
+	for y in int(grid[1]):
+		for x in int(grid[0]):
+			if Simulation.building_at(state, Vector2i(x, y)).is_empty():
+				return Vector2i(x, y)
+	return Vector2i(-1, -1)
 
 
 ## JSON keeps every number as a decimal (5750 comes back as 5750.0). Turn whole numbers back

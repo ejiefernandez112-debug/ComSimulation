@@ -3,7 +3,7 @@
 Godot 4.7 (GDScript, **Compatibility** renderer) business-sim game. Full design lives in [plan.md](plan.md) — read the relevant section before building a feature. The developer has no prior coding experience: explain changes in plain language, keep scripts small and commented where intent isn't obvious.
 
 ## Current phase
-**Phase 1a** — Construction Office + Small House pre-built; player builds Wheat Farm → Flour Mill → Bakery; Retailer sell only; offline production; local JSON save. Do not build Phase 1b+ features unless asked.
+**Phase 1a** — Construction Office + Small House + Warehouse pre-built; player builds Wheat Farm → Flour Mill → Bakery; Retailer sell only; offline production; local JSON save. Do not build Phase 1b+ features unless asked.
 
 ## Architecture rules (plan.md §3.1 — non-negotiable)
 1. **Data-driven content.** Buildings, recipes, resources, prices, timers live in `data/*.json`, loaded by the `GameData` autoload. Never hard-code tuning numbers in scripts.

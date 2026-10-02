@@ -38,6 +38,10 @@ func _data() -> Dictionary:
 		"buildings": {
 			"office": {"category": "civic", "build_cost": 0, "buildable": false},
 			"house": {"category": "residential", "build_cost": 0, "buildable": false, "population_capacity": 10},
+			# The starter warehouse: 1000 room, no workers (so the other tests' people counts don't change).
+			"store": {"category": "storage", "build_cost": 300, "buildable": true, "capacity": 1000},
+			# A warehouse with workers: 4 of 4 working = 1000 room, 2 of 4 = 500.
+			"crew_store": {"category": "storage", "build_cost": 0, "buildable": true, "capacity": 1000, "max_workers": 4},
 			"farm": {"category": "extractor", "build_cost": 100, "buildable": true, "storage_cap": 100,
 				"recipes": [{"id": "grow", "inputs": {}, "outputs": {"wheat": 10}, "duration": 60}]},
 			"mill": {"category": "processor", "build_cost": 200, "buildable": true, "storage_cap": 16, "queue_size": 4,
@@ -55,10 +59,11 @@ func _data() -> Dictionary:
 			"crew_mill": {"category": "processor", "build_cost": 0, "buildable": true, "max_workers": 3, "storage_cap": 100, "queue_size": 8,
 				"recipes": [{"id": "mill", "inputs": {"wheat": 10}, "outputs": {"flour": 8}, "duration": 90}]},
 		},
-		"config": {"starting_cash": 500, "population_growth_seconds": 10, "warehouse_cap": 1000,
+		"config": {"starting_cash": 500, "population_growth_seconds": 10,
 			"grid_size": [10, 10],
 			"cancel_refund_in_progress": 0.5, "cancel_refund_waiting": 1.0, "demolish_refund": 0.5,
-			"starting_buildings": [{"type": "office", "position": [0, 0]}, {"type": "house", "position": [1, 0]}]},
+			"starting_buildings": [{"type": "office", "position": [0, 0]}, {"type": "house", "position": [1, 0]},
+				{"type": "store", "position": [2, 0]}]},
 	}
 
 
@@ -83,7 +88,7 @@ func test_new_game() -> void:
 	var data := _data()
 	var state := Sim.new_game(data, T0)
 	_check(state.profile.currency == 500, "starting cash")
-	_check(state.buildings.size() == 2, "starter buildings placed")
+	_check(state.buildings.size() == 3, "starter buildings placed")
 	_check(Sim.population_capacity(state, data, T0) == 10, "house gives population capacity")
 	_check(state.save_version == Sim.SAVE_VERSION, "save version set")
 
@@ -817,8 +822,103 @@ func test_save_drops_unknown_things() -> void:
 	data.buildings.erase("farm")
 	data.resources.erase("wheat")
 	var result := SaveFormat.from_text(text, data)
-	_check(result.ok and result.state.buildings.size() == 2 and not result.state.inventory.has("wheat"), "an unknown building and unknown goods are dropped")
+	_check(result.ok and result.state.buildings.size() == 3 and not result.state.inventory.has("wheat"), "an unknown building and unknown goods are dropped")
 	_check(result.warnings.size() == 2, "the player is told what was dropped")
+
+
+## Warehouses are buildings: their room adds up, and their workers make the room.
+func test_warehouse_buildings() -> void:
+	var data := _data()
+	data.config["population_growth_seconds"] = 0  # people only change when the test says so
+	data.config["worker_types"] = {"low_skilled": {"name": "Low-skilled", "wage_per_hour": 36}}
+	var state := Sim.new_game(data, T0)
+	_check(Sim.warehouse_cap(state, data) == 1000, "the starter warehouse gives the room")
+	var crew := Sim.find_building(state, Sim.build(state, data, "crew_store", Vector2i(5, 5), T0).building_id)
+	_check(Sim.warehouse_cap(state, data) == 1000, "a warehouse with no one to work adds no room")
+	state.population.current = 4
+	Sim.settle(state, data, T0 + 1)
+	_check(Sim.warehouse_cap(state, data) == 2000 and Sim.storage_capacity(state, data, crew) == 1000, "4 of 4 workers: its full room is added")
+	Sim.set_staffing(state, data, crew.id, "low", T0 + 1)
+	Sim.settle(state, data, T0 + 2)
+	_check(Sim.warehouse_cap(state, data) == 1500, "Low staffing (2 of 4): half the room")
+	Sim.settle(state, data, T0 + 1002)  # 2 workers x $36/h x 1000 s = $20
+	_check(int(Sim.stats(state).spending.wages) == 20, "warehouse workers are paid even with nothing stored")
+	state.inventory["wheat"] = 1400
+	state.population.current = 0
+	Sim.settle(state, data, T0 + 1003)
+	_check(Sim.warehouse_cap(state, data) == 1000 and int(state.inventory.wheat) == 1400, "less room never throws goods away")
+	var farm := Sim.find_building(state, Sim.build(state, data, "farm", Vector2i(6, 6), T0 + 1003).building_id)
+	Sim.settle(state, data, T0 + 1063)
+	_check(not Sim.collect(state, data, farm.id, T0 + 1063).ok, "over the room: nothing more comes in")
+
+	var one := Sim.new_game(data, T0)
+	_check(not Sim.can_demolish(one, data, one.buildings[2].id).ok, "the last warehouse can't be demolished")
+	Sim.build(one, data, "store", Vector2i(5, 5), T0)
+	one.inventory["wheat"] = 1500
+	_check(not Sim.can_demolish(one, data, one.buildings[2].id).ok, "nor one whose goods wouldn't fit in the others")
+	one.inventory["wheat"] = 900
+	_check(Sim.demolish(one, data, one.buildings[2].id, T0).ok and Sim.warehouse_cap(one, data) == 1000, "a warehouse can go when the rest has room")
+
+
+## Suspend = a "soft demolish" that keeps the building: progress lost, goods back, workers home.
+func test_suspend_and_resume() -> void:
+	var data := _data()
+	data.config["population_growth_seconds"] = 0
+	data.config["worker_types"] = {"low_skilled": {"name": "Low-skilled", "wage_per_hour": 36}}
+	var state := Sim.new_game(data, T0)
+	state.population.current = 10
+	var mill := Sim.find_building(state, Sim.build(state, data, "crew_mill", Vector2i(5, 5), T0).building_id)
+	state.inventory["wheat"] = 30
+	Sim.fill_queue(state, data, mill.id, "mill", T0)  # 3 jobs of 10 wheat
+	Sim.settle(state, data, T0 + 45)  # half way through the first
+	_check(not Sim.can_suspend(state, data, state.buildings[1].id).ok, "a house has nothing to switch off")
+	var check := Sim.can_suspend(state, data, mill.id)
+	_check(check.ok and int(check.goods.wheat) == 5 + 20, "preview: half of the batch being made + all of the waiting ones")
+	var result := Sim.suspend(state, data, mill.id, T0 + 45)
+	_check(result.ok and int(state.inventory.wheat) == 25 and mill.queue.is_empty(), "suspending empties the queue into the warehouse")
+	_check(Sim.is_suspended(mill) and Sim.workers_working(state, data, mill, T0 + 45) == 0.0 and Sim.employment(state, data, T0 + 45).jobs == 0, "its workers go home")
+	var wages_before := int(Sim.stats(state).spending.wages)
+	Sim.settle(state, data, T0 + 5000)
+	_check(int(Sim.stats(state).spending.wages) == wages_before and mill.storage.is_empty(), "suspended: no wages, nothing made")
+	_check(not Sim.can_enqueue(state, data, mill.id, "mill", T0 + 5000).ok, "no jobs while suspended")
+	_check(not Sim.suspend(state, data, mill.id, T0 + 5000).ok, "can't suspend twice")
+	_check(Sim.resume(state, data, mill.id, T0 + 5000).ok and not Sim.is_suspended(mill), "resume switches it back on")
+	_check(Sim.enqueue(state, data, mill.id, "mill", T0 + 5000).ok, "and it takes jobs again")
+
+	var farm := Sim.find_building(state, Sim.build(state, data, "crew_farm", Vector2i(6, 6), T0 + 5000).building_id)
+	Sim.settle(state, data, T0 + 5150)  # 2 batches + half of the third
+	Sim.suspend(state, data, farm.id, T0 + 5150)
+	_check(int(state.inventory.wheat) == 15 + 20, "a farm's wheat goes to the warehouse")
+	Sim.resume(state, data, farm.id, T0 + 6000)
+	Sim.settle(state, data, T0 + 6059)
+	_check(farm.storage.is_empty(), "the half-grown field was lost: it starts from the beginning")
+	Sim.settle(state, data, T0 + 6060)
+	_check(int(farm.storage.get("wheat", 0)) == 10, "first batch a full cycle after resuming")
+
+	state.inventory["flour"] = 1000 - Sim.warehouse_total(state) - 4  # room for only 4 more
+	Sim.settle(state, data, T0 + 6120)
+	result = Sim.suspend(state, data, farm.id, T0 + 6120)  # 20 wheat inside
+	_check(int(result.moved.wheat) == 4 and int(farm.storage.wheat) == 16, "what doesn't fit stays inside, to collect later")
+	_check(not Sim.can_suspend(state, data, state.buildings[2].id).ok, "a warehouse can't be suspended if the goods wouldn't fit elsewhere")
+
+
+## Saves from before warehouses were buildings (version 1) get the starter warehouse.
+func test_old_save_gets_a_warehouse() -> void:
+	var data := _data()
+	var state := Sim.new_game(data, T0)
+	state.buildings.remove_at(2)  # what a version 1 game looked like: no warehouse building
+	var old := JSON.parse_string(SaveFormat.to_text(state, T0)) as Dictionary
+	old.save_version = 1
+	var result := SaveFormat.from_text(JSON.stringify(old), data)
+	var store: Dictionary = result.state.buildings[-1] if result.ok else {}
+	_check(result.ok and store.get("type", "") == "store" and int(store.position[0]) == 2, "the starter warehouse is added where the kit puts it")
+	_check(int(result.state.save_version) == Sim.SAVE_VERSION and Sim.warehouse_cap(result.state, data) == 1000, "upgraded to the new version, with room again")
+	Sim.build(state, data, "farm", Vector2i(2, 0), T0)  # the kit's spot is taken
+	old = JSON.parse_string(SaveFormat.to_text(state, T0)) as Dictionary
+	old.save_version = 1
+	result = SaveFormat.from_text(JSON.stringify(old), data)
+	store = result.state.buildings[-1]
+	_check(store.type == "store" and Vector2i(int(store.position[0]), int(store.position[1])) == Vector2i(3, 0), "or on the first free tile")
 
 
 ## The real data files must be valid: every recipe uses known resources, numbers make sense.

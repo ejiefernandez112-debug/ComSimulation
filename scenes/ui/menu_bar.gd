@@ -11,7 +11,7 @@ signal coming_soon(title: String)
 ## The cards, left to right. "soon" = that screen isn't built yet.
 const TILES := [
 	{"id": "build", "title": "Build", "icon": "build"},
-	{"id": "warehouse", "title": "Warehouse", "icon": "warehouse", "soon": true},
+	{"id": "warehouse", "title": "Warehouse", "icon": "warehouse"},
 	{"id": "market", "title": "Market", "icon": "market", "soon": true},
 	{"id": "stats", "title": "Stats", "icon": "stats"},
 	{"id": "settings", "title": "Menu", "icon": "gear"},

@@ -43,6 +43,11 @@ static func _with_speed(text: String, progress: float, speed: float) -> Dictiona
 	return {"text": "%s · %d%% speed" % [text, floori(speed * 100.0 + 0.001)], "progress": progress, "good": true}
 
 
+## "3" for whole workers, "2.5" when short of people (an average across the town).
+static func _count(workers: float) -> String:
+	return str(roundi(workers)) if absf(workers - roundf(workers)) < 0.05 else "%.1f" % workers
+
+
 static func _no_workers(progress: float) -> Dictionary:
 	return {"text": "Stopped: no workers yet. Build houses so people move in", "progress": progress, "good": false}
 
@@ -53,7 +58,17 @@ static func status(b: Dictionary) -> Dictionary:
 	var r := recipe(b.type)
 	if not Economy.is_built(b):
 		return {"text": "Under construction · %s left" % UITheme.duration(Economy.construction_left(b)), "progress": Economy.construction_progress(b), "good": true}
+	if Economy.is_suspended(b):
+		return {"text": "Suspended: switched off, no workers, no wages. Resume to start again", "progress": -1.0, "good": false}
 	match def.category:
+		"storage":
+			var room := Economy.storage_capacity(b)
+			var full := int(def.get("capacity", 0))
+			if room < full:
+				var w := Economy.workers(b)
+				var why := "not enough people, build houses" if Economy.staffing() < 1.0 else "lower staffing"
+				return {"text": "Room for %s of %s goods (%s of %d workers: %s)" % [UITheme.number(room), UITheme.number(full), _count(w.working), int(w.max), why], "progress": -1.0, "good": Economy.staffing() >= 1.0}
+			return {"text": "Room for %s goods" % UITheme.number(room), "progress": -1.0, "good": true}
 		"extractor":
 			var per_cycle := 0
 			for res in r.outputs:

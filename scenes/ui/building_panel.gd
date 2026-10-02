@@ -12,6 +12,8 @@ signal cancel_requested(building_id: String, index: int)
 signal move_requested(building_id: String)
 signal demolish_requested(building_id: String)
 signal staffing_requested(building_id: String, level: String)
+signal suspend_requested(building_id: String)
+signal resume_requested(building_id: String)
 
 var building_id := ""
 
@@ -29,6 +31,9 @@ var _workers_text: Label
 var _wages_text: Label
 var _rate_text: Label
 var _workers_note: Label
+var _suspend: Button  # Suspend / Resume
+var _stock_text: Label  # warehouses: goods stored in all warehouses / their room
+var _stock_bar: ProgressBar
 
 
 func _ready() -> void:
@@ -56,6 +61,8 @@ func _build_rows(b: Dictionary, def: Dictionary) -> void:
 	_fill = null
 	_staff_buttons.clear()
 	_workers_text = null
+	_suspend = null
+	_stock_bar = null
 	var about := _body(def.get("description", ""))
 	about.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	about.custom_minimum_size.x = WIDTH - 70  # wrapped text needs a width, or it measures one word per line
@@ -111,6 +118,23 @@ func _build_rows(b: Dictionary, def: Dictionary) -> void:
 	if int(def.get("max_workers", 0)) > 0:
 		_build_workers(def)
 
+	if def.category == "storage":
+		# All warehouses share one stock, so show the whole stock, not just this building's part.
+		var stock := _section("All warehouses")
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 10)
+		stock.add_child(row)
+		row.add_child(_icon("warehouse", 34))
+		_stock_bar = ProgressBar.new()
+		_stock_bar.theme_type_variation = "GoldBar"
+		_stock_bar.show_percentage = false
+		_stock_bar.custom_minimum_size.y = 16
+		_stock_bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		_stock_bar.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		row.add_child(_stock_bar)
+		_stock_text = _body("")
+		row.add_child(_stock_text)
+
 	if def.has("storage_cap"):
 		var store := _section("Storage")
 		var row := HBoxContainer.new()
@@ -152,10 +176,17 @@ func _build_rows(b: Dictionary, def: Dictionary) -> void:
 	tools.add_theme_constant_override("separation", 14)
 	content.add_child(tools)
 	tools.add_child(_small_button("BlueButton", "Move", "move", func(): move_requested.emit(building_id)))
+	var spacer := Control.new()
+	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	tools.add_child(spacer)
+	if int(def.get("max_workers", 0)) > 0:  # only buildings with workers can be switched off
+		_suspend = _small_button("YellowButton", "Suspend", "clock", func():
+			if Economy.is_suspended(Economy.building(building_id)):
+				resume_requested.emit(building_id)
+			else:
+				suspend_requested.emit(building_id))
+		tools.add_child(_suspend)
 	if def.get("buildable", false):  # starter buildings can't be rebuilt, so they can't be demolished
-		var spacer := Control.new()
-		spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		tools.add_child(spacer)
 		tools.add_child(_small_button("RedButton", "Demolish", "demolish", func(): demolish_requested.emit(building_id)))
 
 
@@ -178,7 +209,7 @@ func _build_workers(def: Dictionary) -> void:
 		row.add_child(button)
 		_staff_buttons[level] = button
 	_workers_text = _figure_row(box, "Workers:")
-	_rate_text = _figure_row(box, "Production Rate:")
+	_rate_text = _figure_row(box, "Usable Room:" if def.category == "storage" else "Production Rate:")
 	_wages_text = _figure_row(box, "Wage:")
 	_workers_note = _wrapped("")
 	_workers_note.add_theme_font_size_override("font_size", 15)
@@ -199,7 +230,7 @@ func _figure_row(parent: Control, title: String) -> Label:
 	return value
 
 
-func _refresh_workers(b: Dictionary, _def: Dictionary) -> void:
+func _refresh_workers(b: Dictionary, def: Dictionary) -> void:
 	var w := Economy.workers(b)
 	for level in _staff_buttons:
 		_staff_buttons[level].theme_type_variation = "YellowButton" if level == w.level else "BlueButton"
@@ -211,17 +242,23 @@ func _refresh_workers(b: Dictionary, _def: Dictionary) -> void:
 	_workers_text.text = "%s/%d" % [working, w.max]
 	_workers_text.add_theme_color_override("font_color", UITheme.BAD.darkened(0.3) if short else UITheme.TEXT_DARK)
 	_wages_text.text = "%s / hour" % UITheme.money(roundi(w.wages))
-	var r := BuildingInfo.recipe(b.type)
 	var speed := Economy.building_speed(b)
-	var per_minute := 0.0
-	for res in r.outputs:
-		per_minute += int(r.outputs[res]) * 60.0 / float(r.duration) * speed
-	var item_name := BuildingInfo.resource_name(BuildingInfo.output_of(r))
 	_rate_text.text = "%d%%" % floori(speed * 100.0 + 0.001)
 	# The details: why it isn't full speed, what that rate makes, and the wage per worker.
-	var note := "%s workers at %s / hour each · %.1f %s / min" % [w.type, UITheme.money(roundi(w.wage_each)), per_minute, item_name]
+	var note := "%s workers at %s / hour each" % [w.type, UITheme.money(roundi(w.wage_each))]
+	if def.category == "storage":
+		_rate_text.text = "%s of %s" % [UITheme.number(Economy.storage_capacity(b)), UITheme.number(int(def.get("capacity", 0)))]
+		note += " · fewer workers = less room"
+	else:
+		var r := BuildingInfo.recipe(b.type)
+		var per_minute := 0.0
+		for res in r.outputs:
+			per_minute += int(r.outputs[res]) * 60.0 / float(r.duration) * speed
+		note += " · %.1f %s / min" % [per_minute, BuildingInfo.resource_name(BuildingInfo.output_of(r))]
 	if not Economy.is_built(b):
 		note = "Workers start when it's built (%d asked for). " % w.wanted + note
+	elif Economy.is_suspended(b):
+		note = "Suspended: the workers went home and cost nothing. Resume to start again. " + note
 	elif short:
 		note = "Only %s of the %d asked for: not enough people, build houses. " % [working, w.wanted] + note
 	elif Economy.is_halted(b):
@@ -276,6 +313,15 @@ func _refresh() -> void:
 			_slots[i].tooltip_text = "Waiting. Cancel to get %d%% of the ingredients back" % _percent("cancel_refund_waiting")
 	if _workers_text:
 		_refresh_workers(b, def)
+	if _suspend:
+		var off := Economy.is_suspended(b)
+		_suspend.text = "Resume" if off else "Suspend"
+		_suspend.theme_type_variation = "GreenButton" if off else "YellowButton"
+		_suspend.tooltip_text = "Switch it back on (free); work starts from the beginning" if off else "Switch it off: workers go home, no wages. Work in progress is lost; goods go to the warehouse"
+	if _stock_bar:
+		var cap := Economy.warehouse_cap()
+		_stock_bar.value = 100.0 * Economy.warehouse_total() / maxf(cap, 1.0)
+		_stock_text.text = "%s / %s" % [UITheme.number(Economy.warehouse_total()), UITheme.number(cap)]
 	if _storage_bar:
 		var stored := BuildingInfo.stored(b)
 		_storage_bar.value = 100.0 * stored / float(def.storage_cap)

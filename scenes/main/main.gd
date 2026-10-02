@@ -14,6 +14,7 @@ extends Node
 @onready var stats_panel: ModalWindow = $UI/Root/StatsPanel
 @onready var confirm_dialog: ModalWindow = $UI/Root/ConfirmDialog
 @onready var test_panel: Control = $UI/Root/TestPanel
+var _warehouse_panel: ModalWindow  # made in code (_ready)
 
 
 func _ready() -> void:
@@ -38,12 +39,19 @@ func _ready() -> void:
 	building_panel.move_requested.connect(_start_move)
 	building_panel.demolish_requested.connect(_ask_demolish)
 	building_panel.staffing_requested.connect(_set_staffing)
+	building_panel.suspend_requested.connect(_ask_suspend)
+	building_panel.resume_requested.connect(_resume)
 	menu_bar.tile_pressed.connect(_on_menu_tile)
 	menu_bar.coming_soon.connect(func(title): hud.toast("%s is coming soon" % title))
 	# The bottom menu steps aside for anything else that uses the bottom of the screen.
 	menu_bar.hide_while_visible([building_bar, build_menu.placing_bar, build_menu.window()])
 	test_panel.message.connect(hud.toast)
 	settings_panel.new_game_requested.connect(_ask_new_game)
+	_warehouse_panel = load("res://scenes/ui/warehouse_panel.gd").new()
+	_warehouse_panel.name = "WarehousePanel"
+	ui_root.add_child(_warehouse_panel)
+	ui_root.move_child(_warehouse_panel, confirm_dialog.get_index())  # under the "Are you sure?" window
+	_warehouse_panel.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	# Developer tools exist only in test builds (plan.md §10): never loaded for real players.
 	if OS.is_debug_build():
 		var dev_panel: Control = load("res://scenes/debug/dev_panel.gd").new()
@@ -89,6 +97,9 @@ func _on_menu_tile(id: String) -> void:
 			settings_panel.show_settings()
 		"stats":
 			stats_panel.show_stats()
+		"warehouse":
+			_deselect()
+			_warehouse_panel.show_stock()
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -105,14 +116,14 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 ## Tapping a building selects it; like Clash of Clans, a building with goods waiting also collects.
-## Industrial buildings (farms, mills, bakeries…) then open their info window in the middle;
-## the others (Construction Office, houses) show the action bar at the bottom.
+## Buildings with workers (farms, mills, bakeries, warehouses…) then open their info window in
+## the middle; the others (Construction Office, houses) show the action bar at the bottom.
 func _on_building_tapped(building_id: String) -> void:
 	var b := Economy.building(building_id)
 	if not b.storage.is_empty():
 		_collect(building_id)
 	village.select(building_id)
-	if GameData.buildings[b.type].category in ["extractor", "processor"]:
+	if GameData.buildings[b.type].category in ["extractor", "processor", "storage"]:
 		building_bar.close()
 		building_panel.show_building(building_id)
 	else:
@@ -247,6 +258,36 @@ func _place() -> void:
 			hud.toast("Not enough people for all the jobs: work will slow down. Build a house!", true)
 	else:
 		build_menu.show_hint(result.error)  # stay in Placement Mode so the player can try another tile
+
+
+## Suspending loses the work in progress, so ask first and show what goes to the warehouse.
+func _ask_suspend(building_id: String) -> void:
+	var check := Economy.can_suspend(building_id)
+	if not check.ok:
+		hud.toast(check.error, true)
+		return
+	var building_name: String = GameData.buildings[Economy.building(building_id).type].name
+	confirm_dialog.ask("Suspend %s?" % building_name,
+		"It switches off: the workers go home and cost nothing. Work in progress is lost, but goods inside and queued ingredients go to your warehouse. Resume any time, for free.",
+		0, check.goods, "Suspend", _suspend.bind(building_id))
+
+
+func _suspend(building_id: String) -> void:
+	var result := Economy.suspend(building_id)
+	if not result.ok:
+		hud.toast(result.error, true)
+		return
+	village.show_gain(building_id, result.moved)
+	if not result.kept.is_empty():
+		hud.toast("The warehouse is full: the rest waits inside the building. Collect it later.", true)
+
+
+func _resume(building_id: String) -> void:
+	var result := Economy.resume(building_id)
+	if result.ok:
+		hud.toast("%s is back to work." % GameData.buildings[Economy.building(building_id).type].name)
+	else:
+		hud.toast(result.error, true)
 
 
 ## Low / Medium / High staffing in the building window: fewer workers = slower but cheaper.

@@ -9,12 +9,14 @@ const SPRITES := "res://assets/buildings/"
 const HEIGHT := 30.0  # placeholder box height
 const BUBBLE_RADIUS := 17.0
 const CONSTRUCTION_TINT := Color(1, 1, 1, 0.45)
+const SUSPENDED_TINT := Color(0.55, 0.55, 0.62)  # greyed: switched off by the player
 const BUILD_BAR_SIZE := Vector2(60, 10)
 const CATEGORY_COLORS := {
 	"civic": Color("8a8fa8"),
 	"residential": Color("c98b5e"),
 	"extractor": Color("d6b84a"),
 	"processor": Color("9c7bb5"),
+	"storage": Color("7aa0b8"),
 }
 
 static var show_names := false
@@ -32,6 +34,7 @@ var _glow: Tween
 # above it. Only buildings under construction do per-frame work (_process), to move that bar.
 var _b := {}
 var _constructing := false
+var _suspended := false
 var _build_bar := Node2D.new()
 
 
@@ -61,7 +64,7 @@ func _ready() -> void:
 
 func _draw() -> void:
 	if not _sprite:
-		draw_block(self, Vector2.ZERO, type_id, CONSTRUCTION_TINT if _constructing else Color.WHITE)
+		draw_block(self, Vector2.ZERO, type_id, _tint())
 	if show_names:
 		draw_name(self, Vector2.ZERO, type_id, 1.0)
 
@@ -77,14 +80,17 @@ func _process(_delta: float) -> void:
 func refresh(b: Dictionary) -> void:
 	_b = b
 	var constructing := not Economy.is_built(b)
-	if constructing != _constructing:
+	var suspended := Economy.is_suspended(b)
+	if constructing != _constructing or suspended != _suspended:
+		var finished := _constructing and not constructing
 		_constructing = constructing
+		_suspended = suspended
 		set_process(constructing)
 		_build_bar.visible = constructing
 		if _sprite:
-			_sprite.modulate = CONSTRUCTION_TINT if constructing else Color.WHITE
+			_sprite.modulate = _tint()
 		queue_redraw()
-		if not constructing:
+		if finished:
 			pop_in()  # construction done
 	var has_goods: bool = not b.storage.is_empty()
 	if has_goods:
@@ -106,6 +112,13 @@ func refresh(b: Dictionary) -> void:
 		_bob = create_tween().set_loops()
 		_bob.tween_property(_bubble, "position:y", rest - 5, 0.6).set_trans(Tween.TRANS_SINE)
 		_bob.tween_property(_bubble, "position:y", rest, 0.6).set_trans(Tween.TRANS_SINE)
+
+
+## Faded while being built, greyed while suspended.
+func _tint() -> Color:
+	if _constructing:
+		return CONSTRUCTION_TINT
+	return SUSPENDED_TINT if _suspended else Color.WHITE
 
 
 ## Selected: a quick bounce, then a soft glow pulsing until deselected.

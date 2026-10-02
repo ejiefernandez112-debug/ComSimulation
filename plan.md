@@ -86,7 +86,7 @@ These are cheap now and very expensive to retrofit later. Include them in instru
   - Inputs are taken from the **Warehouse** at the moment a job is *queued* (not when it starts), so a queued job can never stall for missing inputs
   - Finished output sits in the **building's own storage** (the Storage Cap column in 5.4) until the player taps **Collect**, which moves it to the Warehouse
   - A job cannot complete if the building's output storage is full; the queue pauses until the player collects
-  - The **Warehouse** has its own overall cap (number TBD)
+  - The **Warehouse** has its own overall cap: since 2026-10-02 it is the room of all Warehouse buildings together (§5.10)
 - **Offline/idle production:** included from Phase 1a — elapsed real time simulates completed jobs on reopen, capped by the jobs already queued and by output storage capacity
 - **Design tension (resolved 2026-10-01):** target offline window is ~1–2 hours. Extractors produce continuously until storage is full; processor batches/timers were scaled ×4 with queues of 8 (see 5.4). Implemented in `scripts/sim/simulation.gd`.
 - **Land/grid:** bounded plot, expandable (spend currency) — details deferred
@@ -238,6 +238,7 @@ Everything stays **one calculation**, never a replay. Anything that changes powe
 - **Starting kit (Phase 1a):**
   - Construction Office — pre-built, Level 1, already placed
   - Small House (Residential) — pre-built, already placed → Population growth begins immediately
+  - Warehouse — pre-built (added 2026-10-02, §5.10), room for 2,000 goods with its 4 workers
   - Starting cash — **$5,750** (`starting_cash` in `game_config.json`; raised by $5,000 on 2026-10-01, still tunable)
   - Wheat Farm — **not** pre-built; building it is the player's first tutorial action
 
@@ -281,6 +282,28 @@ Everything stays **one calculation**, never a replay. Anything that changes powe
 
 Still to decide: whether bracket changes are announced in advance once the server sets them (Phase 4).
 
+### 5.10 Warehouse Buildings & Suspending (built 2026-10-02)
+
+**Warehouse** (`warehouse` in `buildings.json`, category `storage`, Build Menu tab "Storage"):
+- All warehouses together hold the company's goods: **one shared stock**, no moving goods between them. Room = the sum of every finished, working warehouse
+- One comes **pre-built** in the starting kit; more cost **$3,000** each (5 s to build). PLACEHOLDERS
+- **Workers:** up to **4 low-skilled** (Low 2 / Medium 3 / High 4). **Workers make the room:** 2,000 at 4 of 4, 1,000 at 2 of 4. So lowering staffing saves wages when the room isn't needed, and too few people in town means less room
+- Warehouses are **always working** (they store), so they always pay wages unless suspended. If an empty warehouse sent its workers home it would have no room for the first goods
+- **Less room never destroys goods:** if room shrinks below what's stored, nothing new comes in (Collect is refused) until there's room again
+- You can't demolish or suspend your last warehouse's room away: demolishing needs at least one warehouse to remain and the others to have room for everything stored; suspending a warehouse needs the same room
+- Screens: the **Warehouse** card in the bottom menu lists the stock (amount, worth at today's price) and the room; tapping a warehouse opens its building window (workers, usable room, all warehouses' fill)
+- **Selling is not done here:** a separate **Retail** building comes later (decided 2026-10-02). The temporary Sell test buttons stay until then
+- Save format version 2: older saves get the starter warehouse added (`save_format.gd` `_migrate`)
+- Later ideas: special storage (cold store for bread, grain silo), power for cold storage
+
+**Suspend** (building window → Suspend / Resume; any building with workers):
+- A **"soft demolish" that keeps the building**: the player switches it off instead of demolishing and paying to rebuild
+- On suspending: **work in progress is lost** (the batch being made, a half-grown field), and **everything already produced or paid for goes to the warehouse**, with demolish's rules: goods in its storage and a finished batch in full, waiting jobs' ingredients in full, the batch being made gives back half its ingredients (`cancel_refund_in_progress`). What doesn't fit stays inside the building, to collect later
+- While suspended: **no workers** (freed for other buildings), **no wages**, and from Phase 2/3 **no power**; it takes no jobs; it looks greyed on the map. It stays suspended while the player is away
+- **Resume is free and instant**; its work starts from the beginning
+- Asks "Are you sure?" first and shows what goes back to the warehouse
+- Rules: `Simulation.can_suspend`, `suspend`, `resume`; `is_producing` is false while suspended, so wages, jobs and later power all follow
+
 ## 6. UI/UX Screens
 
 **Phase 1 screens:**
@@ -306,7 +329,7 @@ Still to decide: whether bracket changes are announced in advance once the serve
 - **Profile** (Phase 1b) — XP/level, badges earned (Phase 4 adds rating)
 - **Persistent HUD** — currency balance, XP bar, active quest progress (compact), Population (current/capacity), notification icons
   - ✅ Phase 1a part built 2026-10-01: top-right resource bars (cash with count-up, population, warehouse fill) plus a chip per item; short messages ("toasts") at the top. XP/quests arrive with Phase 1b. File: `scenes/ui/hud.gd`
-  - ✅ **Bottom menu bar** (2026-10-01, Tropico-style), bottom centre: paper cards with an icon, clipped onto blue folders with the name underneath; pointing at a card lifts it. Cards: Build, Warehouse, Market, Menu (Settings). Warehouse and Market are greyed with a lock until those screens exist (tapping says "coming soon"). It slides away while a building's action bar, Placement Mode or the Build window is using the bottom of the screen. The card list is at the top of `scenes/ui/menu_bar.gd`; art in `assets/ui/menu_tile.svg` / `menu_card.svg`
+  - ✅ **Bottom menu bar** (2026-10-01, Tropico-style), bottom centre: paper cards with an icon, clipped onto blue folders with the name underneath; pointing at a card lifts it. Cards: Build, Warehouse, Market, Menu (Settings). Market is greyed with a lock until that screen exists (tapping says "coming soon"); Warehouse opens the stock list since 2026-10-02. It slides away while a building's action bar, Placement Mode or the Build window is using the bottom of the screen. The card list is at the top of `scenes/ui/menu_bar.gd`; art in `assets/ui/menu_tile.svg` / `menu_card.svg`
 - **UI look** — one theme for everything (`scenes/ui/ui_theme.gd`): chunky glossy buttons in 5 colours, cream windows, bold white outlined text; all art is SVG in `assets/ui/` (easy to restyle). Pop-up windows share `scenes/ui/modal_window.gd` (centred on wide screens, bottom sheet on tall ones)
 
 **Phase 4 additions:**
@@ -475,6 +498,11 @@ A hidden dev menu (key combo on PC, secret tap sequence on mobile) for testing t
 Both are functional, self-contained HTML/JS artifacts used to validate the trading-mechanic math and UX before porting logic into Godot.
 
 ## 15. Revision Log
+
+**2026-10-02 (warehouse buildings, suspend):**
+- The warehouse is a real building (5.10): pre-built starter, more for $3,000, 4 workers who make its room; one shared stock; Warehouse card in the bottom menu now opens the stock list. `warehouse_cap` in `game_config.json` is gone
+- Suspend / Resume (5.10): progress lost, goods to the warehouse, no workers or wages, free resume
+- Save version 2 (older saves get the starter warehouse). Selling moves to a separate Retail building later
 
 **2026-10-02 (wages only while producing):**
 - Idle Mills/Bakeries (no jobs queued) now pay no wages and free their workers, like halted ones; power will follow the same rule (5.5.1, 5.6)

@@ -10,7 +10,7 @@ extends RefCounted
 ## Time model: buildings store when their current cycle/job started (`job_started_at`).
 ## "Settling" turns elapsed time into finished output in one calculation, never tick-by-tick.
 
-const SAVE_VERSION := 1
+const SAVE_VERSION := 2  # 2: warehouses are buildings (save_format.gd adds one to older saves)
 ## Used when game_config.json has no staffing_levels: share of max_workers per level.
 const DEFAULT_STAFFING_LEVELS := {"low": 0.5, "medium": 0.75, "high": 1.0}
 
@@ -156,6 +156,8 @@ static func _settle_one(state: Dictionary, b: Dictionary, data: Dictionary, now:
 
 
 static func settle_building(b: Dictionary, data: Dictionary, now: float) -> Dictionary:
+	if is_suspended(b):
+		return {}  # switched off: nothing moves (resume starts its work afresh)
 	var def: Dictionary = data.buildings.get(b.type, {})
 	match def.get("category", ""):
 		"extractor":
@@ -316,6 +318,8 @@ static func can_enqueue(state: Dictionary, data: Dictionary, building_id: String
 		return _fail("This building doesn't take orders.")
 	if not is_built(b, now):
 		return _fail("Still under construction.")
+	if is_suspended(b):
+		return _fail("It's suspended. Resume it first.")
 	var recipe := _recipe(def, recipe_id)
 	if recipe.is_empty():
 		return _fail("Unknown recipe.")
@@ -381,7 +385,7 @@ static func collect(state: Dictionary, data: Dictionary, building_id: String, no
 	settle(state, data, now)
 	if b.storage.is_empty():
 		return _fail("Nothing to collect.")
-	var free := warehouse_cap(data) - warehouse_total(state)
+	var free := warehouse_cap(state, data) - warehouse_total(state)
 	var moved := {}
 	for res in b.storage:
 		var qty := mini(int(b.storage[res]), free)
@@ -410,7 +414,7 @@ static func can_cancel_job(state: Dictionary, data: Dictionary, building_id: Str
 	var recipe := _recipe(data.buildings[b.type], b.queue[index].recipe_id)
 	var key := "cancel_refund_in_progress" if index == 0 else "cancel_refund_waiting"
 	var refund := _share(recipe.get("inputs", {}), float(data.config.get(key, 0.0)))
-	if warehouse_total(state) + _total(refund) > warehouse_cap(data):
+	if warehouse_total(state) + _total(refund) > warehouse_cap(state, data):
 		return _fail("Not enough room in the warehouse for the refund.")
 	return _ok({"refund": refund, "in_progress": index == 0})
 
@@ -439,6 +443,23 @@ static func can_demolish(state: Dictionary, data: Dictionary, building_id: Strin
 	var def: Dictionary = data.buildings.get(b.type, {})
 	if not def.get("buildable", false):
 		return _fail("This building can't be demolished.")
+	if def.get("category", "") == "storage" and _count_category(state, data, "storage") <= 1:
+		return _fail("You need at least one warehouse.")
+	var goods := _goods_inside(data, b)
+	var room := warehouse_cap(state, data) - storage_capacity(state, data, b)  # a warehouse takes its room with it
+	if warehouse_total(state) + _total(goods) > room:
+		if def.get("category", "") == "storage":
+			return _fail("The other warehouses don't have room for your goods. Make room first.")
+		return _fail("Not enough room in the warehouse for what's inside. Make room first.")
+	var money := int(int(def.get("build_cost", 0)) * float(data.config.get("demolish_refund", 0.0)))
+	return _ok({"money": money, "goods": goods})
+
+
+## What a building hands back when its work is stopped for good (demolish, suspend): the goods in
+## its storage, a finished batch waiting for room, and its queued jobs' ingredients (the batch
+## being made gives back cancel_refund_in_progress of them, waiting ones cancel_refund_waiting).
+static func _goods_inside(data: Dictionary, b: Dictionary) -> Dictionary:
+	var def: Dictionary = data.buildings.get(b.type, {})
 	var goods: Dictionary = b.storage.duplicate()
 	for i in b.queue.size():
 		if i == 0 and b.blocked:
@@ -446,10 +467,77 @@ static func can_demolish(state: Dictionary, data: Dictionary, building_id: Strin
 			continue
 		var key := "cancel_refund_in_progress" if i == 0 else "cancel_refund_waiting"
 		_add_to(goods, _share(_recipe(def, b.queue[i].recipe_id).get("inputs", {}), float(data.config.get(key, 0.0))))
-	if warehouse_total(state) + _total(goods) > warehouse_cap(data):
-		return _fail("Not enough room in the warehouse for what's inside. Make room first.")
-	var money := int(int(def.get("build_cost", 0)) * float(data.config.get("demolish_refund", 0.0)))
-	return _ok({"money": money, "goods": goods})
+	return goods
+
+
+static func _count_category(state: Dictionary, data: Dictionary, category: String) -> int:
+	var count := 0
+	for b in state.buildings:
+		if data.buildings.get(b.type, {}).get("category", "") == category:
+			count += 1
+	return count
+
+
+## Whether the building could be suspended now (changes nothing):
+## {"ok", "error", "goods" (what goes to the warehouse)}. Suspending is a "soft demolish" that
+## keeps the building: work in progress is lost, everything already made or paid for comes back,
+## and its workers go home (no wages, no power) until it's resumed, for free (plan.md §5.10).
+static func can_suspend(state: Dictionary, data: Dictionary, building_id: String) -> Dictionary:
+	var b := find_building(state, building_id)
+	if b.is_empty():
+		return _fail("Building not found.")
+	if max_workers(data, b) <= 0:
+		return _fail("This building has nothing to switch off.")
+	if is_suspended(b):
+		return _fail("It's already suspended.")
+	if not is_built(b, float(state.get("settled_at", 0.0))):
+		return _fail("Still under construction.")
+	if warehouse_total(state) > warehouse_cap(state, data) - storage_capacity(state, data, b):
+		return _fail("The other warehouses don't have room for your goods. Make room first.")
+	return _ok({"goods": _goods_inside(data, b)})
+
+
+## Suspend: the queue and storage are emptied into the warehouse (what doesn't fit stays inside
+## to be collected later), the current batch or growing field is lost, and the workers go home.
+## Returns "moved" (into the warehouse) and "kept" (left in the building).
+static func suspend(state: Dictionary, data: Dictionary, building_id: String, now: float) -> Dictionary:
+	var b := find_building(state, building_id)
+	if not b.is_empty():
+		settle(state, data, now)
+	var check := can_suspend(state, data, building_id)
+	if not check.ok:
+		return check
+	b.storage = {}
+	b.queue = []
+	b.blocked = false
+	b["suspended"] = true
+	var free := warehouse_cap(state, data) - warehouse_total(state)  # after its workers left
+	var moved := {}
+	var kept := {}
+	for res in check.goods:
+		var qty := mini(int(check.goods[res]), maxi(free, 0))
+		free -= qty
+		if qty > 0:
+			moved[res] = qty
+		if int(check.goods[res]) > qty:
+			kept[res] = int(check.goods[res]) - qty
+	_add_to(state.inventory, moved)
+	b.storage = kept
+	return _ok({"moved": moved, "kept": kept})
+
+
+## Resume a suspended building: the workers come back and its work starts from the beginning.
+static func resume(state: Dictionary, data: Dictionary, building_id: String, now: float) -> Dictionary:
+	var b := find_building(state, building_id)
+	if b.is_empty():
+		return _fail("Building not found.")
+	if not is_suspended(b):
+		return _fail("It isn't suspended.")
+	settle(state, data, now)
+	b.erase("suspended")
+	b.job_started_at = now
+	b.blocked = false
+	return _ok()
 
 
 static func demolish(state: Dictionary, data: Dictionary, building_id: String, now: float) -> Dictionary:
@@ -591,8 +679,29 @@ static func construction_progress(b: Dictionary, data: Dictionary, now: float) -
 	return clampf(1.0 - (built_at(b) - now) / build_time, 0.0, 1.0)
 
 
-static func warehouse_cap(data: Dictionary) -> int:
-	return int(data.config.warehouse_cap)
+## Room in all warehouses together (one shared stock), as things stand at the last settle.
+## Each finished, working warehouse holds its "capacity" times the share of its workers who are
+## working (2 of 4 = half). Goods are never thrown away when room shrinks; nothing new comes in
+## until there's room again.
+static func warehouse_cap(state: Dictionary, data: Dictionary) -> int:
+	var cap := 0
+	for b in state.buildings:
+		cap += storage_capacity(state, data, b)
+	return cap
+
+
+## The room this one building adds to the warehouse stock (0 for anything but a warehouse).
+static func storage_capacity(state: Dictionary, data: Dictionary, b: Dictionary) -> int:
+	var def: Dictionary = data.buildings.get(b.type, {})
+	if def.get("category", "") != "storage":
+		return 0
+	var now := float(state.get("settled_at", 0.0))
+	if not is_built(b, now) or is_suspended(b):
+		return 0
+	var full := int(def.get("capacity", 0))
+	if max_workers(data, b) <= 0:
+		return full
+	return floori(full * workers_working(state, data, b, now) / float(max_workers(data, b)) + 0.000001)
 
 
 static func warehouse_total(state: Dictionary) -> int:
@@ -652,10 +761,16 @@ static func workers_working(state: Dictionary, data: Dictionary, b: Dictionary, 
 	return workers_wanted(data, b) * staffing(state, data, now)
 
 
-## Producing: has work to do and room for it. Workers are only hired (and paid), and from
-## Phase 2/3 power only used, while a building is producing (plan.md §5.5, §5.6).
+## Producing: has work to do and room for it, and isn't suspended. Workers are only hired (and
+## paid), and from Phase 2/3 power only used, while a building is producing (plan.md §5.5, §5.6).
+## Warehouses count as always producing (storing) unless suspended: their workers make the room.
 static func is_producing(data: Dictionary, b: Dictionary) -> bool:
-	return not is_halted(data, b) and not is_idle(data, b)
+	return not is_suspended(b) and not is_halted(data, b) and not is_idle(data, b)
+
+
+## Suspended by the player: switched off, no workers, no wages, no power (plan.md §5.10).
+static func is_suspended(b: Dictionary) -> bool:
+	return bool(b.get("suspended", false))
 
 
 ## Idle: a Mill or Bakery with no jobs queued. Like a halted building, its workers go home:
@@ -684,6 +799,8 @@ static func _stop_time(state: Dictionary, data: Dictionary, b: Dictionary, t: fl
 	var def: Dictionary = data.buildings.get(b.type, {})
 	if max_workers(data, b) <= 0 or not is_built(b, t) or not is_producing(data, b) or float(b.job_started_at) > t:
 		return INF
+	if def.get("category", "") not in ["extractor", "processor"]:
+		return INF  # a warehouse never stops by itself
 	var speed := building_speed(state, data, b, t)
 	if speed <= 0.0:
 		return INF
@@ -737,11 +854,12 @@ static func stats(state: Dictionary) -> Dictionary:
 ## How much each item is being made and used per minute right now, counting only buildings that
 ## are actually working, plus how many production buildings are in each state:
 ## {"made": {res: per_min}, "used": {res: per_min},
-##  "buildings": {"working", "idle" (empty queue), "full" (storage full), "building" (under construction)}}
+##  "buildings": {"working", "idle" (empty queue), "full" (storage full), "building" (under construction),
+##   "suspended"}}
 static func production_rates(state: Dictionary, data: Dictionary, now: float) -> Dictionary:
 	var made := {}
 	var used := {}
-	var counts := {"working": 0, "idle": 0, "full": 0, "building": 0}
+	var counts := {"working": 0, "idle": 0, "full": 0, "building": 0, "suspended": 0}
 	for b in state.buildings:
 		var def: Dictionary = data.buildings.get(b.type, {})
 		var category: String = def.get("category", "")
@@ -749,6 +867,9 @@ static func production_rates(state: Dictionary, data: Dictionary, now: float) ->
 			continue
 		if not is_built(b, now):
 			counts.building += 1
+			continue
+		if is_suspended(b):
+			counts.suspended += 1
 			continue
 		var recipe := {}
 		if category == "extractor":

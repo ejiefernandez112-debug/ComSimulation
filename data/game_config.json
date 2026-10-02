@@ -2,7 +2,6 @@
 	"_note": "Global tuning values. PLACEHOLDERS (plan.md 5.1 / 5.6 / 5.8).",
 	"starting_cash": 5750,
 	"population_growth_seconds": 10,
-	"warehouse_cap": 2000,
 	"grid_size": [20, 20],
 	"_save": "The game saves to user://save.json every autosave_seconds, right after player actions, and when it closes or goes to the background (plan.md 8). The Welcome back window shows at start-up when the game was closed for at least welcome_back_after_seconds.",
 	"autosave_seconds": 30,
@@ -42,6 +41,7 @@
 	},
 	"starting_buildings": [
 		{ "type": "construction_office", "position": [9, 9] },
-		{ "type": "small_house", "position": [12, 9] }
+		{ "type": "small_house", "position": [12, 9] },
+		{ "type": "warehouse", "position": [6, 9] }
 	]
 }
