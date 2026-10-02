@@ -252,7 +252,7 @@ Everything stays **one calculation**, never a replay. Anything that changes powe
   - Construction Office — pre-built, Level 1, already placed
   - Small House (Residential) — pre-built, already placed → Population growth begins immediately
   - Warehouse — pre-built (added 2026-10-02, §5.10), room for 10,000 goods with its 4 workers
-  - Starting cash — **$5,750** (`starting_cash` in `game_config.json`; raised by $5,000 on 2026-10-01, still tunable)
+  - Starting cash — **$10,000** (`starting_cash` in `game_config.json`; raised from $5,750 on 2026-10-02 so a new player can afford the basic buildings, including their first Grocery Store, §5.16; still tunable)
   - Wheat Farm — **not** pre-built; building it is the player's first tutorial action
 
 ### 5.9 Taxes & Fees (sales tax built 2026-10-02)
@@ -401,7 +401,7 @@ A coastal building, inspired by Tropico's docks. Unlocked later in the game (whe
 | Flour | (400 wheat at $0.64 + $120 + $416.67) ÷ 320 flour, ÷ 0.9 | **$2.75** | Mill ≈ $417 ($5,000 in 12 h) |
 | Bread | (192 flour at $2.75 + $120 + $666.67) ÷ 144 bread, ÷ 0.9 | **$10.14** | Bakery ≈ $667 ($8,000 in 12 h) |
 
-**Selling** (the Retail building, next): you sell **whole batches** (e.g. 24 bread), with the price shown per batch, to keep it simple.
+**Selling** (the Retail building, next; now the **Grocery Store**, §5.16): you sell **whole batches** (e.g. 24 bread), with the price shown per batch, to keep it simple.
 
 ### 5.13 Water: the public water supply (decided 2026-10-02)
 
@@ -516,6 +516,24 @@ If you sold the flour instead: 32 × $2.75 = $88 → baking earns $135 more
 - Contract-style, so it should follow the Dock rules: Company Tax only, no market fee (§5.11), and **price limits** against passing money between one's own accounts
 - Reliability can feed Rating/Reputation (§5.3)
 - Before Phase 4 there are no other players, so an **in-game contractor** could fill the same role (pricier than your own crew)
+
+### 5.16 Grocery Store — the Retail building (planned 2026-10-02; not built)
+
+The Retail building (selling to town customers) is a **Grocery Store** (also "food market"). It replaces the temporary Sell test buttons once built.
+- **The player builds it** (not pre-built, decided 2026-10-02). Starting cash was raised to **$10,000** so a new player can afford the basic buildings (§5.8). Its build cost must leave room for that: e.g. Wheat Farm $2,000 + Flour Mill $5,000 + Grocery Store ≤ ~$3,000 lets a player sell Flour before affording a Bakery
+- **Sells finished goods to customers:** Flour and Bread; fruits and other foods **later** (fruits need a new building, e.g. an Orchard)
+- **Raw Wheat can't be sold** at any store (decided 2026-10-02): it is only an ingredient, so the first income needs a Flour Mill + Grocery Store. Players process their wheat instead of selling it raw
+- **Works like a production building:** input = goods from the warehouse; a "job" = selling one batch over a set time (e.g. 24 Bread in 10 minutes); output = **cash** at the cost-based price (§5.12), minus Company Tax (§5.9.1). Reuses the existing queue, timers, offline catch-up, wages and halt rules
+- **Selling speed is the demand cap:** a store can only sell so fast; to sell more, build another store (or upgrade it later, §5.15)
+- **Workers** like other buildings; **electricity** once power exists (Phase 2/3, 0 MW until then)
+- **More store types later** (decided 2026-10-02), each selling its own category, e.g. a **Hardware Store** for Planks, Bricks and Cement once construction materials exist
+
+### 5.17 Plantation & Fruits (planned 2026-10-02, later; not built)
+
+- **Plantation**: an extractor like the Wheat Farm, where the **player chooses the crop** per building: **Banana, Mango, Lemon, Pineapple, Papaya, Coconut** (that's all for now). Each fruit has its own timer, batch and price in the data files
+- **Fresh fruit is a finished product:** sold straight to customers at the Grocery Store (§5.16) for local consumption. **Processing is optional, never forced** (decided 2026-10-02); unlike raw Wheat, fruit doesn't need a processor to earn money
+- **Fruit vs. wheat is balanced by demand** (decided 2026-10-02): fruit needs one building to earn, wheat needs a Farm + Mill. If everyone grows fruit, fruit floods and Flour/Bread get scarce, so their prices and demand rise. Needs demand in the game: dynamic pricing (Section 11) and, from Phase 4, other companies buying
+- **Processing ideas for later** (optional extra value, not needed to sell): Juice Factory (Mango/Pineapple juice, Lemonade), Banana Bread (a second Bakery recipe: Flour + Banana), Coconut Oil and Coconut Vinegar (Oil Mill / Vinegar Plant), Banana Chips (Banana + Coconut Oil), Dried Mango, Pickled Papaya (Papaya + Vinegar), Canned Pineapple (needs cans from Steel)
 
 ## 6. UI/UX Screens
 
@@ -664,7 +682,12 @@ A hidden dev menu (key combo on PC, secret tap sequence on mobile) for testing t
 - [ ] Firebase vs. Nakama — not needed until Phase 4
 - [ ] Whether Market/Exchange stock-style companies get flavored to match in-game industries, or stay generic
 - [x] Retailer prices → **cost-based formula, worked out live, 12-hour payback, cents allowed** (decided 2026-10-02, 5.12)
-- [ ] Retail building: instant sale, pre-built, no workers? (proposed 2026-10-02; selling in whole batches)
+- [x] Retail building: instant sale, pre-built, no workers? → **No: a Grocery Store the player builds, with workers and (later) electricity, selling over time like a production job** (decided 2026-10-02, 5.16)
+- [x] Grocery Store (5.16): can raw Wheat be sold? → **No, not at any store**: it is only an ingredient (decided 2026-10-02)
+- [ ] Raw goods on the Dock and Market: §5.11 says the Dock exports *any* goods, raw included. Does "raw Wheat not sellable" also cover the Dock/Market, or only stores?
+- [x] Fruits → **later**, from a **Plantation** with a crop choice (Banana, Mango, Lemon, Pineapple, Papaya, Coconut), sold fresh at the Grocery Store; processing optional (decided 2026-10-02, 5.17)
+- [ ] Plantation (5.17): does changing crop lose the growing batch (replanting)? One crop per building, or several plots?
+- [ ] Grocery Store (5.16): build cost, workers, selling speed per batch (PLACEHOLDERS)
 - [x] Water → **public government supply only, a flow (m³/h), unlimited, heavy users pay more (+25% above 100 m³/h)**; Wheat Farm 30 m³/h (decided 2026-10-02, 5.13)
 - [ ] Does the Bakery use water (e.g. 5 m³/h for dough)? (5.13, user decides later)
 - [x] Utility billing → **a bill every 12 real hours (one game day), metered at the price when used, unpaid = debt, no late fee; wages stay continuous** (decided 2026-10-02, 5.13)
@@ -737,6 +760,12 @@ A hidden dev menu (key combo on PC, secret tap sequence on mobile) for testing t
 Both are functional, self-contained HTML/JS artifacts used to validate the trading-mechanic math and UX before porting logic into Godot.
 
 ## 15. Revision Log
+
+**2026-10-02 (Grocery Store planned, starting cash):**
+- The Retail building is a Grocery Store the player builds (5.16): sells finished goods over time like a production job, with workers and later power; more store types later
+- Starting cash raised from $5,750 to $10,000 (`starting_cash`) so new players can afford the basic buildings
+- Raw Wheat can't be sold at stores (ingredient only); fruits come later
+- Plantation with a crop choice (Banana, Mango, Lemon, Pineapple, Papaya, Coconut), fruit sold fresh at the Grocery Store; processing optional ideas listed (5.17)
 
 **2026-10-02 (sale-channel taxes re-decided for the Company Tax):**
 - Company Tax on every sale in every channel; the Market adds its 3% fee; Dock contracts add nothing. Dropped the 1.5% contract tax and the "Market fee only" rule (5.9, 5.9.1, 5.11)
