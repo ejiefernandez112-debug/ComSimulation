@@ -251,7 +251,7 @@ Everything stays **one calculation**, never a replay. Anything that changes powe
 - **Starting kit (Phase 1a):**
   - Construction Office — pre-built, Level 1, already placed
   - Small House (Residential) — pre-built, already placed → Population growth begins immediately
-  - Warehouse — pre-built (added 2026-10-02, §5.10), room for 2,000 goods with its 4 workers
+  - Warehouse — pre-built (added 2026-10-02, §5.10), room for 10,000 goods with its 4 workers
   - Starting cash — **$5,750** (`starting_cash` in `game_config.json`; raised by $5,000 on 2026-10-01, still tunable)
   - Wheat Farm — **not** pre-built; building it is the player's first tutorial action
 
@@ -339,7 +339,7 @@ Three other ways "bigger" or "trusted" could matter. None is built or scheduled.
 **Warehouse** (`warehouse` in `buildings.json`, category `storage`, Build Menu tab "Storage"):
 - All warehouses together hold the company's goods: **one shared stock**, no moving goods between them. Room = the sum of every finished, working warehouse
 - One comes **pre-built** in the starting kit; more cost **$3,000** each (5 s to build). PLACEHOLDERS
-- **Workers: a fixed 4 low-skilled** at the **minimum wage** ($60/hour, no wage bonus), with **no Low / Medium / High choice** (decided 2026-10-02; `fixed_workers` in `buildings.json`). **Workers make the room:** 2,000 with all 4 working. The only way to get fewer is a town short of people (2 of 4 = 1,000 room), so build houses. **Warehouses are staffed before any other building** (§5.6), so this only happens when the town has fewer free people than warehouse posts
+- **Workers: a fixed 4 low-skilled** at the **minimum wage** ($60/hour, no wage bonus), with **no Low / Medium / High choice** (decided 2026-10-02; `fixed_workers` in `buildings.json`). **Workers make the room:** 10,000 with all 4 working (raised from 2,000 on 2026-10-02). The only way to get fewer is a town short of people (2 of 4 = 5,000 room), so build houses. **Warehouses are staffed before any other building** (§5.6), so this only happens when the town has fewer free people than warehouse posts
 - **More workers only by upgrading** (Phase 2 building upgrades): **Level 2 doubles the workers to 8**, and since workers make the room, the room doubles too (4,000). Upgrade cost and time TBD (see Section 11)
 - The building window shows **every stored item as a tile with its icon and amount** (all warehouses together), above the workers
 - Warehouses are **always working** (they store), so they always pay wages unless suspended. If an empty warehouse sent its workers home it would have no room for the first goods
@@ -702,6 +702,7 @@ Both are functional, self-contained HTML/JS artifacts used to validate the tradi
 **2026-10-02 (company size and Company Tax planned):**
 - New 5.9.1: Company Tax on profit at a rate set by company size (Startup 10% → Conglomerate 30%, placeholders); size = assets + last 30 days of sales, checked continuously, never goes down; worked out at each sale, collected every 12 h with the water bill; no minimum tax yet. Replaces the 0/8/15/22% sales brackets once built
 - New 5.9.2: future ideas kept apart from size: administration overhead, a credit rating (with loans) and player-to-player reputation (multiplayer contracts)
+- Warehouse room raised from 2,000 to 10,000 goods per warehouse (5.10)
 
 **2026-10-02 (cost per unit planned):**
 - New 5.14 Cost per unit: running costs only (ingredients at their cost tag, your wages incl. bonus, metered water, later electricity) per batch ÷ units, with warehouse cost tags (averaged when mixed) and a worked wheat → flour → bread example ($0.30 / $0.75 / $1.83)

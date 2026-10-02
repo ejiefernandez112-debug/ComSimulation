@@ -16,7 +16,7 @@
 		"name": "Warehouse", "category": "storage", "menu_tab": "storage",
 		"description": "Stores your goods. Build more warehouses for more room.",
 		"build_cost": 3000, "buildable": true, "build_time": 5, "max_workers": 4, "fixed_workers": true, "staffed_first": true, "fixed_wage": true, "worker_type": "low_skilled",
-		"capacity": 2000
+		"capacity": 10000
 	},
 	"wheat_farm": {
 		"_comment": "Extractor: produces on its own until storage is full (900 = 90 min).",
