@@ -11,6 +11,19 @@ const T0 := 1_000_000.0  # a fixed "now" so results never depend on the real clo
 
 var _checks := 0
 var _failures := 0
+var _errors := _ErrorCounter.new()
+
+
+## Godot doesn't stop when a test hits an error (like reading a missing key): it prints the error,
+## skips the rest of that test and carries on. This listens to Godot's error messages and counts
+## them, so a test that broke is reported as failed instead of quietly looking like a pass.
+class _ErrorCounter extends Logger:
+	var count := 0
+
+	func _log_error(_function: String, _file: String, _line: int, _code: String, _rationale: String,
+			_editor_notify: bool, error_type: int, _script_backtraces: Array[ScriptBacktrace]) -> void:
+		if error_type != ERROR_TYPE_WARNING:  # warnings are fine, real errors are not
+			count += 1
 
 
 func _initialize() -> void:
@@ -22,9 +35,15 @@ func _initialize() -> void:
 		print("FAIL: scripts/sim/simulation.gd doesn't compile (see the error above)")
 		quit(1)
 		return
+	OS.add_logger(_errors)
 	for method in get_method_list():
 		if String(method.name).begins_with("test_"):
+			var errors_before := _errors.count
 			call(method.name)
+			if _errors.count > errors_before:  # the test hit an error, so it didn't finish properly
+				_failures += 1
+				print("FAIL: %s hit an error (see the message above)" % method.name)
+	OS.remove_logger(_errors)
 	print("\n%d checks, %d failed" % [_checks, _failures])
 	quit(1 if _failures > 0 else 0)
 
