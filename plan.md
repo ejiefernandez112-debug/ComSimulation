@@ -235,7 +235,7 @@ Everything stays **one calculation**, never a replay. Anything that changes powe
   - Later (Phase 3, happiness): a bigger bonus could also make workers happier and more productive, like Tropico's budget. Not now: it would change the whole balance
   - **Warehouses get no bonus** (decided 2026-10-02; `fixed_wage` in `buildings.json`): they always pay the minimum wage, since they're staffed first anyway
   - Offline catch-up stays one calculation: each person moving in takes the best open post at that moment
-- **Needs & happiness (planned 2026-10-03, not built):** people get two **needs**, combined into one **village happiness** score that changes only **how fast people move in**. Inspired by Tropico's needs, kept much simpler. All numbers are PLACEHOLDERS (a `happiness` block in `game_config.json`)
+- **Needs & happiness (planned and built 2026-10-03, on trial):** people get two **needs**, combined into one **village happiness** score that changes only **how fast people move in**. Inspired by Tropico's needs, kept much simpler. All numbers are PLACEHOLDERS (a `happiness` block in `game_config.json`)
   - **Food:** met by the Supermarket (§5.16), reusing village demand: people buying food *is* people eating, so there is no separate "eating" stockpile. Score from how many **different foods are selling** on shelves (shelf stocked and the store has at least 1 worker): **0 foods → 0%, 1 food → 70%, 2 or more → 100%** (`happiness.food_scores`)
   - **Jobs:** the share of people with a job, `employed ÷ population` (uses `Simulation.employment()`; 100% when nobody lives here yet)
   - **Village happiness** = Food and Jobs mixed half and half (`happiness.weights`), shown as one **0–100%**
@@ -251,9 +251,10 @@ Everything stays **one calculation**, never a replay. Anything that changes powe
 
   - **Shown** as a happiness % on the HUD next to Population; tapping it opens a breakdown (e.g. "Food 70%: 1 of 2 foods on shelves", "Jobs 100%", and the current move-in speed)
   - **Offline stays one calculation:** happiness can only change at predictable moments the settle already splits on (a shelf sells out, a person arrives, a building finishes or changes workers, a player action), so each piece of time grows at that piece's speed. When the speed step changes, the growth anchor restarts from that moment
-  - **Nothing new in the save:** happiness is worked out from the state, like population capacity, so it can't drift (no `SAVE_VERSION` bump expected)
+  - **Save:** happiness itself is worked out from the state, like population capacity, so it can't drift. The save only remembers the move-in speed in force (`population.growth_speed`), to know when it changes; older saves without it start at normal speed, so no `SAVE_VERSION` bump
+  - Below 10 people happiness counts as 100%, so a new village grows at ×1.5
   - **Not now (later ideas):** unhappy people leaving, happiness changing worker speed, wage bonus → happiness (above), housing quality
-  - **For the build session:** `Simulation.happiness(state, data, now)` → `{score, food, jobs, growth_multiplier}`; `_settle_population` and `_next_staffing_change` use the multiplier; `tests/check_project.gd` learns the new `happiness` keys; tests for each speed step, the 10-person threshold, and "time away = playing through it"
+  - **Code:** `Simulation.happiness` (→ `{score, food, jobs, foods, needs_count, growth_speed}`), `foods_selling`, `_update_growth_speed` (read at the start of each settle piece); every arrival is a split point while needs are on. HUD: a "% happy" row (green / gold / red bar by move-in speed); tapping it opens Statistics → People, which has the breakdown
 - In **Phase 2/3**, once Employees exist, **Employment Matching** activates: Available = Population − Employed. Understaffed buildings run at reduced capacity/output rather than failing to hire outright.
 
 ### 5.7 Education System (Phase 3+)
@@ -753,7 +754,7 @@ A hidden dev menu (key combo on PC, secret tap sequence on mobile) for testing t
 - [ ] Upgrades (5.15): before Phase 4, where materials come from when your own chain is short (in-game supplier?) and whether an in-game contractor rents out laborers
 - [x] Upgrades (5.15): who can build the material buildings (Lumber Camp, Sawmill, Clay Pit, Brick Kiln, Quarry, Cement Plant, Steel Mill)? → **every player, from the later phase that brings upgrades**; not available in the early stage (decided 2026-10-02)
 - [ ] Population growth rate tuning and House capacity numbers beyond the first Small House
-- [x] Should people have needs? → **Yes: Food and Jobs, one village happiness score that only changes move-in speed** (decided 2026-10-03, 5.6; not built)
+- [x] Should people have needs? → **Yes: Food and Jobs, one village happiness score that only changes move-in speed** (decided and built 2026-10-03, 5.6; on trial)
 - [ ] Happiness (5.6): tune food scores (0 / 70% / 100%), the half-and-half mix, the speed steps and the 10-person threshold by playing
 - [ ] Happiness (5.6): should Jobs count only unemployed people, or also open posts nobody fills (too few people)?
 - [ ] Dock (5.11): ships and their timing (how often, how much they carry, what happens while the player is offline)
@@ -798,6 +799,9 @@ A hidden dev menu (key combo on PC, secret tap sequence on mobile) for testing t
 Both are functional, self-contained HTML/JS artifacts used to validate the trading-mechanic math and UX before porting logic into Godot.
 
 ## 15. Revision Log
+
+**2026-10-03 (population needs built, on trial):**
+- Built: happiness on the HUD and in Statistics → People; `happiness` block in `game_config.json`; the save keeps `population.growth_speed` (optional, old saves load as they are)
 
 **2026-10-03 (population needs planned, no code yet):**
 - People get two needs, Food (foods selling at the Supermarket) and Jobs (share employed), combined into one village happiness %. Happiness only changes move-in speed (×1.5 / ×1 / ×0.5 / stops); needs count from 10 people. Nothing new in the save (5.6)

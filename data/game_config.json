@@ -2,6 +2,18 @@
 	"_note": "Global tuning values. PLACEHOLDERS (plan.md 5.1 / 5.6 / 5.8).",
 	"starting_cash": 10000,
 	"population_growth_seconds": 10,
+	"_happiness": "Village happiness (plan.md 5.6 'Needs & happiness'): Food and Jobs needs, mixed by weights into one 0-1 score. food_scores = score for 0, 1, 2 or more different foods selling at a staffed Supermarket. Jobs = share of people with a job. Needs only count from needs_from_population people (below that, happiness is 100%). growth_speeds: the move-in speed for each happiness band (from = lowest score of the band; speed 1 = one person every population_growth_seconds, 0 = nobody moves in). PLACEHOLDERS.",
+	"happiness": {
+		"needs_from_population": 10,
+		"food_scores": [0.0, 0.7, 1.0],
+		"weights": { "food": 0.5, "jobs": 0.5 },
+		"growth_speeds": [
+			{ "from": 0, "speed": 0.0 },
+			{ "from": 0.2, "speed": 0.5 },
+			{ "from": 0.5, "speed": 1.0 },
+			{ "from": 0.8, "speed": 1.5 }
+		]
+	},
 	"grid_size": [20, 20],
 	"_save": "The game saves to user://save.json every autosave_seconds, right after player actions, and when it closes or goes to the background (plan.md 8). The Welcome back window shows at start-up when the game was closed for at least welcome_back_after_seconds.",
 	"autosave_seconds": 30,

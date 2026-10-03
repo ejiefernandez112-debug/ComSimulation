@@ -1549,6 +1549,114 @@ func test_supermarket_fixed_workers() -> void:
 	_check(Sim.shelves(data, market)[0].is_empty(), "sold out after 2 hours")
 
 
+# --- Needs & happiness (plan.md §5.6) ----------------------------------------------
+
+## Shop test data with needs switched on: Food (0 / 1 / 2+ foods selling = 0 / 70% / 100%) and
+## Jobs, half and half; needs count from 10 people; a big house with room for 100 more, and
+## people moving in every 10 s at normal speed.
+func _needs_data() -> Dictionary:
+	var data := _shop_data()
+	data.config["population_growth_seconds"] = 10
+	data.config["happiness"] = {"needs_from_population": 10, "food_scores": [0.0, 0.7, 1.0],
+		"weights": {"food": 0.5, "jobs": 0.5},
+		"growth_speeds": [{"from": 0, "speed": 0.0}, {"from": 0.2, "speed": 0.5}, {"from": 0.5, "speed": 1.0}, {"from": 0.8, "speed": 1.5}]}
+	data.buildings["big_house"] = {"category": "residential", "build_cost": 0, "buildable": true, "population_capacity": 100}
+	return data
+
+
+func test_happiness_score() -> void:
+	var plain := _data()
+	var happy := Sim.happiness(Sim.new_game(plain, T0), plain, T0)
+	_check(happy.score == 1.0 and happy.growth_speed == 1.0, "no happiness block in the config: no needs, normal speed")
+	var data := _needs_data()
+	var state := Sim.new_game(data, T0)
+	state.population.current = 5
+	happy = Sim.happiness(state, data, T0)
+	_check(not happy.needs_count and happy.score == 1.0 and happy.growth_speed == 1.5, "5 people: a small village doesn't complain (100%, x1.5)")
+	state.population.current = 10
+	happy = Sim.happiness(state, data, T0)
+	_check(happy.needs_count and happy.food == 0.0 and happy.jobs == 0.0 and happy.growth_speed == 0.0, "10 people, no food, no jobs: 0%, nobody moves in")
+	var market := Sim.find_building(state, Sim.build(state, data, "market", Vector2i(5, 5), T0).building_id)
+	state.inventory["flour"] = 100
+	state.inventory["bread"] = 100
+	Sim.stock_shelf(state, data, market.id, "flour", 100, "normal", T0)
+	Sim._hire(state, data, T0)
+	happy = Sim.happiness(state, data, T0)
+	_check(happy.foods == 1 and is_equal_approx(happy.food, 0.7) and is_equal_approx(happy.jobs, 0.2), "one food selling (70%), 2 of 10 people work (20%)")
+	_check(is_equal_approx(happy.score, 0.45) and happy.growth_speed == 0.5, "45%: half speed")
+	Sim.stock_shelf(state, data, market.id, "bread", 100, "normal", T0)
+	happy = Sim.happiness(state, data, T0)
+	_check(happy.foods == 2 and is_equal_approx(happy.score, 0.6) and happy.growth_speed == 1.0, "two foods (100%): 60%, normal speed")
+	Sim.build(state, data, "crew_farm", Vector2i(6, 6), T0)
+	Sim.build(state, data, "crew_mill", Vector2i(7, 7), T0)
+	Sim._hire(state, data, T0)
+	happy = Sim.happiness(state, data, T0)
+	_check(is_equal_approx(happy.jobs, 0.7) and is_equal_approx(happy.score, 0.85) and happy.growth_speed == 1.5, "7 of 10 work: 85%, x1.5")
+	state.population.current = 7  # 3 people moved away: everyone left has a job...
+	Sim._hire(state, data, T0)
+	_check(Sim.happiness(state, data, T0).score == 1.0, "...but below 10 people needs don't count")
+	state.population.current = 10
+	Sim._hire(state, data, T0)
+	market.hired = 0  # a store with nobody working sells nothing, so feeds nobody
+	_check(Sim.foods_selling(state, data, T0) == 0, "no workers at the store: no food selling")
+
+
+## Happiness changes how fast people move in, and settling follows it exactly while away.
+func test_happiness_move_in_speed() -> void:
+	var data := _needs_data()
+	var state := Sim.new_game(data, T0)
+	Sim.build(state, data, "big_house", Vector2i(3, 3), T0)
+	state.population.current = 10
+	state.inventory["flour"] = 100
+	var market := Sim.find_building(state, Sim.build(state, data, "market", Vector2i(5, 5), T0).building_id)
+	Sim.build(state, data, "crew_farm", Vector2i(6, 6), T0)
+	Sim.build(state, data, "crew_mill", Vector2i(7, 7), T0)
+	Sim.stock_shelf(state, data, market.id, "flour", 100, "normal", T0)  # sells for 10 hours
+	var away := state.duplicate(true)
+	# Food 70% and 7 jobs: happiness = 35% + 3.5 / people. Normal speed (10 s) while it's 50% or
+	# more, i.e. up to 23 people; the 24th arrives at T0 + 140, then it's half speed (20 s).
+	Sim.settle(state, data, T0 + 140)
+	_check(int(state.population.current) == 24, "one person every 10 s while happiness is 50% or more")
+	Sim.settle(state, data, T0 + 159)
+	_check(int(state.population.current) == 24, "below 50%: the next one waits 20 s")
+	Sim.settle(state, data, T0 + 160)
+	_check(int(state.population.current) == 25, "...and arrives at T0 + 160")
+	var played := away.duplicate(true)
+	var t := T0
+	while t < T0 + 400:
+		t = minf(t + 7.0, T0 + 400)
+		Sim.settle(played, data, t)
+	Sim.settle(away, data, T0 + 400)
+	_check(int(away.population.current) == 37 and int(played.population.current) == 37, "one long absence = playing in 7-second steps (37 people after 400 s)")
+
+
+## Nobody moves in at 0%; once food and jobs come, the wait for the next person starts from then.
+func test_happiness_stops_and_restarts_growth() -> void:
+	var data := _needs_data()
+	var state := Sim.new_game(data, T0)
+	Sim.build(state, data, "big_house", Vector2i(3, 3), T0)
+	state.population.current = 10
+	Sim.settle(state, data, T0 + 1000)
+	_check(int(state.population.current) == 10, "no food and no jobs: nobody moves in")
+	var market := Sim.find_building(state, Sim.build(state, data, "market", Vector2i(5, 5), T0 + 1000).building_id)
+	state.inventory["flour"] = 100
+	Sim.stock_shelf(state, data, market.id, "flour", 100, "normal", T0 + 1000)  # 45%: half speed
+	Sim.settle(state, data, T0 + 1019)
+	_check(int(state.population.current) == 10, "the 20-second wait starts when the store opens, not before")
+	Sim.settle(state, data, T0 + 1020)
+	_check(int(state.population.current) == 11, "the first person arrives 20 s after the store opens")
+
+
+## The real data: the needs are switched on and sensible.
+func test_real_happiness_data() -> void:
+	var data := {"resources": GameDataScript.load_json("res://data/resources.json"),
+		"buildings": GameDataScript.load_json("res://data/buildings.json"),
+		"config": GameDataScript.load_json("res://data/game_config.json")}
+	_check(Sim._has_needs(data), "real data: needs are switched on")
+	var state := Sim.new_game(data, T0)
+	_check(Sim.happiness(state, data, T0).score == 1.0, "real data: a new game starts at 100% (too small to complain)")
+
+
 ## The real data: the Supermarket and the goods it sells make sense.
 func test_real_shop_data() -> void:
 	var data := {"resources": GameDataScript.load_json("res://data/resources.json"),

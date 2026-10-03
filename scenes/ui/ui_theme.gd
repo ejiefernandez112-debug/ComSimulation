@@ -110,7 +110,7 @@ static func build() -> Theme:
 	# Progress bars: dark track with a glossy coloured fill. Other fills are variations.
 	t.set_stylebox("background", "ProgressBar", _flat(Color("2b2219"), Color("150f09"), 9, 2, 0))
 	t.set_stylebox("fill", "ProgressBar", _bar_fill(Color("7fd84a")))
-	for pair in [["GoldBar", "f6c13a"], ["BlueBar", "4fb4f5"], ["BrownBar", "d38c45"]]:
+	for pair in [["GoldBar", "f6c13a"], ["BlueBar", "4fb4f5"], ["BrownBar", "d38c45"], ["GreenBar", "7fd84a"], ["RedBar", "e0533d"]]:
 		t.set_type_variation(pair[0], "ProgressBar")
 		t.set_stylebox("fill", pair[0], _bar_fill(Color(pair[1])))
 	return t

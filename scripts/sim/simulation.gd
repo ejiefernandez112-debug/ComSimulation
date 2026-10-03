@@ -31,7 +31,7 @@ static func new_game(data: Dictionary, now: float) -> Dictionary:
 		"next_building_id": 1,
 		"buildings": [],
 		"inventory": {},  # the Warehouse
-		"population": {"current": 0, "growth_anchor": now},
+		"population": {"current": 0, "growth_anchor": now, "growth_speed": 1.0},  # see happiness()
 		"settled_at": now,  # everything has been worked out up to this moment
 		"stats": _new_stats(),
 		"water_meter": {"m3": 0.0, "base_cost": 0.0, "cycle_start": now},  # the first bill is due in 12 h
@@ -71,6 +71,7 @@ static func settle(state: Dictionary, data: Dictionary, now: float) -> Dictionar
 		while t < now and steps < 100000:  # the cap is only a safety net
 			steps += 1
 			_hire(state, data, t)  # people who just moved in, or posts that just opened
+			_update_growth_speed(state, data, t)  # happiness may have changed at this moment
 			# Read every speed, the wage bill and the water use as they stand at the start of this
 			# piece, before any building moves on (a building filling up changes the others' staffing).
 			var speeds: Array[float] = []
@@ -140,8 +141,9 @@ static func _pay_over_time(state: Dictionary, dollars: float, carry_key: String,
 
 ## The first moment after t (and before `until`) when staffing or wages can change: a building
 ## finishing construction (new posts or new homes), a building stopping because its storage
-## filled up or its last job is done (its workers wait, unpaid), or, while posts are open, the
-## next person moving in (they're hired straight away).
+## filled up or its last job is done (its workers wait, unpaid), or the next person moving in
+## (hired straight away while posts are open; with needs switched on, every arrival can also
+## change happiness, so the move-in speed).
 static func _next_staffing_change(state: Dictionary, data: Dictionary, t: float, until: float) -> float:
 	var next := until
 	for b in state.buildings:
@@ -150,9 +152,10 @@ static func _next_staffing_change(state: Dictionary, data: Dictionary, t: float,
 			next = finish
 		next = minf(next, maxf(_stop_time(state, data, b, t), t + 0.000001))
 	var pop: Dictionary = state.population
-	var step := float(data.config.population_growth_seconds)
+	var step := _growth_step(state, data)
 	var e := employment(state, data, t)
-	if step > 0.0 and e.open_jobs > 0 and int(pop.current) < population_capacity(state, data, t):
+	var arrival_matters: bool = e.open_jobs > 0 or _has_needs(data)
+	if not is_inf(step) and arrival_matters and int(pop.current) < population_capacity(state, data, t):
 		var arrival := float(pop.growth_anchor) + step * (floorf((t - float(pop.growth_anchor)) / step + 0.000001) + 1.0)
 		if arrival > t and arrival < next:
 			next = arrival
@@ -262,10 +265,10 @@ static func _settle_processor(b: Dictionary, def: Dictionary, now: float, state:
 
 static func _settle_population(state: Dictionary, data: Dictionary, now: float, cap: int) -> int:
 	var pop: Dictionary = state.population
-	var step := float(data.config.population_growth_seconds)
-	if step <= 0.0 or now < pop.growth_anchor:
+	var step := _growth_step(state, data)
+	if now < pop.growth_anchor:
 		return 0
-	if pop.current >= cap:
+	if pop.current >= cap or is_inf(step):  # full, or nobody is moving in: the wait starts later
 		pop.growth_anchor = now
 		return 0
 	# (The tiny extra stops rounding from losing a person who arrives exactly at `now`.)
@@ -276,6 +279,79 @@ static func _settle_population(state: Dictionary, data: Dictionary, now: float, 
 	else:
 		pop.growth_anchor += grown * step
 	return grown
+
+
+# --- Happiness (plan.md §5.6 "Needs & happiness") ------------------------------------
+
+## How the village feels and what that does to the move-in speed:
+## {"score" (0-1, what counts), "food", "jobs" (each need 0-1), "foods" (different foods selling),
+##  "needs_count" (false below happiness.needs_from_population people: a small village doesn't
+##  complain, so the score is 1), "growth_speed" (1.5 = people move in 1.5x as fast, 0 = nobody)}.
+## Without a "happiness" block in game_config.json there are no needs: score 1, speed 1.
+static func happiness(state: Dictionary, data: Dictionary, now: float) -> Dictionary:
+	var config: Dictionary = data.config.get("happiness", {})
+	var foods := foods_selling(state, data, now)
+	var food_scores: Array = config.get("food_scores", [1.0])
+	var food := float(food_scores[mini(foods, food_scores.size() - 1)])
+	var e := employment(state, data, now)
+	var jobs: float = 1.0 if int(e.population) <= 0 else float(e.employed) / float(e.population)
+	var weights: Dictionary = config.get("weights", {})
+	var w_food := float(weights.get("food", 0.0))
+	var w_jobs := float(weights.get("jobs", 0.0))
+	var needs_count: bool = _has_needs(data) and int(e.population) >= int(config.get("needs_from_population", 0))
+	var score := 1.0
+	if needs_count and w_food + w_jobs > 0.0:
+		score = (food * w_food + jobs * w_jobs) / (w_food + w_jobs)
+	return {"score": score, "food": food, "jobs": jobs, "foods": foods, "needs_count": needs_count,
+		"growth_speed": _growth_speed_for(config, score)}
+
+
+## Different foods on sale right now: on a shelf of a Supermarket that is selling (built, not
+## suspended, with at least one worker). A store with nobody working feeds nobody.
+static func foods_selling(state: Dictionary, data: Dictionary, now: float) -> int:
+	var seen := {}
+	for b in state.buildings:
+		if data.buildings.get(b.type, {}).get("category", "") != "retail" or building_speed(state, data, b, now) <= 0.0:
+			continue
+		for shelf in b.get("shelves", []):
+			if not shelf.is_empty():
+				seen[shelf.res] = true
+	return seen.size()
+
+
+## True when game_config.json switches needs on (a "happiness" block).
+static func _has_needs(data: Dictionary) -> bool:
+	return not data.config.get("happiness", {}).is_empty()
+
+
+## The move-in speed for a happiness score: the speed of the highest band it reaches
+## (happiness.growth_speeds, "from" going up). No bands = 1.
+static func _growth_speed_for(config: Dictionary, score: float) -> float:
+	var speed := 1.0
+	for band in config.get("growth_speeds", []):
+		if score + 0.000001 >= float(band.from):  # the tiny allowance: 0.3 + 0.5 must reach 0.8
+			speed = float(band.speed)
+	return speed
+
+
+## Seconds between people moving in at the move-in speed in force (INF = nobody moves in).
+static func _growth_step(state: Dictionary, data: Dictionary) -> float:
+	var base := float(data.config.population_growth_seconds)
+	var speed := float(state.population.get("growth_speed", 1.0))
+	if base <= 0.0 or speed <= 0.0:
+		return INF
+	return base / speed
+
+
+## Happiness only changes at moments settling splits on (a shelf sells out, a person moves in, a
+## building finishes or changes workers, a player action), so the move-in speed is read at the
+## start of each piece of time. When it changes, the wait for the next person starts again from t.
+static func _update_growth_speed(state: Dictionary, data: Dictionary, t: float) -> void:
+	var pop: Dictionary = state.population
+	var speed := float(happiness(state, data, t).growth_speed)
+	if not is_equal_approx(speed, float(pop.get("growth_speed", 1.0))):
+		pop["growth_speed"] = speed
+		pop.growth_anchor = maxf(float(pop.growth_anchor), t)
 
 
 # --- Player actions -----------------------------------------------------------

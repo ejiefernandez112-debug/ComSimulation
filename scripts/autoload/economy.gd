@@ -378,6 +378,12 @@ func population_capacity() -> int:
 	return Simulation.population_capacity(state, data(), TimeService.now())
 
 
+## Village happiness: {"score", "food", "jobs", "foods", "needs_count", "growth_speed"}
+## (see Simulation.happiness).
+func happiness() -> Dictionary:
+	return Simulation.happiness(state, data(), TimeService.now())
+
+
 func warehouse_total() -> int:
 	return Simulation.warehouse_total(state)
 

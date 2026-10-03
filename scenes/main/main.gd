@@ -50,6 +50,7 @@ func _ready() -> void:
 	# The bottom menu steps aside for anything else that uses the bottom of the screen.
 	menu_bar.hide_while_visible([building_bar, build_menu.placing_bar, build_menu.window()])
 	test_panel.message.connect(hud.toast)
+	hud.happiness_pressed.connect(func(): stats_panel.show_stats("people"))
 	settings_panel.new_game_requested.connect(_ask_new_game)
 	Economy.water_bill_paid.connect(func(cost: int, m3: float):
 		hud.toast("Water bill paid: %s for %s m³" % [UITheme.money(cost), UITheme.number(roundi(m3))], Economy.currency() < 0))

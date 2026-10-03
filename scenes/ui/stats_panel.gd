@@ -22,6 +22,7 @@ var _graph_buttons := {}
 var _range_buttons := {}
 var _values := {}  # name -> Label whose text _refresh updates
 var _population_bar: ProgressBar
+var _happiness_bar: ProgressBar
 var _employed_bar: ProgressBar
 var _chart: LineChart
 
@@ -37,8 +38,9 @@ func _ready() -> void:
 	Economy.changed.connect(_refresh)
 
 
-func show_stats() -> void:
-	_select_tab(_tab)
+## Opens the window on `tab` ("people", ...), or on the tab shown last time.
+func show_stats(tab := "") -> void:
+	_select_tab(tab if _pages.has(tab) else _tab)
 	open("Statistics")
 	_refresh()
 
@@ -77,6 +79,18 @@ func _people_page() -> VBoxContainer:
 	var town := _section(page, "Population")
 	town.add_child(_value("population"))
 	_population_bar = _bar(town, "BlueBar")
+	var mood := _section(page, "Happiness")
+	mood.add_child(_value("happiness"))
+	_happiness_bar = _bar(mood, "GreenBar")
+	_value_row(mood, "Food", "need_food")
+	_value_row(mood, "Jobs", "need_jobs")
+	_value_row(mood, "Moving in", "move_in")
+	var why := _body(_happiness_explanation())
+	why.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	why.custom_minimum_size.x = WIDTH - 90
+	why.add_theme_font_size_override("font_size", 15)
+	why.modulate.a = 0.8
+	mood.add_child(why)
 	var work := _section(page, "Work")
 	for row in [["employed", "Employed"], ["unemployed", "Unemployed"], ["open_jobs", "Open jobs"], ["jobs", "Jobs in total"]]:
 		_value_row(work, row[1], row[0])
@@ -149,6 +163,33 @@ func _water_explanation() -> String:
 	return text
 
 
+## "Happiness is Food and Jobs mixed half and half…" Numbers from game_config.json, so the text
+## follows any retuning.
+func _happiness_explanation() -> String:
+	var h: Dictionary = GameData.config.get("happiness", {})
+	var weights: Dictionary = h.get("weights", {})
+	var text := "Happiness mixes Food (%d%%) and Jobs (%d%%). Food comes from different foods selling at a Supermarket with workers; Jobs is the share of people with a job." % [roundi(100.0 * float(weights.get("food", 0.0))), roundi(100.0 * float(weights.get("jobs", 0.0)))]
+	text += " Happier villages attract people faster:"
+	var bands: Array = h.get("growth_speeds", [])
+	for i in range(bands.size() - 1, -1, -1):
+		var speed := float(bands[i].speed)
+		text += " from %d%% %s;" % [roundi(100.0 * float(bands[i].from)), _speed_text(speed)]
+	text = text.trim_suffix(";") + "."
+	text += " Needs only count from %d people." % int(h.get("needs_from_population", 0))
+	return text
+
+
+## A move-in speed in words: "nobody moves in", "half speed", "normal speed", "1.5x as fast".
+func _speed_text(speed: float) -> String:
+	if speed <= 0.0:
+		return "nobody moves in"
+	if is_equal_approx(speed, 1.0):
+		return "normal speed"
+	if is_equal_approx(speed, 0.5):
+		return "half speed"
+	return "%sx as fast" % str(speed)
+
+
 func _graphs_page() -> VBoxContainer:
 	var page := _page()
 	_button_row(page, GRAPHS, _graph_buttons, func(id):
@@ -214,6 +255,20 @@ func _refresh_people() -> void:
 	var cap := Economy.population_capacity()
 	_show("population", "%d people · room for %d" % [e.population, cap])
 	_population_bar.value = 100.0 * e.population / maxf(cap, 1)
+	var happy := Economy.happiness()
+	_show("happiness", "%d%% happy" % roundi(100.0 * float(happy.score)))
+	_happiness_bar.value = 100.0 * float(happy.score)
+	var foods := int(happy.foods)
+	var food_text := "%d%% · %d food%s selling" % [roundi(100.0 * float(happy.food)), foods, "" if foods == 1 else "s"]
+	_show("need_food", food_text, DOWN if float(happy.food) < 1.0 else LineChart.INK)
+	_show("need_jobs", "%d%% · %d of %d have a job" % [roundi(100.0 * float(happy.jobs)), e.employed, e.population], DOWN if float(happy.jobs) < 1.0 else LineChart.INK)
+	var speed := float(happy.growth_speed)
+	var move_in := _speed_text(speed)
+	if e.population >= cap:
+		move_in += " · no room: build a house"
+	elif not happy.needs_count:
+		move_in += " · small village, needs don't count yet"
+	_show("move_in", move_in, DOWN if speed < 1.0 else LineChart.INK)
 	_show("employed", str(e.employed))
 	_show("unemployed", str(e.unemployed), DOWN if e.unemployed > 0 else LineChart.INK)
 	_show("open_jobs", str(e.open_jobs))

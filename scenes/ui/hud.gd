@@ -1,8 +1,10 @@
 extends Control
 ## The always-on HUD, Clash-of-Clans style: resource bars in the top-right corner (cash,
-## population, warehouse) with a chip for each item in the warehouse, and short messages
-## ("toasts") at the top. Shows numbers from Economy; decides nothing itself.
+## population, happiness, warehouse) with a chip for each item in the warehouse, and short
+## messages ("toasts") at the top. Shows numbers from Economy; decides nothing itself.
 ## (The menu buttons live in the bottom menu bar, menu_bar.gd.)
+
+signal happiness_pressed  # the happiness row was tapped: main.gd shows the breakdown
 
 const ROW_WIDTH := 236.0
 
@@ -11,6 +13,8 @@ var _shown_cash := NAN  # what the cash label shows (NAN = nothing yet); it coun
 var _cash_tween: Tween
 var _population: Label
 var _population_bar: ProgressBar
+var _happiness: Label
+var _happiness_bar: ProgressBar
 var _warehouse: Label
 var _warehouse_bar: ProgressBar
 var _items := {}  # resource id -> its Label in the item chips
@@ -63,6 +67,16 @@ func _build_resources() -> void:
 	var pop := _resource_row(column, "population", "BlueBar")
 	_population = pop.label
 	_population_bar = pop.bar
+	var mood := _resource_row(column, "happiness", "GreenBar")
+	_happiness = mood.label
+	_happiness_bar = mood.bar
+	# The only HUD row that reacts to a tap: it opens the breakdown (Food, Jobs, move-in speed).
+	mood.row.mouse_filter = Control.MOUSE_FILTER_STOP
+	mood.row.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	mood.row.tooltip_text = "Village happiness: tap to see why"
+	mood.row.gui_input.connect(func(event: InputEvent):
+		if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+			happiness_pressed.emit())
 	var store := _resource_row(column, "warehouse", "BrownBar")
 	_warehouse = store.label
 	_warehouse_bar = store.bar
@@ -89,7 +103,7 @@ func _build_resources() -> void:
 
 
 ## One HUD row: a dark pill holding the number (and a fill bar), with the icon overlapping its
-## right end. Returns {"label", "bar"}; bar is null when `bar_style` is "".
+## right end. Returns {"row", "label", "bar"}; bar is null when `bar_style` is "".
 func _resource_row(parent: Control, icon_name: String, bar_style: String) -> Dictionary:
 	var row := Control.new()
 	row.custom_minimum_size = Vector2(ROW_WIDTH, 46)
@@ -120,7 +134,7 @@ func _resource_row(parent: Control, icon_name: String, bar_style: String) -> Dic
 	var icon := _icon_rect(UITheme.icon(icon_name), 46)
 	icon.position = Vector2(ROW_WIDTH - 46, 0)
 	row.add_child(icon)
-	return {"label": label, "bar": bar}
+	return {"row": row, "label": label, "bar": bar}
 
 
 func _icon_rect(texture: Texture2D, side: float) -> TextureRect:
@@ -149,6 +163,12 @@ func _refresh() -> void:
 	var pop_cap := Economy.population_capacity()
 	_population.text = "%d / %d" % [pop, pop_cap]
 	_population_bar.value = 100.0 * pop / maxf(pop_cap, 1)
+	var happy := Economy.happiness()
+	_happiness.text = "%d%% happy" % roundi(100.0 * float(happy.score))
+	_happiness_bar.value = 100.0 * float(happy.score)
+	# Green: people move in at normal speed or faster; gold: slower; red: nobody moves in.
+	var speed := float(happy.growth_speed)
+	_happiness_bar.theme_type_variation = "GreenBar" if speed >= 1.0 else ("GoldBar" if speed > 0.0 else "RedBar")
 	var stored := Economy.warehouse_total()
 	var cap := Economy.warehouse_cap()
 	_warehouse.text = "%s / %s" % [UITheme.number(stored), UITheme.number(cap)]
