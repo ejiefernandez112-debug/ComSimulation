@@ -4,7 +4,20 @@
 	"_population": "starting_population = adults a new game starts with (never more than the starting homes hold). population_growth_seconds = seconds between adults moving in from outside (immigration) at normal speed; 0 = nobody moves in (immigration is switched off for now, plan.md 5.6: the village grows through births).",
 	"starting_population": 50,
 	"population_growth_seconds": 0,
-	"_life": "Births, children and deaths (plan.md 5.6). birth_rate_per_hour = babies per adult per hour (times the move-in speed from happiness; only while homes have room). Children don't work; they grow up into adults after grow_up_hours. Babies born in the same child_group_hours form one age group. death_rate_per_hour = share of adults and of children who die each hour. PLACEHOLDERS.",
+	"_life": "Births, children and deaths (plan.md 5.6). birth_rate_per_hour = babies per adult per hour (times the move-in speed from happiness; only while households in real homes have a free child place). Children don't work; they grow up into adults after grow_up_hours. Babies born in the same child_group_hours form one age group. death_rate_per_hour = share of adults and of children who die each hour. PLACEHOLDERS.",
+	"_housing": "Households and wealth (plan.md 5.18). A household = up to adults_per_household adults + children_per_household children. wealth_classes, poorest first: an adult's class comes from their wage per hour (the highest from_wage it reaches; no job = 0 = Broke); a household's class is its adults' class. A household can afford a home when its rent is at most rent_share of the household's wages. PLACEHOLDERS.",
+	"housing": {
+		"adults_per_household": 2,
+		"children_per_household": 2,
+		"rent_share": 0.3,
+		"wealth_classes": [
+			{ "id": "broke", "name": "Broke", "from_wage": 0 },
+			{ "id": "poor", "name": "Poor", "from_wage": 0.01 },
+			{ "id": "well_off", "name": "Well off", "from_wage": 18 },
+			{ "id": "rich", "name": "Rich", "from_wage": 30 },
+			{ "id": "filthy_rich", "name": "Filthy rich", "from_wage": 60 }
+		]
+	},
 	"life": {
 		"birth_rate_per_hour": 0.02,
 		"death_rate_per_hour": 0.005,
@@ -81,11 +94,11 @@
 	},
 	"starting_buildings": [
 		{ "type": "construction_office", "position": [9, 9] },
-		{ "type": "small_house", "position": [12, 9] },
-		{ "type": "small_house", "position": [15, 9] },
-		{ "type": "small_house", "position": [18, 9] },
-		{ "type": "small_house", "position": [12, 12] },
-		{ "type": "small_house", "position": [15, 12] },
+		{ "type": "public_housing", "position": [12, 9] },
+		{ "type": "public_housing", "position": [15, 9] },
+		{ "type": "public_housing", "position": [18, 9] },
+		{ "type": "public_housing", "position": [12, 12] },
+		{ "type": "public_housing", "position": [15, 12] },
 		{ "type": "warehouse", "position": [6, 9] }
 	]
 }

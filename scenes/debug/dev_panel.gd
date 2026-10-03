@@ -4,8 +4,11 @@ extends ModalWindow
 ## (top-right corner) on a phone.
 ## Cash: set it to any amount (negative to test debt) or add to it. Changes go through Economy
 ## like everything else; they aren't counted as income in the statistics.
+## Rent: raise or lower the rent per household of each housing type (plan.md §5.18), or reset it
+## to the rent in buildings.json. Kept in the save until reset.
 
 const QUICK_ADD := [1000, 10000, 100000]
+const RENT_STEPS := [-1, 1, 10]  # dollars an hour per button
 const TAPS_TO_OPEN := 5
 const TAP_WINDOW_MS := 2000  # the taps must all land within this time
 const CORNER := Vector2(280, 70)  # the top-right area holding the cash bar
@@ -13,6 +16,7 @@ const CORNER := Vector2(280, 70)  # the top-right area holding the cash bar
 var _cash: Label
 var _amount: LineEdit
 var _message: Label
+var _rent_labels := {}  # home type id -> Label showing its rent
 var _taps: Array = []  # times of recent taps on the cash bar (ms)
 
 
@@ -48,6 +52,30 @@ func _ready() -> void:
 	quick.add_child(_button("Set $0", "RedButton", func(): _apply(Economy.dev_set_cash(0), "Cash set to $0")))
 	_message = _text("")
 	box.add_child(_message)
+
+	var rent_box := _section("Rent per household (per hour)")
+	var rent_hint := _text("Households that can't afford the new rent move to cheaper homes, or become homeless.")
+	rent_hint.add_theme_font_size_override("font_size", 15)
+	rent_hint.modulate.a = 0.75
+	rent_box.add_child(rent_hint)
+	for type_id in GameData.buildings:
+		var def: Dictionary = GameData.buildings[type_id]
+		if int(def.get("households", 0)) <= 0 or def.get("hut", false):
+			continue
+		var line := HBoxContainer.new()
+		line.add_theme_constant_override("separation", 6)
+		rent_box.add_child(line)
+		var name_label := _text(def.name)
+		name_label.custom_minimum_size.x = 150
+		name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		line.add_child(name_label)
+		var value := _text("")
+		value.custom_minimum_size.x = 110
+		line.add_child(value)
+		_rent_labels[type_id] = value
+		for step in RENT_STEPS:
+			line.add_child(_button("%+d" % step, "YellowButton" if step > 0 else "BlueButton", _change_rent.bind(type_id, step)))
+		line.add_child(_button("Reset", "RedButton", _reset_rent.bind(type_id)))
 	Economy.changed.connect(_refresh)
 
 
@@ -77,6 +105,19 @@ func _input(event: InputEvent) -> void:
 func _refresh() -> void:
 	if visible:
 		_cash.text = "Now: %s" % UITheme.money(Economy.currency())
+		for type_id in _rent_labels:
+			var rent := Economy.rent_per_household(type_id)
+			_rent_labels[type_id].text = ("free" if rent <= 0.0 else UITheme.price(roundi(rent * 100.0))) + (" *" if Economy.rent_changed(type_id) else "")
+
+
+## Rent up or down by `step` dollars an hour (never below free).
+func _change_rent(type_id: String, step: int) -> void:
+	var rent := maxf(Economy.rent_per_household(type_id) + step, 0.0)
+	_apply(Economy.dev_set_rent(type_id, rent), "%s rent: %s per household an hour (* = changed by you)" % [GameData.buildings[type_id].name, UITheme.price(roundi(rent * 100.0))])
+
+
+func _reset_rent(type_id: String) -> void:
+	_apply(Economy.dev_set_rent(type_id, -1.0), "%s rent back to the data file's" % GameData.buildings[type_id].name)
 
 
 func _add() -> void:

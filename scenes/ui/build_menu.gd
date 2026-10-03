@@ -387,8 +387,21 @@ func _show_details(type_id: String) -> void:
 			_makes.add_child(_icon("clock", 24))
 			_makes.add_child(_body(UITheme.duration(float(r.duration))))
 		"residential":
+			# "6 households · for Broke, Poor · free · 0.3 MW when lived in" (plan.md §5.18)
 			_makes.add_child(_icon("population", 26))
-			_makes.add_child(_body("Room for %d people (filled over time)" % int(def.get("population_capacity", 0))))
+			var names := {}
+			for wealth in Economy.wealth_classes():
+				names[str(wealth.id)] = str(wealth.name)
+			var who: Array[String] = []
+			for id in def.get("wealth", []):
+				who.append(str(names.get(id, id)))
+			var rent := Economy.rent_per_household(type_id)
+			var parts: Array[String] = ["%d households" % int(def.get("households", 0))]
+			parts.append("for " + (", ".join(who) if not who.is_empty() else "anyone"))
+			parts.append("free" if rent <= 0.0 else "rent %s/h each" % UITheme.price(roundi(rent * 100.0)))
+			if float(def.get("power_mw", 0.0)) > 0.0:
+				parts.append("%s MW when lived in" % str(def.power_mw))
+			_makes.add_child(_body(" · ".join(parts)))
 		"storage":
 			_makes.add_child(_icon("warehouse", 26))
 			_makes.add_child(_body("Room for %s goods (%d workers)" % [UITheme.number(int(def.get("capacity", 0))), int(def.get("max_workers", 0))]))

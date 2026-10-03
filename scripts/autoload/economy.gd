@@ -244,6 +244,22 @@ func dev_add_cash(dollars: float) -> Dictionary:
 	return _after(Simulation.dev_add_cash(state, Simulation.cents(dollars)))
 
 
+## Developer: rent per household (dollars an hour) for a home type; a negative amount resets it
+## to the rent in buildings.json.
+func dev_set_rent(type_id: String, dollars: float) -> Dictionary:
+	return _after(Simulation.dev_set_rent(state, data(), type_id, dollars, TimeService.now()))
+
+
+## Rent per household per hour (dollars) for a home type, with any developer change.
+func rent_per_household(type_id: String) -> float:
+	return Simulation.rent_per_household(state, data(), type_id)
+
+
+## True when the developer changed this home type's rent.
+func rent_changed(type_id: String) -> bool:
+	return state.get("dev_rent", {}).has(type_id)
+
+
 ## level: "low", "medium" or "high" (see staffing_levels in game_config.json).
 func set_staffing(building_id: String, level: String) -> Dictionary:
 	return _after(Simulation.set_staffing(state, data(), building_id, level, TimeService.now()))
@@ -378,9 +394,21 @@ func population_capacity() -> int:
 	return Simulation.population_capacity(state, data(), TimeService.now())
 
 
-## People living in this home (homes fill oldest first; 0 while it's being built).
+## People living in this home (adults and children; 0 while it's being built).
 func home_residents(building: Dictionary) -> int:
 	return Simulation.home_residents(state, data(), building, TimeService.now())
+
+
+## Who lives where: {"homes": {building_id: {"households", "adults", "children", "rent"}},
+## "classes": {class: {"households", "adults", "homeless"}}, "homeless", "rent_per_hour",
+## "child_places", "power_mw", "households"} (see Simulation.housing).
+func housing() -> Dictionary:
+	return Simulation.housing(state, data(), TimeService.now())
+
+
+## The wealth classes, poorest first: [{"id", "name", "from_wage"}].
+func wealth_classes() -> Array:
+	return Simulation.wealth_classes(data())
 
 
 ## Seconds until the next person moves in (INF when the homes are full or nobody is moving in).

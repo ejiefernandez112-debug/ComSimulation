@@ -108,21 +108,21 @@ static func status(b: Dictionary) -> Dictionary:
 				return _no_workers(b, -1.0)
 			return _with_speed(b, "Selling %d product%s · next sells out in %s" % [selling, "" if selling == 1 else "s", UITheme.duration(soonest)], -1.0, speed)
 		"residential":
-			# A home only gives room: babies (and, later, newcomers) fill the oldest homes first.
-			var room := int(def.get("population_capacity", 0))
-			var here := Economy.home_residents(b)
-			var text := "%d of %d living here" % [here, room]
-			var progress := float(here) / maxf(room, 1)
-			if here < room:
-				var birth := Economy.next_birth_in()
-				var arrival := Economy.next_arrival_in()
-				if not is_inf(birth) and birth <= arrival:
-					text += " · next baby in the village in %s" % UITheme.duration(maxf(birth, 0.0))
-				elif not is_inf(arrival):
-					text += " · next newcomer in %s" % UITheme.duration(maxf(arrival, 0.0))
-				elif Economy.adults() <= 0:
-					return {"text": text + " · no babies: there are no adults", "progress": progress, "good": false}
-				else:
-					return {"text": text + " · no babies: the village is too unhappy", "progress": progress, "good": false}
+			# Who lives here comes from the housing rules (plan.md §5.18): households of 2 adults
+			# + 2 children, by wealth class and what they can afford.
+			var room := int(def.get("households", 0))
+			var home: Dictionary = Economy.housing().homes.get(b.id, {})
+			var households := int(home.get("households", 0))
+			var progress := float(households) / maxf(room, 1)
+			var people := "%d adults, %d children" % [int(home.get("adults", 0)), int(home.get("children", 0))]
+			if def.get("hut", false):
+				return {"text": "A homeless household lives here (%s). The hut goes once they have a home they can afford" % people, "progress": -1.0, "good": false}
+			var text := "%d of %d households · %s" % [households, room, people]
+			if float(home.get("rent", 0.0)) > 0.0:
+				text += " · rent %s/h" % UITheme.price(roundi(float(home.rent) * 100.0))
+			if households <= 0 and int(Economy.housing().homeless) == 0:
+				return {"text": text + " · empty: everyone already has a home", "progress": progress, "good": true}
+			if households <= 0:
+				return {"text": text + " · empty: the homeless can't afford it or it isn't for their class", "progress": progress, "good": false}
 			return {"text": text, "progress": progress, "good": true}
 	return {"text": "Your headquarters", "progress": -1.0, "good": true}

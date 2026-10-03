@@ -44,8 +44,8 @@ static func new_game(data: Dictionary, now: float) -> Dictionary:
 		# Starting buildings are already standing: no construction time.
 		_add_building(state, entry.type, Vector2i(int(entry.position[0]), int(entry.position[1])), now, 0.0)
 	# The founding villagers: all adults, never more than the starting homes hold.
-	state.population.current = mini(int(config.get("starting_population", 0)), population_capacity(state, data, now))
-	_hire(state, data, now)
+	state.population.current = mini(int(config.get("starting_population", 0)), adult_room(state, data, now))
+	_hire(state, data, now)  # also puts up huts if the homes are too few
 	return state
 
 
@@ -53,8 +53,9 @@ static func new_game(data: Dictionary, now: float) -> Dictionary:
 
 ## Brings every building, the population and wages up to `now`.
 ## Returns everything produced, e.g. {"wheat": 30, "population": 2, "wages": 12000, "water": 71800}
-## (money in cents; "water" = water bills charged; "population" = people who moved in; "born",
-## "grew_up", "died" = births, children who became adults, deaths; for the offline summary).
+## (money in cents; "water" = water bills charged; "rent" = rent collected; "population" = people
+## who moved in; "born", "grew_up", "died" = births, children who became adults, deaths; for the
+## offline summary).
 ##
 ## A building's speed depends on how many workers are actually working in it (see
 ## building_speed), and wages are paid for each of them. That only changes at a few moments
@@ -68,6 +69,7 @@ static func settle(state: Dictionary, data: Dictionary, now: float) -> Dictionar
 	var grown := 0
 	var wages := 0
 	var water := 0
+	var rent := 0
 	var life := {"born": 0, "grew_up": 0, "died": 0}
 	var t := float(state.get("settled_at", state.get("last_saved_at", now)))
 	if now <= t:
@@ -79,7 +81,7 @@ static func settle(state: Dictionary, data: Dictionary, now: float) -> Dictionar
 		var steps := 0
 		while t < now and steps < 100000:  # the cap is only a safety net
 			steps += 1
-			_hire(state, data, t)  # people who just moved in, or posts that just opened
+			_hire(state, data, t)  # people who just moved in, or posts that just opened (and huts)
 			_update_growth_speed(state, data, t)  # happiness may have changed at this moment
 			# Read every speed, the wage bill and the water use as they stand at the start of this
 			# piece, before any building moves on (a building filling up changes the others' staffing).
@@ -88,6 +90,7 @@ static func settle(state: Dictionary, data: Dictionary, now: float) -> Dictionar
 				speeds.append(building_speed(state, data, b, t))
 			var wage_rate := _wages_per_hour(state, data, t)
 			var water_m3_per_hour := water_use_total(state, data, t)
+			var rent_rate := float(housing(state, data, t).rent_per_hour)
 			var life_rates := _life_rates(state, data, t)
 			# Split at the next staffing change, at the next birth, death or child growing up, and at
 			# the next water bill (a fixed moment) when there is water to bill; empty cycles are
@@ -99,6 +102,7 @@ static func settle(state: Dictionary, data: Dictionary, now: float) -> Dictionar
 			for i in state.buildings.size():
 				_add_to(report, _settle_span(state, state.buildings[i], data, t, next, speeds[i]))
 			wages += _pay_wages(state, wage_rate * (next - t) / 3600.0)
+			rent += _collect_rent(state, rent_rate * (next - t) / 3600.0)
 			_meter_water(state, data, water_m3_per_hour * (next - t) / 3600.0, t)
 			grown += _grow_population(state, data, next)
 			_add_to(life, _settle_life(state, data, t, next, life_rates))
@@ -106,6 +110,8 @@ static func settle(state: Dictionary, data: Dictionary, now: float) -> Dictionar
 			water += _bill_water_if_due(state, data, t)
 		state["settled_at"] = now
 	_hire(state, data, now)
+	if rent > 0:
+		report["rent"] = rent
 	var counters := people_stats(state)
 	counters.moved_in = int(counters.moved_in) + grown
 	for key in life:
@@ -174,7 +180,7 @@ static func _next_staffing_change(state: Dictionary, data: Dictionary, t: float,
 	var step := _growth_step(state, data)
 	var e := employment(state, data, t)
 	var arrival_matters: bool = e.open_jobs > 0 or _has_needs(data)
-	if not is_inf(step) and arrival_matters and int(pop.current) < population_capacity(state, data, t):
+	if not is_inf(step) and arrival_matters and adults(state) < adult_room(state, data, t):
 		var arrival := float(pop.growth_anchor) + step * (floorf((t - float(pop.growth_anchor)) / step + 0.000001) + 1.0)
 		if arrival > t and arrival < next:
 			next = arrival
@@ -184,19 +190,20 @@ static func _next_staffing_change(state: Dictionary, data: Dictionary, t: float,
 	return next
 
 
-## Grows the population up to `now`. A home finishing construction raises the cap partway through,
-## so grow up to each such moment with the cap that applied before it.
+## Grows the population (people moving in: adults) up to `now`. A home finishing construction
+## raises the room partway through, so grow up to each such moment with the room before it.
+## The cap passed on is for everyone: today's children plus the room for adults.
 static func _grow_population(state: Dictionary, data: Dictionary, now: float) -> int:
 	var grown := 0
 	var finishes: Array[float] = []
 	for b in state.buildings:
 		var t := built_at(b)
-		if t > float(state.population.growth_anchor) and t <= now and int(data.buildings.get(b.type, {}).get("population_capacity", 0)) > 0:
+		if t > float(state.population.growth_anchor) and t <= now and is_real_home(data, b):
 			finishes.append(t)
 	finishes.sort()
 	for t in finishes:
-		grown += _settle_population(state, data, t, _capacity(state, data, t, false))
-	grown += _settle_population(state, data, now, population_capacity(state, data, now))
+		grown += _settle_population(state, data, t, children_count(state) + _adult_room(state, data, t, false))
+	grown += _settle_population(state, data, now, children_count(state) + adult_room(state, data, now))
 	return grown
 
 
@@ -419,16 +426,18 @@ static func people_stats(state: Dictionary) -> Dictionary:
 
 
 ## Births and deaths per second as things stand at t: {"born", "adult_deaths", "child_deaths"}.
-## Babies come from adults, at the move-in speed happiness gives, and only while homes have room.
-## Everyone dies at the same steady rate, so adults and children each lose their share. All 0
-## without a "life" block in game_config.json.
+## Babies come from adults, at the move-in speed happiness gives, and only while a household in
+## a real home has a free child place (homeless households in huts have no babies). Everyone
+## dies at the same steady rate, so adults and children each lose their share. All 0 without a
+## "life" block in game_config.json.
 static func _life_rates(state: Dictionary, data: Dictionary, t: float) -> Dictionary:
 	var life: Dictionary = data.config.get("life", {})
 	var rates := {"born": 0.0, "adult_deaths": 0.0, "child_deaths": 0.0}
 	if life.is_empty():
 		return rates
-	if int(state.population.current) < population_capacity(state, data, t):
-		rates.born = adults(state) * float(life.get("birth_rate_per_hour", 0.0)) * float(state.population.get("growth_speed", 1.0)) / 3600.0
+	var homes := housing(state, data, t)
+	if children_count(state) < int(homes.child_places):
+		rates.born = int(homes.housed_adults) * float(life.get("birth_rate_per_hour", 0.0)) * float(state.population.get("growth_speed", 1.0)) / 3600.0
 	var death := float(life.get("death_rate_per_hour", 0.0)) / 3600.0
 	rates.adult_deaths = adults(state) * death
 	rates.child_deaths = children_count(state) * death
@@ -478,7 +487,7 @@ static func _settle_life(state: Dictionary, data: Dictionary, t0: float, t1: flo
 	pop.current = int(pop.current) - adult_deaths
 	out.died = adult_deaths + _remove_children(state, int(events.child_deaths))
 	var life: Dictionary = data.config.get("life", {})
-	var born := mini(int(events.born), maxi(population_capacity(state, data, t1) - int(pop.current), 0))
+	var born := mini(int(events.born), maxi(int(housing(state, data, t1).child_places) - children_count(state), 0))
 	if born > 0:
 		var group_seconds := maxf(float(life.get("child_group_hours", 1.0)), 0.001) * 3600.0
 		var grows_up_at := floorf(t1 / group_seconds) * group_seconds + float(life.get("grow_up_hours", 24.0)) * 3600.0
@@ -491,8 +500,7 @@ static func _settle_life(state: Dictionary, data: Dictionary, t0: float, t1: flo
 	return out
 
 
-## Takes up to n children away, youngest group first (they died, or their home was demolished).
-## Returns how many were taken.
+## Takes up to n children away, youngest group first (they died). Returns how many were taken.
 static func _remove_children(state: Dictionary, n: int) -> int:
 	var groups: Array = state.population.get("children", [])
 	var taken := 0
@@ -506,24 +514,262 @@ static func _remove_children(state: Dictionary, n: int) -> int:
 	return taken
 
 
-## Fewer homes than people (a home was demolished): n people move away, unemployed adults
-## first, then children (youngest first), then workers (hiring then frees their posts by the
-## smallest-bonus rule).
-static func _remove_people(state: Dictionary, data: Dictionary, n: int, now: float) -> void:
-	var gone := mini(n, int(employment(state, data, now).unemployed))
-	state.population.current = int(state.population.current) - gone
-	gone += _remove_children(state, n - gone)
-	state.population.current = int(state.population.current) - mini(n - gone, adults(state))
-
-
-## When the next baby is born (INF when none is coming: no room, no adults, too unhappy, or no
-## births in this game). Counted from the last settle, which happens every few seconds.
+## When the next baby is born (INF when none is coming: no free child place, no adults, too
+## unhappy, or no births in this game). Counted from the last settle, which happens every few
+## seconds.
 static func next_birth_at(state: Dictionary, data: Dictionary, now: float) -> float:
 	var t := float(state.get("settled_at", now))
 	var rate := float(_life_rates(state, data, t).born)
 	if rate <= 0.0:
 		return INF
 	return t + maxf(1.0 - float(_life_carry(state).get("born", 0.0)), 0.0) / rate
+
+
+# --- Housing: households, wealth & rent (plan.md §5.18) --------------------------------
+# Still group counts, never individuals: who lives where is worked out from the counts each
+# time (housing()), so nothing can drift. Only the Makeshift Huts are stored, because they
+# stand on the map.
+
+## Up to this many adults (and children) share a household (game_config.json housing).
+static func adults_per_household(data: Dictionary) -> int:
+	return maxi(int(data.config.get("housing", {}).get("adults_per_household", 2)), 1)
+
+
+static func children_per_household(data: Dictionary) -> int:
+	return maxi(int(data.config.get("housing", {}).get("children_per_household", 2)), 0)
+
+
+## Households this home has room for (0 = not a home).
+static func home_households(data: Dictionary, b: Dictionary) -> int:
+	return int(data.buildings.get(b.type, {}).get("households", 0))
+
+
+## A Makeshift Hut: it appears by itself for a homeless household (see _update_huts).
+static func is_hut(data: Dictionary, b: Dictionary) -> bool:
+	return bool(data.buildings.get(b.type, {}).get("hut", false))
+
+
+## A home the player builds (not a hut).
+static func is_real_home(data: Dictionary, b: Dictionary) -> bool:
+	return home_households(data, b) > 0 and not is_hut(data, b)
+
+
+## Room for adults in finished real homes at `now` (huts left out: they only shelter the homeless).
+static func adult_room(state: Dictionary, data: Dictionary, now: float) -> int:
+	return _adult_room(state, data, now, true)
+
+
+## inclusive = false leaves out homes finishing exactly at t (the room just before that moment).
+static func _adult_room(state: Dictionary, data: Dictionary, t: float, inclusive: bool) -> int:
+	return _real_households(state, data, t, inclusive) * adults_per_household(data)
+
+
+## Households the finished real homes have room for at t (see _adult_room for `inclusive`).
+static func _real_households(state: Dictionary, data: Dictionary, t: float, inclusive: bool) -> int:
+	var households := 0
+	for b in state.buildings:
+		if is_real_home(data, b) and (built_at(b) < t or (inclusive and built_at(b) == t)):
+			households += home_households(data, b)
+	return households
+
+
+## The wealth classes, poorest first: [{"id", "name", "from_wage"}] (game_config.json housing).
+static func wealth_classes(data: Dictionary) -> Array:
+	return data.config.get("housing", {}).get("wealth_classes", [])
+
+
+## The wealth class of someone earning `wage` dollars an hour (0 = no job): the richest class
+## whose from_wage it reaches. "" when the game has no wealth classes.
+static func wealth_class_of(data: Dictionary, wage: float) -> String:
+	var id := ""
+	for c in wealth_classes(data):
+		if wage + 0.000001 >= float(c.from_wage):
+			id = str(c.id)
+	return id
+
+
+## Adults by wealth class, poorest first: {class: {"adults", "wages" (dollars an hour, all of
+## them together)}}. A worker's class comes from their wage (with the bonus); no job = Broke.
+static func adults_by_class(state: Dictionary, data: Dictionary, now: float) -> Dictionary:
+	var out := {}
+	for c in wealth_classes(data):
+		out[str(c.id)] = {"adults": 0, "wages": 0.0}
+	var jobless := wealth_class_of(data, 0.0)
+	if not out.has(jobless):
+		out[jobless] = {"adults": 0, "wages": 0.0}
+	var employed := 0
+	for b in state.buildings:
+		var n := mini(hired(b), posts(data, b, now))
+		if n <= 0:
+			continue
+		var wage := wage_per_worker(data, b)
+		var group: Dictionary = out.get(wealth_class_of(data, wage), out[jobless])
+		group.adults = int(group.adults) + n
+		group.wages = float(group.wages) + n * wage
+		employed += n
+	out[jobless].adults = int(out[jobless].adults) + maxi(adults(state) - employed, 0)
+	return out
+
+
+## Rent per household per hour (dollars) for a home type: the developer's override if one is set
+## (dev_set_rent), else rent_per_household in buildings.json.
+static func rent_per_household(state: Dictionary, data: Dictionary, type_id: String) -> float:
+	var dev: Dictionary = state.get("dev_rent", {})
+	if dev.has(type_id):
+		return float(dev[type_id])
+	return float(data.buildings.get(type_id, {}).get("rent_per_household", 0.0))
+
+
+## Whether a household of wealth class `id` may live in this home ("wealth" in buildings.json;
+## none listed = anyone).
+static func _may_live(data: Dictionary, b: Dictionary, id: String) -> bool:
+	var allowed: Array = data.buildings.get(b.type, {}).get("wealth", [])
+	return allowed.is_empty() or id == "" or allowed.has(id)
+
+
+## Who lives where right now (plan.md §5.18). Each class's households (adults paired up, richest
+## class first) take the best homes meant for them that they can afford (rent at most
+## housing.rent_share of the household's wages): highest housing_tier first, then the oldest
+## home. Then any household still without a home takes any leftover home it can afford (a Well
+## off household in Public Housing rather than on the street), so the classes a home is meant
+## for get first claim on it. Households left over are homeless and live in Makeshift Huts.
+## Children live with the households in real homes first (2 places each). Returns:
+## {"homes": {building_id: {"households", "adults", "children", "rent" (dollars an hour)}},
+##  "classes": {class: {"households", "adults", "homeless"}}, "homeless" (households),
+##  "rent_per_hour" (dollars), "child_places" (in real homes), "housed_adults" (adults with a
+##  real home: only they have babies), "power_mw" (homes lived in), "households" (all)}.
+static func housing(state: Dictionary, data: Dictionary, now: float) -> Dictionary:
+	var per_household := adults_per_household(data)
+	var share := float(data.config.get("housing", {}).get("rent_share", 1.0))
+	# Real homes, best first: highest tier, then the oldest (lowest place in the list).
+	var order: Array = []
+	for i in state.buildings.size():
+		var b: Dictionary = state.buildings[i]
+		if is_real_home(data, b) and is_built(b, now):
+			order.append([int(data.buildings[b.type].get("housing_tier", 0)), i])
+	order.sort_custom(func(x, y): return x[0] > y[0] or (x[0] == y[0] and x[1] < y[1]))
+	var homes := {}
+	var free := {}
+	for entry in order:
+		var b: Dictionary = state.buildings[entry[1]]
+		homes[b.id] = {"households": 0, "adults": 0, "children": 0, "rent": 0.0}
+		free[b.id] = home_households(data, b)
+	var out := {"homes": homes, "classes": {}, "homeless": 0, "rent_per_hour": 0.0, "child_places": 0,
+		"housed_adults": 0, "power_mw": 0.0, "households": 0}
+	var by_class := adults_by_class(state, data, now)
+	var ids: Array = by_class.keys()
+	ids.reverse()  # richest first
+	var left := {}  # class -> [households, adults] still without a home
+	var income := {}  # class -> wages per household (dollars an hour)
+	for id in ids:
+		var households := ceili(int(by_class[id].adults) / float(per_household))
+		left[id] = [households, int(by_class[id].adults)]
+		income[id] = float(by_class[id].wages) / households if households > 0 else 0.0
+		out.classes[id] = {"households": households, "adults": int(by_class[id].adults), "homeless": 0}
+		out.households += households
+	for any_home in [false, true]:  # first homes meant for them, then any leftover home
+		for id in ids:
+			for entry in order:
+				if int(left[id][0]) <= 0:
+					break
+				var b: Dictionary = state.buildings[entry[1]]
+				var rent := rent_per_household(state, data, b.type)
+				if int(free[b.id]) <= 0 or (not any_home and not _may_live(data, b, id)) or rent > share * float(income[id]) + 0.000001:
+					continue
+				var take := mini(int(left[id][0]), int(free[b.id]))
+				var moved_in := mini(int(left[id][1]), take * per_household)  # full households first
+				homes[b.id].households += take
+				homes[b.id].adults += moved_in
+				homes[b.id].rent += take * rent
+				free[b.id] = int(free[b.id]) - take
+				left[id] = [int(left[id][0]) - take, int(left[id][1]) - moved_in]
+				out.rent_per_hour += take * rent
+	var homeless_adults := 0
+	for id in ids:
+		out.classes[id].homeless = int(left[id][0])
+		out.homeless += int(left[id][0])
+		homeless_adults += int(left[id][1])
+	# Children: 2 places in each household with a real home; any others live with the homeless.
+	var children_left := children_count(state)
+	for entry in order:
+		var b: Dictionary = state.buildings[entry[1]]
+		var places := int(homes[b.id].households) * children_per_household(data)
+		out.child_places += places
+		out.housed_adults += int(homes[b.id].adults)
+		homes[b.id].children = mini(children_left, places)
+		children_left -= int(homes[b.id].children)
+		if int(homes[b.id].households) > 0:
+			out.power_mw += float(data.buildings[b.type].get("power_mw", 0.0))
+	# The homeless, one household per hut (oldest hut first).
+	var homeless := int(out.homeless)
+	for b in state.buildings:
+		if not is_hut(data, b) or homeless <= 0:
+			continue
+		var adults_here := mini(homeless_adults, per_household)
+		var children_here := mini(children_left, children_per_household(data))
+		homes[b.id] = {"households": 1, "adults": adults_here, "children": children_here, "rent": 0.0}
+		homeless -= 1
+		homeless_adults -= adults_here
+		children_left -= children_here
+	return out
+
+
+## Makeshift Huts appear by themselves, one for each homeless household, and go once their
+## household has a real home, newest first (plan.md §5.18). A new hut goes on the free tile
+## nearest the Construction Office, in a fixed order (no dice). With no hut type in
+## buildings.json, or no free tile left, the homeless have no hut.
+static func _update_huts(state: Dictionary, data: Dictionary, now: float) -> void:
+	var hut_type := ""
+	for type_id in data.buildings:
+		if bool(data.buildings[type_id].get("hut", false)):
+			hut_type = type_id
+	if hut_type == "":
+		return
+	# A clock set backwards never undoes time already worked out: use the later of the two.
+	var homeless := int(housing(state, data, maxf(now, float(state.get("settled_at", now)))).homeless)
+	var huts: Array = state.buildings.filter(func(b): return is_hut(data, b))
+	while huts.size() > homeless:
+		state.buildings.erase(huts.pop_back())
+	while huts.size() < homeless:
+		var cell := _free_cell_near_centre(state, data)
+		if cell.x < 0:
+			return  # the plot is full
+		huts.append(_add_building(state, hut_type, cell, now, now))
+
+
+## The free tile nearest the Construction Office (or the middle of the plot), ring by ring, in a
+## fixed order. (-1, -1) when the plot is full.
+static func _free_cell_near_centre(state: Dictionary, data: Dictionary) -> Vector2i:
+	var grid: Array = state.plot.grid_size
+	var centre := Vector2i(floori(int(grid[0]) / 2.0), floori(int(grid[1]) / 2.0))
+	for b in state.buildings:
+		if data.buildings.get(b.type, {}).get("category", "") == "civic":
+			centre = Vector2i(int(b.position[0]), int(b.position[1]))
+			break
+	for ring in range(1, maxi(int(grid[0]), int(grid[1])) + 1):
+		for dy in range(-ring, ring + 1):
+			for dx in range(-ring, ring + 1):
+				if maxi(absi(dx), absi(dy)) != ring:
+					continue
+				var cell := centre + Vector2i(dx, dy)
+				if _in_plot(state, cell) and building_at(state, cell).is_empty():
+					return cell
+	return Vector2i(-1, -1)
+
+
+## Rent comes in over time like wages go out: parts of a cent wait in "rent_carry" until they add
+## up, so many short settles earn exactly the same as one long one. Counted as income "rent".
+## Returns the cents earned.
+static func _collect_rent(state: Dictionary, dollars: float) -> int:
+	if dollars <= 0.0:
+		return 0
+	var owed := float(state.get("rent_carry", 0.0)) + dollars * 100.0
+	var whole := floori(owed)
+	state["rent_carry"] = owed - whole
+	state.profile.currency += whole
+	var income: Dictionary = stats(state).income
+	income["rent"] = int(income.get("rent", 0)) + whole
+	return whole
 
 
 # --- Player actions -----------------------------------------------------------
@@ -548,11 +794,16 @@ static func build(state: Dictionary, data: Dictionary, type_id: String, cell: Ve
 	if not check.ok:
 		return check
 	settle(state, data, now)  # time so far was worked with the old staffing
+	# Check again: while catching up, a Makeshift Hut may have gone up on that very tile, or
+	# wages may have used up the money.
+	check = can_build(state, data, type_id, cell)
+	if not check.ok:
+		return check
 	var def: Dictionary = data.buildings[type_id]
 	state.profile.currency -= cents(float(def.build_cost))
 	stats(state).spending.construction += cents(float(def.build_cost))
 	var b := _add_building(state, type_id, cell, now, now + float(def.get("build_time", 0.0)))
-	_hire(state, data, now)  # a building ready at once hires now; others when construction ends
+	_hire(state, data, now)  # a building ready at once hires (and a home takes households in) now
 	return _ok({"building_id": b.id})
 
 
@@ -771,6 +1022,8 @@ static func can_demolish(state: Dictionary, data: Dictionary, building_id: Strin
 	if b.is_empty():
 		return _fail("Building not found.")
 	var def: Dictionary = data.buildings.get(b.type, {})
+	if is_hut(data, b):
+		return _fail("A homeless household lives here. The hut goes by itself once they have a real home: build homes they can afford.")
 	if not def.get("buildable", false):
 		return _fail("This building can't be demolished.")
 	if def.get("category", "") == "storage" and _count_category(state, data, "storage") <= 1:
@@ -921,11 +1174,9 @@ static func demolish(state: Dictionary, data: Dictionary, building_id: String, n
 	stats(state).income.demolish += int(check.money)
 	_add_to(state.inventory, check.goods)
 	_put_cost(_costs(state, "inventory_cost"), costs)  # the goods keep their cost tags
-	# Fewer homes can mean less room: people over the new capacity move away.
-	var cap := population_capacity(state, data, now)
-	if int(state.population.current) > cap:
-		_remove_people(state, data, int(state.population.current) - cap, now)
-	_hire(state, data, now)  # its workers are freed; if people moved away, others may lose workers
+	# Its workers are freed for other posts. Nobody leaves: households that lost their home move
+	# into other homes, or become homeless and put up Makeshift Huts (_hire updates them).
+	_hire(state, data, now)
 	return check
 
 
@@ -1363,6 +1614,23 @@ static func dev_add_cash(state: Dictionary, amount: int) -> Dictionary:
 	return _ok()
 
 
+## Sets the rent per household (dollars an hour) for a home type, overriding buildings.json; a
+## negative `dollars` removes the override (back to the data file's rent). Kept in the save, so
+## it lasts until reset. Households that can no longer afford their home move out at once.
+static func dev_set_rent(state: Dictionary, data: Dictionary, type_id: String, dollars: float, now: float) -> Dictionary:
+	if home_households(data, {"type": type_id}) <= 0 or bool(data.buildings[type_id].get("hut", false)):
+		return _fail("That isn't a home with rent.")
+	settle(state, data, now)  # rent so far is collected at the old price
+	if not state.has("dev_rent"):
+		state["dev_rent"] = {}
+	if dollars < 0.0:
+		state.dev_rent.erase(type_id)
+	else:
+		state.dev_rent[type_id] = dollars
+	_update_huts(state, data, now)
+	return _ok()
+
+
 # --- Questions the UI can ask -------------------------------------------------
 
 static func find_building(state: Dictionary, building_id: String) -> Dictionary:
@@ -1379,33 +1647,25 @@ static func building_at(state: Dictionary, cell: Vector2i) -> Dictionary:
 	return {}
 
 
-## Room for people in finished homes (homes still under construction don't count yet).
+## Room for people (adults and children) in finished real homes: households x (2 + 2). Homes
+## still under construction don't count yet, and neither do Makeshift Huts. With homeless
+## households in huts, the village can hold more people than this.
 static func population_capacity(state: Dictionary, data: Dictionary, now: float) -> int:
-	return _capacity(state, data, now, true)
+	return _real_households(state, data, now, true) * (adults_per_household(data) + children_per_household(data))
 
 
-## How many people live in this home. Homes only give room; people move in one at a time and
-## fill the homes oldest first. (For display: the rules only count the village total.) 0 while
-## it's being built.
+## How many people live in this home (adults and children; see housing()). 0 while it's being built.
 static func home_residents(state: Dictionary, data: Dictionary, b: Dictionary, now: float) -> int:
-	var left := int(state.population.current)
-	for home in state.buildings:
-		var room := int(data.buildings.get(home.type, {}).get("population_capacity", 0))
-		if room <= 0 or not is_built(home, now):
-			continue
-		var here := mini(left, room)
-		if home.id == b.id:
-			return here
-		left -= here
-	return 0
+	var home: Dictionary = housing(state, data, now).homes.get(b.id, {})
+	return int(home.get("adults", 0)) + int(home.get("children", 0))
 
 
-## When the next person moves in: INF when the homes are full or nobody is moving in (too unhappy).
-## Uses the move-in speed happiness gives right now (a new speed restarts the wait, see
-## _update_growth_speed).
+## When the next person moves in: INF when there's no room for another adult in a real home or
+## nobody is moving in (immigration off, or too unhappy). Uses the move-in speed happiness gives
+## right now (a new speed restarts the wait, see _update_growth_speed).
 static func next_arrival_at(state: Dictionary, data: Dictionary, now: float) -> float:
 	var pop: Dictionary = state.population
-	if int(pop.current) >= population_capacity(state, data, now):
+	if adults(state) >= adult_room(state, data, now):
 		return INF
 	var base := float(data.config.population_growth_seconds)
 	var speed := float(happiness(state, data, now).growth_speed)
@@ -1546,7 +1806,14 @@ static func posts(data: Dictionary, b: Dictionary, now: float) -> int:
 ## bonuses they take turns, the emptiest building first (fewest hired for what it asked for),
 ## then the older one. With more workers than people (a home was demolished) workers leave the
 ## buildings with the smallest bonus first, the newest building first, and warehouses last.
+## Afterwards the Makeshift Huts are brought up to date, because who works where decides each
+## household's wealth, and so where it can live.
 static func _hire(state: Dictionary, data: Dictionary, now: float) -> void:
+	_hire_workers(state, data, now)
+	_update_huts(state, data, now)
+
+
+static func _hire_workers(state: Dictionary, data: Dictionary, now: float) -> void:
 	var free := adults(state)  # children don't work
 	for b in state.buildings:
 		b["hired"] = mini(hired(b), posts(data, b, now))  # e.g. staffing was lowered: the rest are freed
@@ -2157,14 +2424,6 @@ static func _add_building(state: Dictionary, type_id: String, cell: Vector2i, no
 	return b
 
 
-## Population room from homes finished by time t. inclusive = false leaves out homes finishing
-## exactly at t (the cap that applied just before that moment).
-static func _capacity(state: Dictionary, data: Dictionary, t: float, inclusive: bool) -> int:
-	var cap := 0
-	for b in state.buildings:
-		if built_at(b) < t or (inclusive and built_at(b) == t):
-			cap += int(data.buildings.get(b.type, {}).get("population_capacity", 0))
-	return cap
 
 
 static func _in_plot(state: Dictionary, cell: Vector2i) -> bool:

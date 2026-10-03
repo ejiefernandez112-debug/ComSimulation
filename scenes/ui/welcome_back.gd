@@ -40,6 +40,8 @@ func show_if_away() -> bool:
 		_row("Died").add_child(_amount("population", "-%d people" % int(report.died)))
 	if roundi(int(report.get("wages", 0)) / 100.0) > 0:  # at least $1 (money is in cents)
 		_row("Wages paid").add_child(_amount("cash", "-" + UITheme.money(int(report.wages))))
+	if roundi(int(report.get("rent", 0)) / 100.0) > 0:
+		_row("Rent collected").add_child(_amount("cash", "+" + UITheme.money(int(report.rent))))
 	if roundi(int(report.get("water", 0)) / 100.0) > 0:
 		_row("Water bills").add_child(_amount("water", "-" + UITheme.money(int(report.water))))
 	_row("Cash now").add_child(_amount("cash", UITheme.money(Economy.currency())))

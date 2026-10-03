@@ -256,17 +256,17 @@ func _place() -> void:
 	if result.ok:
 		village.stop_placement()
 		build_menu.end_placement()
-		var room := int(GameData.buildings[type_id].get("population_capacity", 0))
-		if room > 0:  # a home only adds room; babies fill it over time
-			hud.toast("%s built! Room for %d more people: babies will fill it over time." % [GameData.buildings[type_id].name, room])
+		var room := int(GameData.buildings[type_id].get("households", 0))
+		if room > 0:  # a home only adds room; households move in when it's for them and they can afford it
+			hud.toast("%s built! Room for %d more households." % [GameData.buildings[type_id].name, room])
 		else:
 			hud.toast("%s built!" % GameData.buildings[type_id].name)
-		# Heads-up: once finished, its jobs won't all be filled even when the houses are full.
+		# Heads-up: once finished, its jobs won't all be filled: there aren't enough adults.
 		var levels: Dictionary = GameData.config.get("staffing_levels", {})
 		var share := float(levels.get(GameData.config.get("default_staffing", "high"), 1.0))
 		var workers := roundi(int(GameData.buildings[type_id].get("max_workers", 0)) * share)
-		if workers > 0 and Economy.employment().jobs + workers > Economy.population_capacity():
-			hud.toast("Not enough people for all the jobs: work will slow down. Build a house!", true)
+		if workers > 0 and Economy.employment().jobs + workers > Economy.adults():
+			hud.toast("Not enough adults for all the jobs: work will slow down until children grow up.", true)
 	else:
 		build_menu.show_hint(result.error)  # stay in Placement Mode so the player can try another tile
 

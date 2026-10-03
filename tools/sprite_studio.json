@@ -5,6 +5,9 @@
 	"buildings": {
 		"construction_office": { "model": "building-m.glb", "turn": 0 },
 		"small_house": { "model": "building-c.glb", "turn": 0 },
+		"public_housing": { "model": "building-e.glb", "turn": 0 },
+		"villa": { "model": "building-a.glb", "turn": 0 },
+		"makeshift_hut": { "model": "detail-awning.glb", "turn": 0 },
 		"wheat_farm": { "kit_folder": "art/models", "model": "wheat_farm.glb", "tiles": 1, "_tiles_note": "Model is designed for 2x2; set tiles to 2 once buildings get 2x2 footprints in the game rules" },
 		"flour_mill": { "model": "building-j.glb", "turn": 0 },
 		"bakery": { "model": "building-b.glb", "turn": 0 }

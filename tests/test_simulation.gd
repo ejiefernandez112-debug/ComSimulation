@@ -56,7 +56,7 @@ func _data() -> Dictionary:
 		},
 		"buildings": {
 			"office": {"category": "civic", "build_cost": 0, "buildable": false},
-			"house": {"category": "residential", "build_cost": 0, "buildable": false, "population_capacity": 10},
+			"house": {"category": "residential", "build_cost": 0, "buildable": false, "households": 5},
 			# The starter warehouse: 1000 room, no workers (so the other tests' people counts don't change).
 			"store": {"category": "storage", "build_cost": 300, "buildable": true, "capacity": 1000},
 			# A warehouse with workers: 4 of 4 working = 1000 room, 2 of 4 = 500.
@@ -71,7 +71,7 @@ func _data() -> Dictionary:
 				"recipes": [{"id": "grow", "inputs": {}, "outputs": {"wheat": 10}, "duration": 60}]},
 			"slow_mill": {"category": "processor", "build_cost": 200, "buildable": true, "build_time": 5, "storage_cap": 16, "queue_size": 4,
 				"recipes": [{"id": "mill", "inputs": {"wheat": 10}, "outputs": {"flour": 8}, "duration": 90}]},
-			"cabin": {"category": "residential", "build_cost": 0, "buildable": true, "build_time": 200, "population_capacity": 5},
+			"cabin": {"category": "residential", "build_cost": 0, "buildable": true, "build_time": 200, "households": 3},
 			# Buildings that need workers (2 and 3 jobs). They slow down when there aren't enough people.
 			"crew_farm": {"category": "extractor", "build_cost": 0, "buildable": true, "max_workers": 2, "storage_cap": 1000,
 				"recipes": [{"id": "grow", "inputs": {}, "outputs": {"wheat": 10}, "duration": 60}]},
@@ -108,7 +108,7 @@ func test_new_game() -> void:
 	var state := Sim.new_game(data, T0)
 	_check(state.profile.currency == 50000, "starting cash ($500 = 50000 cents)")
 	_check(state.buildings.size() == 3, "starter buildings placed")
-	_check(Sim.population_capacity(state, data, T0) == 10, "house gives population capacity")
+	_check(Sim.adult_room(state, data, T0) == 10 and Sim.population_capacity(state, data, T0) == 20, "house: 5 households = room for 10 adults (20 people with children)")
 	_check(state.save_version == Sim.SAVE_VERSION, "save version set")
 
 
@@ -410,8 +410,8 @@ func test_home_under_construction() -> void:
 	var data := _data()
 	var state := Sim.new_game(data, T0)
 	Sim.build(state, data, "cabin", Vector2i(3, 3), T0)  # +5 room, finished at T0 + 200
-	_check(Sim.population_capacity(state, data, T0 + 199) == 10, "a home being built adds no room yet")
-	_check(Sim.population_capacity(state, data, T0 + 200) == 15, "finished home adds its room")
+	_check(Sim.adult_room(state, data, T0 + 199) == 10, "a home being built adds no room yet")
+	_check(Sim.adult_room(state, data, T0 + 200) == 16, "finished home adds its room (3 households: 6 adults)")
 	# Town is full (10) from T0+100; growth only resumes when the cabin is done at T0+200.
 	# One settle covering the whole time must give the same answer: 10 + 2 by T0+220, not 15.
 	Sim.settle(state, data, T0 + 220)
@@ -515,7 +515,7 @@ func test_away_matches_playing() -> void:
 		for x in 4:
 			Sim.build(state, data, "crew_farm", Vector2i(x, 5), T0)  # 4 x 2 jobs
 		var mill_id: String = Sim.build(state, data, "crew_mill", Vector2i(6, 6), T0).building_id  # 3 jobs: 11 in all
-		Sim.build(state, data, "cabin", Vector2i(8, 8), T0)  # room for 15 people from T0 + 200
+		Sim.build(state, data, "cabin", Vector2i(8, 8), T0)  # room for 16 adults from T0 + 200
 		state.inventory["wheat"] = 80
 		Sim.fill_queue(state, data, mill_id, "mill", T0)
 	var t := T0
@@ -528,7 +528,7 @@ func test_away_matches_playing() -> void:
 		same = same and played.buildings[i].storage == away.buildings[i].storage
 		same = same and played.buildings[i].queue.size() == away.buildings[i].queue.size()
 	_check(same, "one long absence = playing in 7-second steps (population, storage, queues)")
-	_check(int(away.population.current) == 15 and Sim.staffing(away, data, t) == 1.0, "the cabin let enough people in to fill every job (15 people, 11 jobs)")
+	_check(int(away.population.current) == 16 and Sim.staffing(away, data, t) == 1.0, "the cabin let enough people in to fill every job (16 people, 11 jobs)")
 	var made := 0
 	for b in away.buildings:
 		made += int(b.storage.get("wheat", 0))
@@ -1578,7 +1578,7 @@ func _needs_data() -> Dictionary:
 	data.config["happiness"] = {"needs_from_population": 10, "food_scores": [0.0, 0.7, 1.0],
 		"weights": {"food": 0.5, "jobs": 0.5},
 		"growth_speeds": [{"from": 0, "speed": 0.0}, {"from": 0.2, "speed": 0.5}, {"from": 0.5, "speed": 1.0}, {"from": 0.8, "speed": 1.5}]}
-	data.buildings["big_house"] = {"category": "residential", "build_cost": 0, "buildable": true, "population_capacity": 100}
+	data.buildings["big_house"] = {"category": "residential", "build_cost": 0, "buildable": true, "households": 50}
 	return data
 
 
@@ -1676,8 +1676,8 @@ func _life_data(birth: float, death: float) -> Dictionary:
 	data.config["population_growth_seconds"] = 0
 	data.config["starting_population"] = 10
 	data.config["life"] = {"birth_rate_per_hour": birth, "death_rate_per_hour": death, "grow_up_hours": 2, "child_group_hours": 1}
-	data.buildings["big_house"] = {"category": "residential", "build_cost": 0, "buildable": true, "population_capacity": 100}
-	data.buildings["home"] = {"category": "residential", "build_cost": 0, "buildable": true, "population_capacity": 10}
+	data.buildings["big_house"] = {"category": "residential", "build_cost": 0, "buildable": true, "households": 50}
+	data.buildings["home"] = {"category": "residential", "build_cost": 0, "buildable": true, "households": 5}
 	return data
 
 
@@ -1695,16 +1695,13 @@ func test_starting_population() -> void:
 func test_births_and_growing_up() -> void:
 	var data := _life_data(0.1, 0.0)  # 10 adults: one baby an hour
 	var state := Sim.new_game(data, T0)
-	Sim.settle(state, data, T0 + 36000)
-	_check(int(state.population.current) == 10 and int(Sim.people_stats(state).born) == 0, "homes full: no babies, however long")
-	Sim.build(state, data, "big_house", Vector2i(5, 5), T0 + 36000)
-	Sim.settle(state, data, T0 + 36000 + 3599)
+	Sim.settle(state, data, T0 + 3599)
 	_check(int(state.population.current) == 10, "no baby before the first hour is up")
-	var report := Sim.settle(state, data, T0 + 36000 + 3601)
+	var report := Sim.settle(state, data, T0 + 3601)
 	_check(int(state.population.current) == 11 and Sim.children_count(state) == 1 and Sim.adults(state) == 10, "a baby after an hour: a child, not an adult")
 	_check(int(report.get("born", 0)) == 1, "the report counts the birth")
 	var grows_up := float(Sim.children_groups(state)[0].grows_up_at)
-	_check(grows_up > T0 + 36000 + 3601 and grows_up <= T0 + 36000 + 3600 + 7200, "it grows up within 2 hours of being born")
+	_check(grows_up > T0 + 3601 and grows_up <= T0 + 3600 + 7200, "it grows up within 2 hours of being born")
 	Sim.settle(state, data, grows_up - 1.0)
 	_check(Sim.children_count(state) == 2 and Sim.adults(state) == 10, "a second baby, and nobody has grown up yet")
 	report = Sim.settle(state, data, grows_up)
@@ -1731,18 +1728,142 @@ func test_deaths_in_proportion() -> void:
 	_check(Sim.adults(town) == 1 and Sim.hired(farm) == 1, "a worker died: the farm has one worker left")
 
 
-func test_demolish_home_who_leaves() -> void:
+## Babies need a free child place in a household with a real home: 2 per household. Homeless
+## households (no home for them) have none.
+func test_babies_need_child_places() -> void:
+	var data := _life_data(0.1, 0.0)
+	var state := Sim.new_game(data, T0)  # 10 adults: 5 households in the house, 10 child places
+	state.population.current = 24  # 14 adults (7 households, 2 of them homeless) + 10 children
+	state.population.children = [{"count": 10, "grows_up_at": T0 + 900000}]
+	Sim.settle(state, data, T0 + 36000)
+	_check(int(Sim.people_stats(state).born) == 0, "every place taken (5 housed households x 2): no babies, however long")
+	_check(int(Sim.housing(state, data, T0 + 36000).homeless) == 2, "2 households have no home")
+	Sim.build(state, data, "home", Vector2i(5, 5), T0 + 36000)  # room for the 2 homeless households
+	_check(int(Sim.housing(state, data, T0 + 36000).child_places) == 14, "housed, they have child places too")
+	Sim.settle(state, data, T0 + 36000 + 3600)
+	_check(int(Sim.people_stats(state).born) >= 1, "so babies come again")
+	# Only adults with a home have babies: 14 adults, room for 10 of them, no children yet.
+	var crowded := Sim.new_game(data, T0)
+	crowded.population.current = 14
+	_check(is_equal_approx(Sim.next_birth_at(crowded, data, T0), T0 + 3600.0), "10 housed adults x 0.1 an hour: a baby in an hour (the 4 homeless add none)")
+
+
+## Demolishing a home: nobody leaves. Its households move into other homes, or become homeless
+## and put up Makeshift Huts, which go again once there's a home for them.
+func test_demolish_home_makes_huts() -> void:
 	var data := _life_data(0.0, 0.0)
+	data.buildings["hut"] = {"category": "residential", "build_cost": 0, "buildable": false, "households": 1, "hut": true}
 	var state := Sim.new_game(data, T0)
 	var home := Sim.find_building(state, Sim.build(state, data, "home", Vector2i(5, 5), T0).building_id)
-	var farm := Sim.find_building(state, Sim.build(state, data, "crew_farm", Vector2i(6, 6), T0).building_id)
-	state.population.current = 18  # 4 adults (2 at the farm) + 14 children, in room for 20
-	state.population.children = [{"count": 7, "grows_up_at": T0 + 3600}, {"count": 7, "grows_up_at": T0 + 7200}]
-	Sim._hire(state, data, T0)
-	Sim.demolish(state, data, home.id, T0)  # room 10: 8 must leave
-	_check(int(state.population.current) == 10, "8 people moved away")
-	_check(Sim.adults(state) == 2 and Sim.hired(farm) == 2, "the 2 unemployed adults left first; the workers stayed")
-	_check(Sim.children_count(state) == 8 and Sim.children_groups(state).size() == 2 and int(Sim.children_groups(state)[1].count) == 1, "then 6 children, youngest first")
+	state.population.current = 20  # 10 households: 5 in the house, 5 in the home
+	Sim.settle(state, data, T0)
+	var huts := func(): return state.buildings.filter(func(b): return b.type == "hut")
+	_check(huts.call().is_empty(), "everyone has a home: no huts")
+	Sim.demolish(state, data, home.id, T0)
+	_check(int(state.population.current) == 20, "nobody leaves")
+	_check(huts.call().size() == 5, "5 homeless households: 5 huts appear")
+	var cells := {}
+	for hut in huts.call():
+		cells[str(hut.position)] = true
+		_check(Sim.home_residents(state, data, hut, T0) == 2, "a homeless household of 2 in each hut")
+	_check(cells.size() == 5, "each hut on its own tile")
+	_check(not Sim.can_demolish(state, data, huts.call()[0].id).ok, "huts can't be demolished: they go by themselves")
+	Sim.build(state, data, "home", Vector2i(5, 5), T0)
+	_check(huts.call().is_empty(), "a new home: the huts are gone")
+
+
+# --- Housing: households, wealth & rent (plan.md §5.18) ----------------------------------
+
+## Life test data plus wealth classes (Broke / Poor / Rich), $15 workers ($30 with the "big"
+## bonus = Rich), and three home types: Public (2 households, Broke / Poor, free, 0.3 MW),
+## Regular (2, Poor / Rich, $2 rent, 0.5 MW), Villa (1, Rich, $15 rent, 1 MW), plus huts.
+## A new game has no homes and nobody in it.
+func _housing_data() -> Dictionary:
+	var data := _life_data(0.0, 0.0)
+	data.config["starting_population"] = 0
+	data.config["starting_buildings"] = [{"type": "office", "position": [0, 0]}, {"type": "store", "position": [2, 0]}]
+	data.config["worker_types"] = {"low_skilled": {"name": "Low-skilled", "wage_per_hour": 15}}
+	data.config["wage_bonuses"] = {"none": 0.0, "big": 1.0}
+	data.config["housing"] = {"adults_per_household": 2, "children_per_household": 2, "rent_share": 0.3,
+		"wealth_classes": [{"id": "broke", "name": "Broke", "from_wage": 0}, {"id": "poor", "name": "Poor", "from_wage": 0.01},
+			{"id": "rich", "name": "Rich", "from_wage": 30}]}
+	data.buildings["hut"] = {"category": "residential", "build_cost": 0, "buildable": false, "households": 1, "hut": true}
+	data.buildings["public"] = {"category": "residential", "build_cost": 0, "buildable": true, "households": 2, "housing_tier": 1,
+		"wealth": ["broke", "poor"], "rent_per_household": 0, "power_mw": 0.3}
+	data.buildings["regular"] = {"category": "residential", "build_cost": 0, "buildable": true, "households": 2, "housing_tier": 2,
+		"wealth": ["poor", "rich"], "rent_per_household": 2, "power_mw": 0.5}
+	data.buildings["villa"] = {"category": "residential", "build_cost": 0, "buildable": true, "households": 1, "housing_tier": 3,
+		"wealth": ["rich"], "rent_per_household": 15, "power_mw": 1.0}
+	return data
+
+
+## 10 adults: 2 Rich (farm with the big bonus), 2 Poor (farm at $15), 6 Broke; a Public, a
+## Regular and a Villa. Returns [state, data].
+func _housing_town() -> Array:
+	var data := _housing_data()
+	var state := Sim.new_game(data, T0)
+	Sim.build(state, data, "public", Vector2i(5, 5), T0)
+	Sim.build(state, data, "regular", Vector2i(6, 5), T0)
+	Sim.build(state, data, "villa", Vector2i(7, 5), T0)
+	Sim.build(state, data, "crew_farm", Vector2i(5, 7), T0)
+	var rich_farm: String = Sim.build(state, data, "crew_farm", Vector2i(6, 7), T0).building_id
+	Sim.set_bonus(state, data, rich_farm, "big", T0)
+	state.population.current = 10
+	Sim.settle(state, data, T0)  # hires, then houses everyone
+	return [state, data]
+
+
+func test_wealth_classes() -> void:
+	var town := _housing_town()
+	var state: Dictionary = town[0]
+	var data: Dictionary = town[1]
+	_check(Sim.wealth_class_of(data, 0.0) == "broke" and Sim.wealth_class_of(data, 15.0) == "poor" and Sim.wealth_class_of(data, 30.0) == "rich", "class from the wage: none = Broke, $15 = Poor, $30 = Rich")
+	var classes := Sim.adults_by_class(state, data, T0)
+	_check(int(classes.rich.adults) == 2 and int(classes.poor.adults) == 2 and int(classes.broke.adults) == 6, "2 Rich, 2 Poor and 6 Broke adults")
+	_check(is_equal_approx(float(classes.rich.wages), 60.0), "the Rich earn $30 an hour each")
+
+
+func test_who_lives_where() -> void:
+	var town := _housing_town()
+	var state: Dictionary = town[0]
+	var data: Dictionary = town[1]
+	var homes := {}
+	for b in state.buildings:
+		homes[b.type] = b.id
+	var h := Sim.housing(state, data, T0)
+	_check(int(h.homes[homes.villa].households) == 1 and int(h.homes[homes.villa].adults) == 2, "the Rich household takes the Villa (rent $15 <= 30% of $60)")
+	_check(int(h.homes[homes.regular].households) == 1, "the Poor household takes a Regular House (rent $2 <= 30% of $30)")
+	_check(int(h.homes[homes.public].households) == 2, "Broke households fill the free Public Housing")
+	_check(int(h.homeless) == 1 and int(h.classes.broke.homeless) == 1, "one Broke household is left without a home")
+	_check(state.buildings.filter(func(b): return b.type == "hut").size() == 1, "...so a Makeshift Hut appears for it")
+	_check(is_equal_approx(float(h.rent_per_hour), 17.0), "rent: $15 + $2 an hour")
+	_check(is_equal_approx(float(h.power_mw), 1.8), "every home is lived in: 1 + 0.5 + 0.3 MW")
+	Sim.settle(state, data, T0 + 3600)
+	_check(int(Sim.stats(state).income.get("rent", 0)) == 1700, "an hour later: $17 rent collected")
+
+
+## A developer can change a home type's rent; households that can't afford it move out.
+func test_dev_rent() -> void:
+	var town := _housing_town()
+	var state: Dictionary = town[0]
+	var data: Dictionary = town[1]
+	_check(Sim.dev_set_rent(state, data, "regular", 20.0, T0).ok, "rent for a Regular House set to $20")
+	var h := Sim.housing(state, data, T0)
+	_check(is_equal_approx(Sim.rent_per_household(state, data, "regular"), 20.0), "the new rent is used")
+	_check(int(h.classes.poor.homeless) == 0 and int(h.homeless) == 2, "the Poor household moves to Public Housing (it can't pay $20); 2 Broke households are now homeless")
+	_check(state.buildings.filter(func(b): return b.type == "hut").size() == 2, "2 huts now")
+	_check(is_equal_approx(float(h.rent_per_hour), 15.0), "only the Villa pays rent now")
+	Sim.dev_set_rent(state, data, "regular", -1.0, T0)
+	_check(is_equal_approx(Sim.rent_per_household(state, data, "regular"), 2.0), "reset: back to the data file's rent")
+	_check(not Sim.dev_set_rent(state, data, "crew_farm", 5.0, T0).ok, "only homes have rent")
+
+
+## An empty home uses no power.
+func test_empty_home_uses_no_power() -> void:
+	var data := _housing_data()
+	var state := Sim.new_game(data, T0)
+	Sim.build(state, data, "villa", Vector2i(5, 5), T0)
+	_check(float(Sim.housing(state, data, T0).power_mw) == 0.0, "nobody lives there: 0 MW")
 
 
 ## Births, deaths and children growing up while away = the same while playing in 7-second steps.

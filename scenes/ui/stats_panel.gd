@@ -90,6 +90,22 @@ func _people_page() -> VBoxContainer:
 	_value_row(groups, "Children", "group_children")
 	_adults_bar = _bar(groups, "GoldBar")  # gold = adults' share, the dark rest = children
 	groups.add_child(_value("group_note"))
+	var homes := _section(page, "Housing")
+	for type_id in GameData.buildings:
+		var def: Dictionary = GameData.buildings[type_id]
+		if int(def.get("households", 0)) > 0:
+			_value_row(homes, def.name, "home_" + type_id)
+	_value_row(homes, "Rent coming in", "rent_rate")
+	_value_row(homes, "Homes' power use", "homes_power")
+	var wealth := _section(page, "Households by wealth")
+	for c in Economy.wealth_classes():
+		_value_row(wealth, str(c.name), "wealth_" + str(c.id))
+	var wealth_note := _body("Wealth comes from the wage: no job = Broke, the minimum wage = Poor, a wage bonus = Well off. Rich classes need skilled jobs (schools, later).")
+	wealth_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	wealth_note.custom_minimum_size.x = WIDTH - 90
+	wealth_note.add_theme_font_size_override("font_size", 15)
+	wealth_note.modulate.a = 0.8
+	wealth.add_child(wealth_note)
 	var kids := _section(page, "Children by age")
 	kids.add_child(_value("children_by_age"))
 	var flow := _section(page, "Comings and goings")
@@ -142,6 +158,7 @@ func _cash_page() -> VBoxContainer:
 	var money_in := _section(page, "All time: money in")
 	for res in GameData.resources:
 		_value_row(money_in, "Sales of %s" % GameData.resources[res].name, "in_sales_" + res)
+	_value_row(money_in, "Rent", "in_rent")
 	_value_row(money_in, "Demolish refunds", "in_demolish")
 	_value_row(money_in, "Total", "in_total")
 	var money_out := _section(page, "All time: money out")
@@ -286,13 +303,14 @@ func _refresh_people() -> void:
 	_show("need_jobs", "%d%% · %d of %d adults have a job" % [roundi(100.0 * float(happy.jobs)), e.employed, e.adults], DOWN if float(happy.jobs) < 1.0 else LineChart.INK)
 	var speed := float(happy.growth_speed)
 	var move_in := _speed_text(speed)
-	if e.population >= cap:
-		move_in += " · no room: build a house"
+	var child_room: bool = int(e.children) < int(Economy.housing().child_places)
+	if not child_room:
+		move_in += " · no free child places"
 	elif float(happy.grace_left) > 0.0:
 		move_in += " · new village: needs count in %s" % UITheme.duration(float(happy.grace_left))
 	elif not happy.needs_count:
 		move_in += " · small village, needs don't count yet"
-	_show("move_in", move_in, DOWN if speed < 1.0 or e.population >= cap else LineChart.INK)
+	_show("move_in", move_in, DOWN if speed < 1.0 or not child_room else LineChart.INK)
 	_show("employed", str(e.employed))
 	_show("unemployed", str(e.unemployed), DOWN if e.unemployed > 0 else LineChart.INK)
 	_show("open_jobs", str(e.open_jobs))
@@ -324,6 +342,7 @@ func _refresh_groups(e: Dictionary) -> void:
 	_show("group_children", "%d · %d%%" % [e.children, roundi(100.0 * e.children / people)])
 	_adults_bar.value = 100.0 * e.adults / people
 	_show("group_note", "Adults work and have babies. Children don't work yet.")
+	_refresh_housing()
 	var lines: Array[String] = []
 	var groups := Economy.children_groups()
 	var now := TimeService.now()
@@ -353,10 +372,43 @@ func _refresh_groups(e: Dictionary) -> void:
 	var birth := Economy.next_birth_in()
 	if not is_inf(birth):
 		_show("next_birth", "Next baby in %s" % UITheme.duration(maxf(birth, 0.0)))
-	elif e.population >= Economy.population_capacity():
-		_show("next_birth", "No babies: every home is full. Build a house.", DOWN)
+	elif int(Economy.housing().housed_adults) <= 0:
+		_show("next_birth", "No babies: no adults have a home.", DOWN)
+	elif e.children >= int(Economy.housing().child_places):
+		_show("next_birth", "No babies: every household with a home already has 2 children.", DOWN)
 	else:
 		_show("next_birth", "No babies right now: the village is too unhappy.", DOWN)
+
+
+## Housing: households per home type, the homeless, rent and power; households by wealth class.
+func _refresh_housing() -> void:
+	var h := Economy.housing()
+	var used := {}  # home type -> households living there
+	var room := {}  # home type -> households it has room for (huts: how many stand)
+	for b in Economy.state.buildings:
+		var def: Dictionary = GameData.buildings.get(b.type, {})
+		if int(def.get("households", 0)) <= 0 or not Economy.is_built(b):
+			continue
+		room[b.type] = int(room.get(b.type, 0)) + int(def.households)
+		used[b.type] = int(used.get(b.type, 0)) + int(h.homes.get(b.id, {}).get("households", 0))
+	for type_id in GameData.buildings:
+		if not _values.has("home_" + type_id):
+			continue
+		if GameData.buildings[type_id].get("hut", false):
+			var homeless := int(h.homeless)
+			_show("home_" + type_id, "%d homeless household%s" % [homeless, "" if homeless == 1 else "s"], DOWN if homeless > 0 else LineChart.INK)
+		else:
+			_show("home_" + type_id, "%d of %d households" % [int(used.get(type_id, 0)), int(room.get(type_id, 0))])
+	_show("rent_rate", "%s an hour" % UITheme.money(roundi(float(h.rent_per_hour) * 100.0)), UP if float(h.rent_per_hour) > 0.0 else LineChart.INK)
+	_show("homes_power", "%s MW (once electricity exists)" % str(snappedf(float(h.power_mw), 0.1)))
+	for id in h.classes:
+		if not _values.has("wealth_" + str(id)):
+			continue
+		var c: Dictionary = h.classes[id]
+		var text := "%d households · %d adults" % [int(c.households), int(c.adults)]
+		if int(c.homeless) > 0:
+			text += " · %d homeless" % int(c.homeless)
+		_show("wealth_" + str(id), text, DOWN if int(c.homeless) > 0 else LineChart.INK)
 
 
 func _refresh_cash() -> void:
@@ -382,8 +434,9 @@ func _refresh_cash() -> void:
 		var earned := int(st.sales_by_item.get(res, 0))
 		total_in += earned
 		_show("in_sales_" + res, UITheme.money(earned))
+	_show("in_rent", UITheme.money(int(st.income.get("rent", 0))))
 	_show("in_demolish", UITheme.money(int(st.income.demolish)))
-	_show("in_total", UITheme.money(total_in + int(st.income.demolish)), UP)
+	_show("in_total", UITheme.money(total_in + int(st.income.get("rent", 0)) + int(st.income.demolish)), UP)
 	_show("out_construction", UITheme.money(int(st.spending.construction)))
 	_show("out_wages", UITheme.money(int(st.spending.get("wages", 0))))
 	_show("out_water", UITheme.money(int(st.spending.get("water", 0))))

@@ -243,12 +243,12 @@ Everything stays **one calculation**, never a replay. Anything that changes powe
   - **A small village doesn't complain:** needs only count from **10 people** (`happiness.needs_from_population`); below that, happiness is 100%. So the start of the game (no Supermarket yet) isn't punished
   - **Effect: move-in speed only**, in steps (`happiness.growth_bands`). Nobody leaves and nobody works slower:
 
-    | Happiness | Move-in speed | One person every (3 min base, since 2026-10-03) |
-    |---|---|---|
-    | 80–100% | ×1.5 | 2 min |
-    | 50–79% | ×1 | 3 min |
-    | 20–49% | ×0.5 | 6 min |
-    | 0–19% | stops | — |
+	| Happiness | Move-in speed | One person every (3 min base, since 2026-10-03) |
+	|---|---|---|
+	| 80–100% | ×1.5 | 2 min |
+	| 50–79% | ×1 | 3 min |
+	| 20–49% | ×0.5 | 6 min |
+	| 0–19% | stops | — |
 
   - **Shown** as a happiness % on the HUD next to Population; tapping it opens a breakdown (e.g. "Food 70%: 1 of 2 foods on shelves", "Jobs 100%", and the current move-in speed)
   - **Offline stays one calculation:** happiness can only change at predictable moments the settle already splits on (a shelf sells out, a person arrives, a building finishes or changes workers, a player action), so each piece of time grows at that piece's speed. When the speed step changes, the growth anchor restarts from that moment
@@ -263,11 +263,11 @@ Everything stays **one calculation**, never a replay. Anything that changes powe
   - **Two groups:** **adults** move in, work and have babies; **children** are born here, live in homes and eat, but don't work. Population = adults + children. Elderly / old age: a later idea
   - **Immigrants are adults.** Moving in works exactly as now (happiness sets the pace)
   - **Births:** babies per hour = adults × `birth_rate_per_hour` (0.02: 100 adults ≈ 2 an hour) × the move-in speed from happiness (an unhappy village has fewer babies; at 0% none). Part-babies carry over (`birth_carry`), like part-cents of wages, so many short settles give the same as one long one
-  - **Room:** children take home room like anyone. No room → no births (and no move-ins). Planned (§5.18): room will be counted in **households** of 2 adults + 2 children
+  - **Room:** since housing types (§5.18), room is counted in **households** of 2 adults + 2 children. A baby needs a free child place in a household with a real home; a newcomer (when immigration returns) needs room for an adult in a real home
   - **Growing up:** a child becomes an adult (a free worker, hired by the usual rules) `grow_up_hours` (24) after birth. Births in the same game hour form one **age group** `{count, grows_up_at}`, so the save holds at most ~24 groups
   - **Deaths: a steady rate (decided 2026-10-03).** Deaths per hour = people × `death_rate_per_hour` (0.005 = 0.5% an hour, an average life of ~200 hours ≈ 8 real days). **In proportion:** adults and children each die at that rate with their own part-person carry, so each group loses its share. A child is taken from the youngest age group; an adult like when a home is demolished: unemployed first, then workers at the smallest bonus. A dead worker's post opens and the usual hiring rules fill it. Deaths free home room, so babies and newcomers keep the village turning over. Rejected for now: **life stages** (child → adult → elderly → dies at a fixed age), because immigrants all arrive "the same age" and would die in waves; it may come back with elderly people and pensions
   - **Needs:** Food counts everyone (children eat: Supermarket demand = all people). Jobs = share of **adults** with a job. The "needs from 10 people" threshold counts everyone
-  - **Fewer homes (a house demolished):** unemployed adults leave first, then children (youngest group first), then workers by the smallest-bonus rule
+  - **Fewer homes (a house demolished):** ~~unemployed adults leave first, then children, then workers~~ replaced by housing types (§5.18): nobody leaves; households without a home put up Makeshift Huts
   - **Offline stays one calculation:** births and deaths happen at predictable moments (their rates only change at moments settling already splits on), and growing up is a fixed timestamp, so settling also splits at each birth, death and `grows_up_at`, like arrivals today
   - **Save (version 6, built):** `population.children: [{count, grows_up_at}]`, `population.life_carry` (`{born, adult_deaths, child_deaths}`: part-people still to come), `started_at` (for the grace period), `stats.people`. The migration step makes everyone in an older save an adult, with no part-people and no grace
   - **Display:** the HUD stays "people / room"; Welcome back lists "+N moved in, +N born, +N grew up, −N died"
@@ -275,12 +275,12 @@ Everything stays **one calculation**, never a replay. Anything that changes powe
     - **Groups now:** Adults (split into Employed / Unemployed) and Children, each with its count and share of the village (e.g. "Children 18 · 15%"), shown as one stacked bar
     - **Children by age:** one row per age group, e.g. "6 children grow up in 3 h 20 min", soonest first
     - **Comings and goings, last hour and all time:** moved in, born, grew up, died, and the net change ("+12 people this hour")
-    - **Graphs:** the People graph gets lines for Adults, Children and Employed (the history points also record `adults` and `children`), plus a **Births** graph (born, died, grew up per hour, averaged over the hour before each point: they're rare events)
-    - Counters live in `stats` (`stats.people: {moved_in, born, grew_up, died}`, all time), so they're saved and the last-hour numbers come from the history, like cash flow
+	- **Graphs:** the People graph gets lines for Adults, Children and Employed (the history points also record `adults` and `children`), plus a **Births** graph (born, died, grew up per hour, averaged over the hour before each point: they're rare events)
+	- Counters live in `stats` (`stats.people: {moved_in, born, grew_up, died}`, all time), so they're saved and the last-hour numbers come from the history, like cash flow
     - New groups slot in later without a new screen: Elderly (old age) and education levels (§5.7: Uneducated / High School / College graduates)
   - **Why groups, not individuals:** simulating each person would mean rewriting hiring, saves and offline catch-up, and is heavy on phones and on a Phase 4 server. For Tropico flavour, tapping a house could later show **generated** named residents ("Maria, 34, Bakery worker"), made from a fixed seed and never stored
   - **Later ideas (not now):** schools take children (§5.7: children → graduates), elderly & old age, a Clinic / healthcare changing the death rate, special events (a player-paid festival or immigration campaign, or calendar immigration waves; never random dice), the named-residents view
-  - **Code:** `Simulation.adults`, `children_count`, `children_groups`, `people_stats`, `people_flow`, `next_birth_at`; rates read at the start of each settle piece (`_life_rates`), the piece ends at the next birth, death or grow-up (`_next_life_event`), then `_settle_life` applies it; `_remove_children` / `_remove_people` for deaths and demolished homes; `_hire` and `employment()` count adults. Screens: house window ("next baby in the village in …"), Statistics → People (Population by group, Children by age, Comings and goings), Graphs (Adults / Children lines, Births), Welcome back (Born / Grew up / Died)
+  - **Code:** `Simulation.adults`, `children_count`, `children_groups`, `people_stats`, `people_flow`, `next_birth_at`; rates read at the start of each settle piece (`_life_rates`), the piece ends at the next birth, death or grow-up (`_next_life_event`), then `_settle_life` applies it; `_remove_children` for deaths (since housing types, demolished homes send nobody away, §5.18); `_hire` and `employment()` count adults. Screens: house window ("next baby in the village in …"), Statistics → People (Population by group, Children by age, Comings and goings), Graphs (Adults / Children lines, Births), Welcome back (Born / Grew up / Died)
 - In **Phase 2/3**, once Employees exist, **Employment Matching** activates: Available = Population − Employed. Understaffed buildings run at reduced capacity/output rather than failing to hire outright.
 
 ### 5.7 Education System (Phase 3+)
@@ -296,7 +296,7 @@ Everything stays **one calculation**, never a replay. Anything that changes powe
 - **Construction Office** — mandatory anchor building (Town-Hall equivalent); required to exist before other construction; has its own level that caps other buildings' max upgrade level, separate from the XP/Level system (leveling active from Phase 2)
 - **Starting kit (Phase 1a):**
   - Construction Office — pre-built, Level 1, already placed
-  - **5 Small Houses** (Residential) — pre-built, already placed, home to the **50 founding adults** (`starting_population`, decided 2026-10-03; before, 1 house and 0 people). Housing types will replace them with Public Housing (§5.18)
+  - **5 Public Housing** buildings (Residential, §5.18) — pre-built, already placed, home to the **50 founding adults** (`starting_population`, decided 2026-10-03; before, 1 Small House and 0 people)
   - Warehouse — pre-built (added 2026-10-02, §5.10), room for 10,000 goods with its 4 workers
   - Starting cash — **$10,000** (`starting_cash` in `game_config.json`; raised from $5,750 on 2026-10-02 so a new player can afford the basic buildings, including their first Supermarket, §5.16; still tunable)
   - Wheat Farm — **not** pre-built; building it is the player's first tutorial action
@@ -423,7 +423,7 @@ A coastal building, inspired by Tropico's docks. Unlocked later in the game (whe
 
 **Why:** the first fixed prices (Wheat $2, Flour $4, Bread $8) made raw wheat the best business: the Farm paid for itself in 1.9 hours, the Mill in 14 and the Bakery in 30, so processing didn't pay. Prices now follow a rule, so every building pays off the same way, and later costs (power, water) flow into prices by themselves.
 
-> **This is the SELLING price, not the player's cost** (clarified 2026-10-02). It is the designer's price, built from **standard numbers** in the data files (minimum wage, base water price, a standard crew), so a player's own choices never move it. What it actually cost *you* to make something is the **cost per unit** (§5.14): running costs only, no building share. Selling price − cost per unit − tax at the sale = your profit. (Same split as Sim Companies: research report `C:Program FilesProject_AIMYSIMSeportsSim Companies production cost.md`.)
+> **This is the SELLING price, not the player's cost** (clarified 2026-10-02). It is the designer's price, built from **standard numbers** in the data files (minimum wage, base water price, a standard crew), so a player's own choices never move it. What it actually cost *you* to make something is the **cost per unit** (§5.14): running costs only, no building share. Selling price − cost per unit − tax at the sale = your profit. (Same split as Sim Companies: research report `C:Program FilesProject_AIMYSIMSeportsSim Companies production cost.md`.)
 
 **The formula** (Retail price of one unit; for the building that makes it, at full staff):
 
@@ -596,7 +596,7 @@ The Retail building (selling to the village) is the **Supermarket** (`supermarke
 - **Fruit vs. wheat is balanced by demand** (decided 2026-10-02): fruit needs one building to earn, wheat needs a Farm + Mill. If everyone grows fruit, fruit floods and Flour/Bread get scarce, so their prices and demand rise. Needs demand in the game: dynamic pricing (Section 11) and, from Phase 4, other companies buying
 - **Processing ideas for later** (optional extra value, not needed to sell): Juice Factory (Mango/Pineapple juice, Lemonade), Banana Bread (a second Bakery recipe: Flour + Banana), Coconut Oil and Coconut Vinegar (Oil Mill / Vinegar Plant), Banana Chips (Banana + Coconut Oil), Dried Mango, Pickled Papaya (Papaya + Vinegar), Canned Pineapple (needs cans from Steel)
 
-### 5.18 Housing types, households, wealth & rent (planned 2026-10-03, not built)
+### 5.18 Housing types, households, wealth & rent (planned and built 2026-10-03, on trial)
 
 Housing gets **types**, each with a name, a base build cost, a number of households, the wealth class it's for, a rent per household and a power use. Inspired by Tropico's housing, kept as group counts (no per-person simulation, like §5.6). All numbers are PLACEHOLDERS (in `buildings.json` when built). More types later: apartments, condos and so on.
 
@@ -627,6 +627,17 @@ Housing gets **types**, each with a name, a base build cost, a number of househo
 - **Power** (decided 2026-10-03): an **empty home uses no power**; a home with anyone living in it uses its type's **fixed MW**, full or not. Counted in the village demand once electricity exists (§5.5); the player (the landlord) pays for it, Public Housing included
 - **Starting kit** (decided 2026-10-03): the 50 founders (25 households) live in **Public Housing**: 5 buildings = 30 households, replacing today's 5 Small Houses (§5.8)
 - **Later:** apartments, condos and more types; a Housing need in happiness (§5.6); housing upgrades (§5.15)
+- **✅ Built 2026-10-03 — what the rules do, including choices made while building:**
+  - **Fallback:** households first take homes *meant* for their class; any still without a home then take any leftover home they can afford, so a Well off household lives in Public Housing rather than on the street, but Broke and Poor households get first claim on it
+  - **Babies need child places:** 2 per household **with a real home**; homeless households in huts have none. More homes don't add child places by themselves (households come from adults), but housing the homeless does. This replaces the old "no room in homes → no births" rule
+  - **Nobody leaves any more:** demolishing a home makes its households move to other homes or put up huts (the old "people over the room move away" rule is gone)
+  - **Huts can't be demolished** (they'd only go up again): they go by themselves once their household has a home. They take a tile, so a build on a tile where a hut just went up is refused ("That spot is taken")
+  - **Rent** is collected like wages (also while away), shown as "Rent" under money in (Statistics → Cash flow) and in the Welcome back window
+  - **Power** is only counted for now (Statistics → People → Housing: "Homes' power use … once electricity exists")
+  - **Developer option** (F12 → Developer → "Rent per household"): −$1 / +$1 / +$10 / Reset for each home type; the change is kept in the save (`dev_rent`) until reset, marked with * in the window
+  - **Screens:** house window ("4 of 6 households · 7 adults, 3 children · rent $4.00/h"), Build Menu ("6 households · for Broke, Poor · free · 0.3 MW when lived in"), Statistics → People: Housing (households per type, homeless, rent coming in, homes' power) and Households by wealth
+  - **Sprites:** temporary Kenney stand-ins (Public Housing `building-e`, Villa `building-a`, Makeshift Hut `detail-awning`), like the other buildings
+  - **Code:** `Simulation.housing()` (who lives where, worked out from the counts), `adults_by_class`, `wealth_class_of`, `rent_per_household`, `adult_room`, `_update_huts` (run after every hiring), `_collect_rent`, `dev_set_rent`. No save version change: huts are ordinary buildings, and `dev_rent` / `rent_carry` are optional
 
 ## 6. UI/UX Screens
 
@@ -820,7 +831,7 @@ A hidden dev menu (key combo on PC, secret tap sequence on mobile) for testing t
 - [x] Births (5.6): people moved in every 10 s, far faster than babies are born. Should moving in slow down so births matter? → **Yes: 1 every 3 minutes at normal speed** (decided 2026-10-03, PLACEHOLDER). Check that the Supermarket's appetites (tuned for ~40 people) still feel right with slower growth
 - [ ] Births & deaths (5.6): who leaves first when homes shrink (now: unemployed adults, then children, then workers)? Should a Clinic or unhappiness change the death rate?
 - [x] Starting population → **50 adults in 5 Small Houses; immigration off for now, the village grows through births; a 3-hour grace period for needs** (decided and built 2026-10-03, 5.6, 5.8)
-- [ ] Births (5.6): with 5 full starting houses no baby is born until the player builds another house. Intended pressure, or should the start leave some room?
+- [x] Births (5.6): with 5 full starting houses no baby was born until the player built another house → **answered by housing types (5.18): babies need child places in households, so the founders have babies from the start**
 - [ ] Housing (5.18): rent amounts and the affordability share (20%?); households, build costs and power per type
 - [ ] Housing (5.18): where Makeshift Huts may appear, and do they block building there?
 - [ ] Housing (5.18): does a household split when its children grow up (a new household needs a new home)?
@@ -866,6 +877,10 @@ A hidden dev menu (key combo on PC, secret tap sequence on mobile) for testing t
 Both are functional, self-contained HTML/JS artifacts used to validate the trading-mechanic math and UX before porting logic into Godot.
 
 ## 15. Revision Log
+
+**2026-10-03 (housing types built, on trial):**
+- Makeshift Hut, Public Housing, Regular House (the old Small House, same id so saves keep their houses) and Villa; households of 2 adults + 2 children; wealth from wages; rent to the player; huts appear for the homeless; homes' power counted for later. New games start in 5 Public Housing. A developer option changes the rent per home type (5.18)
+- Changed while building: households fall back to any home they can afford; babies need a child place in a household with a home; demolishing a home no longer sends people away; huts can't be demolished
 
 **2026-10-03 (housing types planned, no code yet):**
 - Housing types (5.18): Makeshift Hut (appears by itself for the homeless), Public Housing (free, Broke / Poor), Regular House (rent, Poor / Well off), Villa (rent, Rich / Filthy rich). A household = 2 adults + 2 children; wealth class from wages; rent goes to the player; an occupied home uses its type's fixed MW, an empty one none; the founders will live in Public Housing

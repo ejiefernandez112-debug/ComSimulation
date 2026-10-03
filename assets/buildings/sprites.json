@@ -23,12 +23,33 @@
 			],
 			"model": "building-j.glb"
 		},
+		"makeshift_hut": {
+			"anchor": [
+				41.0,
+				84.0
+			],
+			"model": "detail-awning.glb"
+		},
+		"public_housing": {
+			"anchor": [
+				46.0,
+				46.0
+			],
+			"model": "building-e.glb"
+		},
 		"small_house": {
 			"anchor": [
 				50.0,
 				77.0
 			],
 			"model": "building-c.glb"
+		},
+		"villa": {
+			"anchor": [
+				54.0,
+				122.0
+			],
+			"model": "building-a.glb"
 		},
 		"wheat_farm": {
 			"anchor": [
