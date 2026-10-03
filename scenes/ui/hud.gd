@@ -166,9 +166,11 @@ func _refresh() -> void:
 	var happy := Economy.happiness()
 	_happiness.text = "%d%% happy" % roundi(100.0 * float(happy.score))
 	_happiness_bar.value = 100.0 * float(happy.score)
-	# Green: people move in at normal speed or faster; gold: slower; red: nobody moves in.
+	# Green: babies come at normal speed or faster; gold: slower; red: no babies, or people are
+	# leaving the island.
 	var speed := float(happy.growth_speed)
-	_happiness_bar.theme_type_variation = "GreenBar" if speed >= 1.0 else ("GoldBar" if speed > 0.0 else "RedBar")
+	var leaving := float(happy.get("leave_per_hour", 0.0)) > 0.0
+	_happiness_bar.theme_type_variation = "RedBar" if leaving or speed <= 0.0 else ("GreenBar" if speed >= 1.0 else "GoldBar")
 	var stored := Economy.warehouse_total()
 	var cap := Economy.warehouse_cap()
 	_warehouse.text = "%s / %s" % [UITheme.number(stored), UITheme.number(cap)]

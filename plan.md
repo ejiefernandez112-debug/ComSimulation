@@ -238,23 +238,26 @@ Everything stays **one calculation**, never a replay. Anything that changes powe
   - Offline catch-up stays one calculation: each person moving in takes the best open post at that moment
 - **Needs & happiness (planned and built 2026-10-03, on trial):** people get two **needs**, combined into one **village happiness** score that changes only **how fast people move in**. Inspired by Tropico's needs, kept much simpler. All numbers are PLACEHOLDERS (a `happiness` block in `game_config.json`)
   - **Food:** met by the Supermarket (§5.16), reusing village demand: people buying food *is* people eating, so there is no separate "eating" stockpile. Score from how many **different foods are selling** on shelves (shelf stocked and the store has at least 1 worker): **0 foods → 0%, 1 food → 70%, 2 or more → 100%** (`happiness.food_scores`)
-  - **Jobs:** the share of people with a job, `employed ÷ population` (uses `Simulation.employment()`; 100% when nobody lives here yet)
-  - **Village happiness** = Food and Jobs mixed half and half (`happiness.weights`), shown as one **0–100%**
+  - **Jobs:** the share of **adults** with a job (uses `Simulation.employment()`; 100% when there are no adults)
+  - **Housing (added 2026-10-03, §5.18):** the share of households with a real home, `1 − homeless ÷ households` (100% when everyone has a home). Homeless households in Makeshift Huts lower it
+  - **Village happiness** = Food, Jobs and Housing mixed equally (`happiness.weights` 1 / 1 / 1, as shares of their total), shown as one **0–100%**
   - **A small village doesn't complain:** needs only count from **10 people** (`happiness.needs_from_population`); below that, happiness is 100%. So the start of the game (no Supermarket yet) isn't punished
-  - **Effect: move-in speed only**, in steps (`happiness.growth_bands`). Nobody leaves and nobody works slower:
+  - **Effect: births and move-in speed, and people leaving (leaving added 2026-10-03)**, in steps (`happiness.growth_speeds`, each band with `speed` and `leave_per_hour`). Nobody works slower:
 
-	| Happiness | Move-in speed | One person every (3 min base, since 2026-10-03) |
-	|---|---|---|
-	| 80–100% | ×1.5 | 2 min |
-	| 50–79% | ×1 | 3 min |
-	| 20–49% | ×0.5 | 6 min |
-	| 0–19% | stops | — |
+	| Happiness | Births and move-in speed | People leaving the island | One newcomer every (3 min base; immigration is off for now) |
+	|---|---|---|---|
+	| 80–100% | ×1.5 | none | 2 min |
+	| 50–79% | ×1 | none | 3 min |
+	| 20–49% | ×0.5 | **1% an hour** | 6 min |
+	| 0–19% | none | **3% an hour** | — |
+
+  - **People leaving (decided 2026-10-03):** in an unhappy village, that share of adults and of children leaves each hour, with part-people carried over like deaths, so it happens at predictable moments and time away stays one calculation. Adults go like deaths: the jobless first (they're the Broke households, housed last, so the **homeless leave first**), workers keep their posts; children from the youngest group. Counted as "Left the island" (`stats.people.moved_away`; Statistics → People, the Births graph, Welcome back). This keeps the village from outgrowing its homes: grown-up children with no home make the village unhappy, and people leave until it's happy enough
 
   - **Shown** as a happiness % on the HUD next to Population; tapping it opens a breakdown (e.g. "Food 70%: 1 of 2 foods on shelves", "Jobs 100%", and the current move-in speed)
   - **Offline stays one calculation:** happiness can only change at predictable moments the settle already splits on (a shelf sells out, a person arrives, a building finishes or changes workers, a player action), so each piece of time grows at that piece's speed. When the speed step changes, the growth anchor restarts from that moment
   - **Save:** happiness itself is worked out from the state, like population capacity, so it can't drift. The save only remembers the move-in speed in force (`population.growth_speed`), to know when it changes; older saves without it start at normal speed, so no `SAVE_VERSION` bump
   - Below 10 people happiness counts as 100%, so a new village grows at ×1.5
-  - **Not now (later ideas):** unhappy people leaving, happiness changing worker speed, wage bonus → happiness (above), housing quality
+  - **Not now (later ideas):** happiness changing worker speed, wage bonus → happiness (above), housing quality (unhappy people leaving: built, above)
   - **Code:** `Simulation.happiness` (→ `{score, food, jobs, foods, needs_count, growth_speed}`), `foods_selling`, `_update_growth_speed` (read at the start of each settle piece); every arrival is a split point while needs are on. HUD: a "% happy" row (green / gold / red bar by move-in speed); tapping it opens Statistics → People, which has the breakdown
 - **Births, children & deaths (planned and built 2026-10-03, on trial):** Tropico grows its population by immigration, births and events, and simulates every citizen. We keep people as **group counts** (no per-person simulation) and add births, children and a steady death rate. All numbers are PLACEHOLDERS (a `life` block in `game_config.json`)
   - **Immigration is switched off for now (decided 2026-10-03):** `population_growth_seconds` is 0, so the village grows **only through births**. Immigration comes back later as a special feature (e.g. arrivals by boat at the Dock §5.11, or an immigration campaign). The rules for it stay in place
@@ -262,14 +265,14 @@ Everything stays **one calculation**, never a replay. Anything that changes powe
   - **Grace period (decided 2026-10-03):** needs don't count in a new village's first **3 hours** (`happiness.grace_hours`), so 46 unemployed founders don't freeze births before the player builds jobs and a Supermarket. Saves from before have no start time, so no grace
   - **Two groups:** **adults** move in, work and have babies; **children** are born here, live in homes and eat, but don't work. Population = adults + children. Elderly / old age: a later idea
   - **Immigrants are adults.** Moving in works exactly as now (happiness sets the pace)
-  - **Births:** babies per hour = adults × `birth_rate_per_hour` (0.02: 100 adults ≈ 2 an hour) × the move-in speed from happiness (an unhappy village has fewer babies; at 0% none). Part-babies carry over (`birth_carry`), like part-cents of wages, so many short settles give the same as one long one
+  - **Births:** babies per hour = adults **with a home** × `birth_rate_per_hour` (**0.01** since 2026-10-03, halved from 0.02: 100 adults ≈ 1 an hour) × the speed from happiness (an unhappy village has fewer babies; below 20% none). Homeless adults have no babies. Part-babies carry over (`birth_carry`), like part-cents of wages, so many short settles give the same as one long one
   - **Room:** since housing types (§5.18), room is counted in **households** of 2 adults + 2 children. A baby needs a free child place in a household with a real home; a newcomer (when immigration returns) needs room for an adult in a real home
   - **Growing up:** a child becomes an adult (a free worker, hired by the usual rules) `grow_up_hours` (24) after birth. Births in the same game hour form one **age group** `{count, grows_up_at}`, so the save holds at most ~24 groups
   - **Deaths: a steady rate (decided 2026-10-03).** Deaths per hour = people × `death_rate_per_hour` (0.005 = 0.5% an hour, an average life of ~200 hours ≈ 8 real days). **In proportion:** adults and children each die at that rate with their own part-person carry, so each group loses its share. A child is taken from the youngest age group; an adult like when a home is demolished: unemployed first, then workers at the smallest bonus. A dead worker's post opens and the usual hiring rules fill it. Deaths free home room, so babies and newcomers keep the village turning over. Rejected for now: **life stages** (child → adult → elderly → dies at a fixed age), because immigrants all arrive "the same age" and would die in waves; it may come back with elderly people and pensions
   - **Needs:** Food counts everyone (children eat: Supermarket demand = all people). Jobs = share of **adults** with a job. The "needs from 10 people" threshold counts everyone
   - **Fewer homes (a house demolished):** ~~unemployed adults leave first, then children, then workers~~ replaced by housing types (§5.18): nobody leaves; households without a home put up Makeshift Huts
   - **Offline stays one calculation:** births and deaths happen at predictable moments (their rates only change at moments settling already splits on), and growing up is a fixed timestamp, so settling also splits at each birth, death and `grows_up_at`, like arrivals today
-  - **Save (version 6, built):** `population.children: [{count, grows_up_at}]`, `population.life_carry` (`{born, adult_deaths, child_deaths}`: part-people still to come), `started_at` (for the grace period), `stats.people`. The migration step makes everyone in an older save an adult, with no part-people and no grace
+  - **Save (version 6, built):** `population.children: [{count, grows_up_at}]`, `population.life_carry` (`{born, adult_deaths, child_deaths, adult_leaves, child_leaves}`: part-people still to come), `started_at` (for the grace period), `stats.people`. The migration step makes everyone in an older save an adult, with no part-people and no grace. **Version 7** (housing types, §5.18): a save from before housing types (no Public Housing, Villa or hut) gets its Small Houses back as **Public Housing**, since they were free homes; otherwise its jobless households would be homeless the moment it loads
   - **Display:** the HUD stays "people / room"; Welcome back lists "+N moved in, +N born, +N grew up, −N died"
   - **Statistics by group (decided 2026-10-03):** Statistics → People gets a **Population by group** section:
     - **Groups now:** Adults (split into Employed / Unemployed) and Children, each with its count and share of the village (e.g. "Children 18 · 15%"), shown as one stacked bar
@@ -877,6 +880,11 @@ A hidden dev menu (key combo on PC, secret tap sequence on mobile) for testing t
 Both are functional, self-contained HTML/JS artifacts used to validate the trading-mechanic math and UX before porting logic into Godot.
 
 ## 15. Revision Log
+
+**2026-10-03 (village growth bounded; old saves keep free homes):**
+- A review found the village could outgrow its homes forever (a contented village: ~540 people and ~210 huts by day 30). Fixed with the user's design: a **Housing need** in happiness (share of households with a home), **people leave the island** when happiness is low (1% an hour at 20–49%, 3% below 20%; the homeless first), births **halved to 1%** of housed adults an hour; homeless adults have no babies (5.6)
+- Save version 7: saves from before housing types get their free Small Houses back as Public Housing, so nobody becomes homeless on loading (5.18, 8)
+- Found while testing: Godot's JSON reader can misread the last digit of a 17-digit time; harmless in play (a billionth of a second), so the save round-trip check now ignores differences that have played out a second later
 
 **2026-10-03 (housing types built, on trial):**
 - Makeshift Hut, Public Housing, Regular House (the old Small House, same id so saves keep their houses) and Villa; households of 2 adults + 2 children; wealth from wages; rent to the player; huts appear for the homeless; homes' power counted for later. New games start in 5 Public Housing. A developer option changes the rent per home type (5.18)

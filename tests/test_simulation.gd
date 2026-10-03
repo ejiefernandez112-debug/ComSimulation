@@ -1858,6 +1858,106 @@ func test_dev_rent() -> void:
 	_check(not Sim.dev_set_rent(state, data, "crew_farm", 5.0, T0).ok, "only homes have rent")
 
 
+## Life test data where only the Housing need counts (no grace, needs from 1 person), with the
+## real bands' shape: below 20% no births and 3% an hour leave; 20-49% half speed and 1% leave;
+## 50% and up nobody leaves. A "duo" home has room for 2 households.
+func _leaving_data(birth: float, death: float) -> Dictionary:
+	var data := _life_data(birth, death)
+	data.config["happiness"] = {"needs_from_population": 1, "food_scores": [1.0], "weights": {"housing": 1},
+		"growth_speeds": [{"from": 0, "speed": 0.0, "leave_per_hour": 0.03}, {"from": 0.2, "speed": 0.5, "leave_per_hour": 0.01},
+			{"from": 0.5, "speed": 1.0, "leave_per_hour": 0.0}]}
+	data.buildings["duo"] = {"category": "residential", "build_cost": 0, "buildable": true, "households": 2}
+	return data
+
+
+## The Housing need: the share of households with a real home.
+func test_housing_need() -> void:
+	var data := _leaving_data(0.0, 0.0)
+	var state := Sim.new_game(data, T0)  # the house: 5 households
+	Sim.build(state, data, "home", Vector2i(5, 5), T0)  # 5 more
+	Sim.build(state, data, "duo", Vector2i(6, 6), T0)  # 2 more: 12 in all
+	state.population.current = 30  # 15 households: 3 homeless
+	var happy := Sim.happiness(state, data, T0)
+	_check(int(happy.homeless) == 3 and int(happy.households) == 15, "15 households, 3 of them homeless")
+	_check(is_equal_approx(float(happy.housing), 0.8) and is_equal_approx(float(happy.score), 0.8), "Housing need 80% (12 of 15 have a home)")
+	_check(float(happy.leave_per_hour) == 0.0, "80%: nobody leaves")
+
+
+## An unhappy village loses people: the homeless first, workers keep their posts; time away
+## gives the same result as playing through it.
+func test_unhappy_people_leave() -> void:
+	var data := _leaving_data(0.0, 0.0)
+	var state := Sim.new_game(data, T0)  # room for 5 households
+	var farm := Sim.find_building(state, Sim.build(state, data, "crew_farm", Vector2i(5, 5), T0).building_id)
+	state.population.current = 60  # 30 households, 25 homeless: Housing 17% -> 3% an hour leave
+	Sim.settle(state, data, T0)
+	var happy := Sim.happiness(state, data, T0)
+	_check(is_equal_approx(float(happy.leave_per_hour), 0.03) and float(happy.growth_speed) == 0.0, "below 20%: no babies, 3% an hour leave")
+	var played := state.duplicate(true)
+	var report := Sim.settle(state, data, T0 + 3600)
+	_check(int(state.population.current) == 59 and int(report.get("moved_away", 0)) == 1, "60 people x 3% = 1.8 an hour: 1 left in the first hour")
+	_check(Sim.hired(farm) == 2, "the workers stay: the jobless leave first")
+	Sim.settle(state, data, T0 + 4 * 3600)
+	var t := T0
+	while t < T0 + 4 * 3600:
+		t = minf(t + 7.0, T0 + 4 * 3600)
+		Sim.settle(played, data, t)
+	_check(int(played.population.current) == int(state.population.current) and str(Sim.people_stats(played)) == str(Sim.people_stats(state)), "4 hours away = 4 hours played (%d vs %d people)" % [int(state.population.current), int(played.population.current)])
+	_check(int(Sim.people_stats(state).moved_away) >= 6, "about 7 people left in 4 hours")
+
+
+## With births, deaths and leaving, the village can't outgrow its homes forever.
+func test_village_stays_bounded() -> void:
+	var data := _leaving_data(0.01, 0.005)
+	data.buildings["hut"] = {"category": "residential", "build_cost": 0, "buildable": false, "households": 1, "hut": true}
+	var state := Sim.new_game(data, T0)
+	Sim.build(state, data, "home", Vector2i(5, 5), T0)  # room for 10 households (20 adults)
+	state.population.current = 100  # 50 households, 40 homeless
+	Sim.settle(state, data, T0)
+	var huts_at_start: int = state.buildings.filter(func(b): return b.type == "hut").size()
+	Sim.settle(state, data, T0 + 30 * 86400.0)
+	var huts_after: int = state.buildings.filter(func(b): return b.type == "hut").size()
+	_check(int(state.population.current) < 100, "30 days later the village has shrunk (%d people)" % int(state.population.current))
+	_check(huts_after < huts_at_start, "and the huts with it (%d -> %d)" % [huts_at_start, huts_after])
+
+
+## Saves from before "moved_away" existed settle without errors.
+func test_old_counters_settle() -> void:
+	var data := _leaving_data(0.0, 0.0)
+	var state := Sim.new_game(data, T0)
+	state.stats.people = {"moved_in": 0, "born": 0, "grew_up": 0, "died": 0}
+	Sim.settle(state, data, T0 + 60)
+	_check(int(Sim.people_stats(state).moved_away) == 0, "a missing counter starts at 0")
+
+
+## A save from before housing types (version 6, homes = Small Houses that were free) loads with
+## its Small Houses as Public Housing, so nobody becomes homeless on loading.
+func test_old_small_houses_become_public_housing() -> void:
+	var data := {"resources": GameDataScript.load_json("res://data/resources.json"),
+		"buildings": GameDataScript.load_json("res://data/buildings.json"),
+		"config": GameDataScript.load_json("res://data/game_config.json")}
+	var state := Sim.new_game(data, T0)
+	var old := JSON.parse_string(SaveFormat.to_text(state, T0)) as Dictionary
+	old.save_version = 6
+	for b in old.buildings:
+		if b.type == "public_housing":
+			b.type = "small_house"
+	var result := SaveFormat.from_text(JSON.stringify(old), data)
+	var s: Dictionary = result.state if result.ok else {}
+	var types := {}
+	for b in s.get("buildings", []):
+		types[b.type] = int(types.get(b.type, 0)) + 1
+	_check(result.ok and int(types.get("public_housing", 0)) == 5 and not types.has("small_house"), "the 5 Small Houses are Public Housing now")
+	Sim.settle(s, data, T0 + 1.0)
+	_check(int(Sim.housing(s, data, T0 + 1.0).homeless) == 0, "and nobody is homeless")
+	# A version 6 save that already has housing types keeps its Regular Houses.
+	var newer := JSON.parse_string(SaveFormat.to_text(state, T0)) as Dictionary
+	newer.save_version = 6
+	newer.buildings[1].type = "small_house"
+	var kept := SaveFormat.from_text(JSON.stringify(newer), data)
+	_check(kept.ok and kept.state.buildings[1].type == "small_house", "a save with Public Housing keeps its Regular Houses")
+
+
 ## An empty home uses no power.
 func test_empty_home_uses_no_power() -> void:
 	var data := _housing_data()
@@ -1926,7 +2026,7 @@ func test_old_save_gets_children() -> void:
 	old.erase("started_at")
 	var result := SaveFormat.from_text(JSON.stringify(old), data)
 	var s: Dictionary = result.state if result.ok else {}
-	_check(result.ok and int(s.save_version) == 6, "a version 5 save loads as version 6")
+	_check(result.ok and int(s.save_version) == Sim.SAVE_VERSION, "a version 5 save loads as the newest version")
 	_check(result.ok and Sim.adults(s) == 7 and Sim.children_count(s) == 0 and s.population.children.is_empty(), "everyone in it is an adult")
 	_check(result.ok and int(Sim.people_stats(s).born) == 0 and not s.has("started_at"), "zeroed counters and no grace period")
 

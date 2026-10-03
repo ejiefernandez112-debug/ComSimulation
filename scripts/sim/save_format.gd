@@ -71,6 +71,19 @@ static func _migrate(state: Dictionary, version: int, data: Dictionary) -> void:
 		state.population["life_carry"] = {}
 		Simulation.people_stats(state)  # adds the zeroed counters
 		version = 6
+	if version < 7:
+		# Version 7: housing types (plan.md §5.18). The Small House became the Regular House, which
+		# charges rent; before, it was free, so jobless households in an older save would end up
+		# homeless the moment it loads. A save from before housing types (no Public Housing, Villa
+		# or hut anywhere) gets its Small Houses back as free homes: Public Housing.
+		var has_types := false
+		for b in state.buildings:
+			has_types = has_types or b.type in ["public_housing", "villa", "makeshift_hut"]
+		if not has_types and data.buildings.has("public_housing"):
+			for b in state.buildings:
+				if b.type == "small_house":
+					b.type = "public_housing"
+		version = 7
 	state["save_version"] = version
 
 
