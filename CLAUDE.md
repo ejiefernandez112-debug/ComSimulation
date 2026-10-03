@@ -17,6 +17,13 @@ Godot 4.7 (GDScript, **Compatibility** renderer) business-sim game. Full design 
 - In-game dev/debug tools go in `scenes/debug/` and load only when `OS.is_debug_build()`. Offline tools the game never loads (like the sprite studio) go in `tools/`.
 - UI panels: Control nodes with anchors, so the same panel works as a mobile bottom sheet and a PC side panel.
 
+## Helper agents (pick the effort level by kind of work)
+Hand each request to the matching agent in `.claude/agents/` (each has its own effort level). Answer simple questions directly; split a mixed request between agents.
+- `game-rules` (xhigh): anything in `scripts/sim/` or `economy.gd`; money, time, offline catch-up, saves, workers, water, prices; bug hunts there
+- `ui-builder` (high): screens, panels, map visuals, menus, animations, with no rule changes
+- `planner` (high): brainstorming, balancing, design options, writing `plan.md`; no code
+- `quick-edit` (medium): numbers in `data/*.json`, typos, wording, small doc edits
+
 ## Tests
 Game rules are covered by `tests/test_simulation.gd` (uses its own test data, not `data/*.json`). Run after any change to `scripts/sim/` and add a test for new rules:
 `"C:\Program Files\Godot\Godot.exe.exe" --headless --path . -s tests/test_simulation.gd` — exit code 0 = all passed.
