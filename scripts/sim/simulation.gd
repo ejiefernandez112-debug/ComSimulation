@@ -13,8 +13,8 @@ extends RefCounted
 ## Time model: buildings store when their current cycle/job started (`job_started_at`).
 ## "Settling" turns elapsed time into finished output in one calculation, never tick-by-tick.
 
-const SAVE_VERSION := 5  # 2: warehouses are buildings; 3: buildings keep their own hired workers;
-# 4: money is stored in cents; 5: stock carries cost tags
+const SAVE_VERSION := 6  # 2: warehouses are buildings; 3: buildings keep their own hired workers;
+# 4: money is stored in cents; 5: stock carries cost tags; 6: children, births and deaths
 ## Used when game_config.json has no staffing_levels: share of max_workers per level.
 const DEFAULT_STAFFING_LEVELS := {"low": 0.5, "medium": 0.75, "high": 1.0}
 
@@ -31,7 +31,11 @@ static func new_game(data: Dictionary, now: float) -> Dictionary:
 		"next_building_id": 1,
 		"buildings": [],
 		"inventory": {},  # the Warehouse
-		"population": {"current": 0, "growth_anchor": now, "growth_speed": 1.0},  # see happiness()
+		# current = everyone (adults + children); children = age groups, oldest first (see
+		# _settle_life); life_carry = part-people of births and deaths still to come.
+		"population": {"current": 0, "growth_anchor": now, "growth_speed": 1.0,  # see happiness()
+			"children": [], "life_carry": {}},
+		"started_at": now,  # when this village was founded (the happiness grace period counts from it)
 		"settled_at": now,  # everything has been worked out up to this moment
 		"stats": _new_stats(),
 		"water_meter": {"m3": 0.0, "base_cost": 0.0, "cycle_start": now},  # the first bill is due in 12 h
@@ -39,6 +43,9 @@ static func new_game(data: Dictionary, now: float) -> Dictionary:
 	for entry in config.starting_buildings:
 		# Starting buildings are already standing: no construction time.
 		_add_building(state, entry.type, Vector2i(int(entry.position[0]), int(entry.position[1])), now, 0.0)
+	# The founding villagers: all adults, never more than the starting homes hold.
+	state.population.current = mini(int(config.get("starting_population", 0)), population_capacity(state, data, now))
+	_hire(state, data, now)
 	return state
 
 
@@ -46,7 +53,8 @@ static func new_game(data: Dictionary, now: float) -> Dictionary:
 
 ## Brings every building, the population and wages up to `now`.
 ## Returns everything produced, e.g. {"wheat": 30, "population": 2, "wages": 12000, "water": 71800}
-## (money in cents; "water" = water bills charged; for the offline summary).
+## (money in cents; "water" = water bills charged; "population" = people who moved in; "born",
+## "grew_up", "died" = births, children who became adults, deaths; for the offline summary).
 ##
 ## A building's speed depends on how many workers are actually working in it (see
 ## building_speed), and wages are paid for each of them. That only changes at a few moments
@@ -60,6 +68,7 @@ static func settle(state: Dictionary, data: Dictionary, now: float) -> Dictionar
 	var grown := 0
 	var wages := 0
 	var water := 0
+	var life := {"born": 0, "grew_up": 0, "died": 0}
 	var t := float(state.get("settled_at", state.get("last_saved_at", now)))
 	if now <= t:
 		# No time to add (or the clock moved backwards): only settle what can happen instantly,
@@ -79,9 +88,12 @@ static func settle(state: Dictionary, data: Dictionary, now: float) -> Dictionar
 				speeds.append(building_speed(state, data, b, t))
 			var wage_rate := _wages_per_hour(state, data, t)
 			var water_m3_per_hour := water_use_total(state, data, t)
-			# Split at the next staffing change, and at the next water bill (a fixed moment) when
-			# there is water to bill; empty cycles are skipped in one go, so a long absence stays quick.
+			var life_rates := _life_rates(state, data, t)
+			# Split at the next staffing change, at the next birth, death or child growing up, and at
+			# the next water bill (a fixed moment) when there is water to bill; empty cycles are
+			# skipped in one go, so a long absence stays quick.
 			var next := _next_staffing_change(state, data, t, now)
+			next = minf(next, maxf(_next_life_event(state, t, life_rates), t + 0.000001))
 			if water_m3_per_hour > 0.0 or float(water_meter(state, t).m3) > 0.0:
 				next = minf(next, maxf(water_bill_due_at(state, data, t), t + 0.000001))
 			for i in state.buildings.size():
@@ -89,10 +101,17 @@ static func settle(state: Dictionary, data: Dictionary, now: float) -> Dictionar
 			wages += _pay_wages(state, wage_rate * (next - t) / 3600.0)
 			_meter_water(state, data, water_m3_per_hour * (next - t) / 3600.0, t)
 			grown += _grow_population(state, data, next)
+			_add_to(life, _settle_life(state, data, t, next, life_rates))
 			t = next
 			water += _bill_water_if_due(state, data, t)
 		state["settled_at"] = now
 	_hire(state, data, now)
+	var counters := people_stats(state)
+	counters.moved_in = int(counters.moved_in) + grown
+	for key in life:
+		counters[key] = int(counters[key]) + int(life[key])
+		if int(life[key]) > 0:
+			report[key] = int(life[key])
 	if grown > 0:
 		report["population"] = grown
 	if wages > 0:
@@ -159,6 +178,9 @@ static func _next_staffing_change(state: Dictionary, data: Dictionary, t: float,
 		var arrival := float(pop.growth_anchor) + step * (floorf((t - float(pop.growth_anchor)) / step + 0.000001) + 1.0)
 		if arrival > t and arrival < next:
 			next = arrival
+	var grace_end := _grace_end(state, data)  # needs start counting then: happiness may change
+	if _has_needs(data) and grace_end > t and grace_end < next:
+		next = grace_end
 	return next
 
 
@@ -283,10 +305,12 @@ static func _settle_population(state: Dictionary, data: Dictionary, now: float, 
 
 # --- Happiness (plan.md §5.6 "Needs & happiness") ------------------------------------
 
-## How the village feels and what that does to the move-in speed:
-## {"score" (0-1, what counts), "food", "jobs" (each need 0-1), "foods" (different foods selling),
-##  "needs_count" (false below happiness.needs_from_population people: a small village doesn't
-##  complain, so the score is 1), "growth_speed" (1.5 = people move in 1.5x as fast, 0 = nobody)}.
+## How the village feels and what that does to the move-in speed (and the birth rate):
+## {"score" (0-1, what counts), "food", "jobs" (each need 0-1; jobs = share of ADULTS with a job),
+##  "foods" (different foods selling), "needs_count" (false below happiness.needs_from_population
+##  people, a small village doesn't complain, and during a new village's first
+##  happiness.grace_hours: then the score is 1), "grace_left" (seconds of grace still to go),
+##  "growth_speed" (1.5 = people move in and babies come 1.5x as fast, 0 = none)}.
 ## Without a "happiness" block in game_config.json there are no needs: score 1, speed 1.
 static func happiness(state: Dictionary, data: Dictionary, now: float) -> Dictionary:
 	var config: Dictionary = data.config.get("happiness", {})
@@ -294,16 +318,17 @@ static func happiness(state: Dictionary, data: Dictionary, now: float) -> Dictio
 	var food_scores: Array = config.get("food_scores", [1.0])
 	var food := float(food_scores[mini(foods, food_scores.size() - 1)])
 	var e := employment(state, data, now)
-	var jobs: float = 1.0 if int(e.population) <= 0 else float(e.employed) / float(e.population)
+	var jobs: float = 1.0 if int(e.adults) <= 0 else float(e.employed) / float(e.adults)
 	var weights: Dictionary = config.get("weights", {})
 	var w_food := float(weights.get("food", 0.0))
 	var w_jobs := float(weights.get("jobs", 0.0))
-	var needs_count: bool = _has_needs(data) and int(e.population) >= int(config.get("needs_from_population", 0))
+	var grace_left := maxf(_grace_end(state, data) - now, 0.0) if _has_needs(data) else 0.0
+	var needs_count: bool = _has_needs(data) and grace_left <= 0.0 and int(e.population) >= int(config.get("needs_from_population", 0))
 	var score := 1.0
 	if needs_count and w_food + w_jobs > 0.0:
 		score = (food * w_food + jobs * w_jobs) / (w_food + w_jobs)
 	return {"score": score, "food": food, "jobs": jobs, "foods": foods, "needs_count": needs_count,
-		"growth_speed": _growth_speed_for(config, score)}
+		"grace_left": grace_left, "growth_speed": _growth_speed_for(config, score)}
 
 
 ## Different foods on sale right now: on a shelf of a Supermarket that is selling (built, not
@@ -352,6 +377,153 @@ static func _update_growth_speed(state: Dictionary, data: Dictionary, t: float) 
 	if not is_equal_approx(speed, float(pop.get("growth_speed", 1.0))):
 		pop["growth_speed"] = speed
 		pop.growth_anchor = maxf(float(pop.growth_anchor), t)
+
+
+## When the new-village grace period ends (needs don't count before it): started_at +
+## happiness.grace_hours. -INF for saves from before villages had a start time (no grace).
+static func _grace_end(state: Dictionary, data: Dictionary) -> float:
+	if not state.has("started_at"):
+		return -INF
+	return float(state.started_at) + float(data.config.get("happiness", {}).get("grace_hours", 0.0)) * 3600.0
+
+
+# --- Births, children & deaths (plan.md §5.6) ------------------------------------------
+# People are kept as group counts, not individuals. population.current is everyone; the
+# children are age groups {count, grows_up_at} (oldest first); everyone else is an adult.
+# Births and deaths come at a steady rate with part-people carried over (like part-cents of
+# wages), so they happen at predictable moments and time away stays one calculation.
+
+## Adults: everyone who isn't a child. Only adults work and have babies.
+static func adults(state: Dictionary) -> int:
+	return int(state.population.current) - children_count(state)
+
+
+static func children_count(state: Dictionary) -> int:
+	var total := 0
+	for group in state.population.get("children", []):
+		total += int(group.count)
+	return total
+
+
+## The children's age groups, oldest first: [{"count", "grows_up_at"}]. Read it; don't change it.
+static func children_groups(state: Dictionary) -> Array:
+	return state.population.get("children", [])
+
+
+## Lifetime counters of who came and went: {"moved_in", "born", "grew_up", "died"}.
+static func people_stats(state: Dictionary) -> Dictionary:
+	var s := stats(state)
+	if not s.has("people"):
+		s["people"] = {"moved_in": 0, "born": 0, "grew_up": 0, "died": 0}
+	return s.people
+
+
+## Births and deaths per second as things stand at t: {"born", "adult_deaths", "child_deaths"}.
+## Babies come from adults, at the move-in speed happiness gives, and only while homes have room.
+## Everyone dies at the same steady rate, so adults and children each lose their share. All 0
+## without a "life" block in game_config.json.
+static func _life_rates(state: Dictionary, data: Dictionary, t: float) -> Dictionary:
+	var life: Dictionary = data.config.get("life", {})
+	var rates := {"born": 0.0, "adult_deaths": 0.0, "child_deaths": 0.0}
+	if life.is_empty():
+		return rates
+	if int(state.population.current) < population_capacity(state, data, t):
+		rates.born = adults(state) * float(life.get("birth_rate_per_hour", 0.0)) * float(state.population.get("growth_speed", 1.0)) / 3600.0
+	var death := float(life.get("death_rate_per_hour", 0.0)) / 3600.0
+	rates.adult_deaths = adults(state) * death
+	rates.child_deaths = children_count(state) * death
+	return rates
+
+
+## Part-people of births and deaths not yet happened: {"born", "adult_deaths", "child_deaths"}.
+static func _life_carry(state: Dictionary) -> Dictionary:
+	if not state.population.has("life_carry"):
+		state.population["life_carry"] = {}
+	return state.population.life_carry
+
+
+## The next birth, death or child growing up after t, at `rates` (INF if none is coming).
+static func _next_life_event(state: Dictionary, t: float, rates: Dictionary) -> float:
+	var next := INF
+	var carry := _life_carry(state)
+	for key in rates:
+		if float(rates[key]) > 0.0:
+			next = minf(next, t + maxf(1.0 - float(carry.get(key, 0.0)), 0.0) / float(rates[key]) + 0.000001)
+	var groups := children_groups(state)
+	if not groups.is_empty() and float(groups[0].grows_up_at) > t:
+		next = minf(next, float(groups[0].grows_up_at))
+	return next
+
+
+## Over [t0, t1] at `rates` (read at t0; settling ends the piece at the next event, so they can't
+## change midway): children whose time has come grow up, then deaths, then births. Adults who
+## die simply leave (hiring then frees a post, unemployed first); a child is taken from the
+## youngest group; a baby joins the age group of its hour. Returns {"born", "grew_up", "died"}.
+static func _settle_life(state: Dictionary, data: Dictionary, t0: float, t1: float, rates: Dictionary) -> Dictionary:
+	var out := {"born": 0, "grew_up": 0, "died": 0}
+	var pop: Dictionary = state.population
+	if not pop.has("children"):
+		pop["children"] = []
+	var groups: Array = pop.children
+	while not groups.is_empty() and float(groups[0].grows_up_at) <= t1:
+		out.grew_up += int(groups[0].count)  # they're adults now: still counted in current
+		groups.pop_front()
+	var carry := _life_carry(state)
+	var events := {}
+	for key in rates:
+		var total := float(carry.get(key, 0.0)) + float(rates[key]) * (t1 - t0)
+		events[key] = floori(total + 0.000001)
+		carry[key] = maxf(total - events[key], 0.0)
+	var adult_deaths := mini(int(events.adult_deaths), adults(state))
+	pop.current = int(pop.current) - adult_deaths
+	out.died = adult_deaths + _remove_children(state, int(events.child_deaths))
+	var life: Dictionary = data.config.get("life", {})
+	var born := mini(int(events.born), maxi(population_capacity(state, data, t1) - int(pop.current), 0))
+	if born > 0:
+		var group_seconds := maxf(float(life.get("child_group_hours", 1.0)), 0.001) * 3600.0
+		var grows_up_at := floorf(t1 / group_seconds) * group_seconds + float(life.get("grow_up_hours", 24.0)) * 3600.0
+		if not groups.is_empty() and is_equal_approx(float(groups[-1].grows_up_at), grows_up_at):
+			groups[-1].count = int(groups[-1].count) + born
+		else:
+			groups.append({"count": born, "grows_up_at": grows_up_at})
+		pop.current = int(pop.current) + born
+		out.born = born
+	return out
+
+
+## Takes up to n children away, youngest group first (they died, or their home was demolished).
+## Returns how many were taken.
+static func _remove_children(state: Dictionary, n: int) -> int:
+	var groups: Array = state.population.get("children", [])
+	var taken := 0
+	while taken < n and not groups.is_empty():
+		var take := mini(n - taken, int(groups[-1].count))
+		groups[-1].count = int(groups[-1].count) - take
+		taken += take
+		if int(groups[-1].count) <= 0:
+			groups.pop_back()
+	state.population.current = int(state.population.current) - taken
+	return taken
+
+
+## Fewer homes than people (a home was demolished): n people move away, unemployed adults
+## first, then children (youngest first), then workers (hiring then frees their posts by the
+## smallest-bonus rule).
+static func _remove_people(state: Dictionary, data: Dictionary, n: int, now: float) -> void:
+	var gone := mini(n, int(employment(state, data, now).unemployed))
+	state.population.current = int(state.population.current) - gone
+	gone += _remove_children(state, n - gone)
+	state.population.current = int(state.population.current) - mini(n - gone, adults(state))
+
+
+## When the next baby is born (INF when none is coming: no room, no adults, too unhappy, or no
+## births in this game). Counted from the last settle, which happens every few seconds.
+static func next_birth_at(state: Dictionary, data: Dictionary, now: float) -> float:
+	var t := float(state.get("settled_at", now))
+	var rate := float(_life_rates(state, data, t).born)
+	if rate <= 0.0:
+		return INF
+	return t + maxf(1.0 - float(_life_carry(state).get("born", 0.0)), 0.0) / rate
 
 
 # --- Player actions -----------------------------------------------------------
@@ -751,8 +923,8 @@ static func demolish(state: Dictionary, data: Dictionary, building_id: String, n
 	_put_cost(_costs(state, "inventory_cost"), costs)  # the goods keep their cost tags
 	# Fewer homes can mean less room: people over the new capacity move away.
 	var cap := population_capacity(state, data, now)
-	if state.population.current > cap:
-		state.population.current = cap
+	if int(state.population.current) > cap:
+		_remove_people(state, data, int(state.population.current) - cap, now)
 	_hire(state, data, now)  # its workers are freed; if people moved away, others may lose workers
 	return check
 
@@ -1212,6 +1384,40 @@ static func population_capacity(state: Dictionary, data: Dictionary, now: float)
 	return _capacity(state, data, now, true)
 
 
+## How many people live in this home. Homes only give room; people move in one at a time and
+## fill the homes oldest first. (For display: the rules only count the village total.) 0 while
+## it's being built.
+static func home_residents(state: Dictionary, data: Dictionary, b: Dictionary, now: float) -> int:
+	var left := int(state.population.current)
+	for home in state.buildings:
+		var room := int(data.buildings.get(home.type, {}).get("population_capacity", 0))
+		if room <= 0 or not is_built(home, now):
+			continue
+		var here := mini(left, room)
+		if home.id == b.id:
+			return here
+		left -= here
+	return 0
+
+
+## When the next person moves in: INF when the homes are full or nobody is moving in (too unhappy).
+## Uses the move-in speed happiness gives right now (a new speed restarts the wait, see
+## _update_growth_speed).
+static func next_arrival_at(state: Dictionary, data: Dictionary, now: float) -> float:
+	var pop: Dictionary = state.population
+	if int(pop.current) >= population_capacity(state, data, now):
+		return INF
+	var base := float(data.config.population_growth_seconds)
+	var speed := float(happiness(state, data, now).growth_speed)
+	if base <= 0.0 or speed <= 0.0:
+		return INF
+	var step := base / speed
+	var anchor := float(pop.growth_anchor)
+	if not is_equal_approx(speed, float(pop.get("growth_speed", 1.0))):
+		anchor = maxf(anchor, float(state.get("settled_at", now)))
+	return anchor + step * (floorf(maxf(now - anchor, 0.0) / step + 0.000001) + 1.0)
+
+
 ## When the building is (or was) finished. Saves from before construction time existed have no
 ## "built_at", so those buildings count as finished long ago.
 static func built_at(b: Dictionary) -> float:
@@ -1341,7 +1547,7 @@ static func posts(data: Dictionary, b: Dictionary, now: float) -> int:
 ## then the older one. With more workers than people (a home was demolished) workers leave the
 ## buildings with the smallest bonus first, the newest building first, and warehouses last.
 static func _hire(state: Dictionary, data: Dictionary, now: float) -> void:
-	var free := int(state.population.current)
+	var free := adults(state)  # children don't work
 	for b in state.buildings:
 		b["hired"] = mini(hired(b), posts(data, b, now))  # e.g. staffing was lowered: the rest are freed
 		free -= hired(b)
@@ -1834,7 +2040,8 @@ static func staffing(state: Dictionary, data: Dictionary, now: float) -> float:
 
 
 ## Jobs = posts at finished, non-suspended buildings; employed = workers hired into them (whole
-## people, tied to their building). {"population", "jobs", "employed", "unemployed", "open_jobs"}
+## people, tied to their building). {"population" (everyone), "adults", "children", "jobs",
+## "employed", "unemployed" (adults without a job), "open_jobs"}
 static func employment(state: Dictionary, data: Dictionary, now: float) -> Dictionary:
 	var jobs := 0
 	var employed := 0
@@ -1842,8 +2049,24 @@ static func employment(state: Dictionary, data: Dictionary, now: float) -> Dicti
 		jobs += posts(data, b, now)
 		employed += mini(hired(b), posts(data, b, now))
 	var people := int(state.population.current)
-	employed = mini(employed, people)
-	return {"population": people, "jobs": jobs, "employed": employed, "unemployed": people - employed, "open_jobs": jobs - employed}
+	var grown := adults(state)
+	employed = mini(employed, grown)
+	return {"population": people, "adults": grown, "children": people - grown, "jobs": jobs,
+		"employed": employed, "unemployed": grown - employed, "open_jobs": jobs - employed}
+
+
+## Who came and went over at least the last `window` seconds (or since the first history point),
+## like cash_flow: {"moved_in", "born", "grew_up", "died", "seconds" (0 = no history yet)}.
+static func people_flow(state: Dictionary, window: float, now: float) -> Dictionary:
+	var counters := people_stats(state)
+	var from := {}
+	for point in stats(state).history:
+		if float(point.t) <= now - window or from.is_empty():
+			from = point
+	var out := {"seconds": 0.0 if from.is_empty() else maxf(now - float(from.t), 0.0)}
+	for key in ["moved_in", "born", "grew_up", "died"]:
+		out[key] = 0 if from.is_empty() else int(counters[key]) - int(from.get(key, counters[key]))
+	return out
 
 
 ## Money in and out over at least the last `window` seconds (or since the first history point),
@@ -1874,15 +2097,23 @@ static func _record_history(state: Dictionary, data: Dictionary, now: float) -> 
 	if not history.is_empty() and now < float(history[-1].t) + every:
 		return  # too soon (also covers a clock that moved backwards)
 	var e := employment(state, data, now)
+	var counters := people_stats(state)
 	history.append({
 		"t": now,
 		"cash": int(state.profile.currency),
 		"income": _total(s.income),
 		"spending": _total(s.spending),
 		"population": e.population,
+		"adults": e.adults,
+		"children": e.children,
 		"employed": e.employed,
 		"jobs": e.jobs,
 		"made": s.made.duplicate(),
+		# lifetime counters, so the last hour's comings and goings can be worked out (people_flow)
+		"moved_in": int(counters.moved_in),
+		"born": int(counters.born),
+		"grew_up": int(counters.grew_up),
+		"died": int(counters.died),
 	})
 	var keep := int(data.config.get("stats_history_size", 360))
 	while history.size() > keep:
@@ -1896,7 +2127,10 @@ static func _new_stats() -> Dictionary:
 		"sales_by_item": {},  # resource -> cents earned selling it
 		"made": {},  # resource -> amount ever produced
 		"sold": {},  # resource -> amount ever sold
-		"history": [],  # graph points: {t, cash, income, spending, population, employed, jobs, made}
+		"people": {"moved_in": 0, "born": 0, "grew_up": 0, "died": 0},  # who ever came and went
+		# graph points: {t, cash, income, spending, population, adults, children, employed, jobs,
+		# made, moved_in, born, grew_up, died}
+		"history": [],
 	}
 
 

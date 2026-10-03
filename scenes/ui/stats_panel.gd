@@ -1,13 +1,16 @@
 extends ModalWindow
 ## The Statistics window (Stats card in the bottom menu), in four tabs:
 ## - Production: what's being made and used per minute right now, and all-time totals
-## - People: population, employed / unemployed, open jobs, jobs per building type
+## - People: population, groups (adults / children), children by age, births and deaths,
+##   happiness, employed / unemployed, open jobs, jobs per building type
 ## - Cash flow: money in and out over the last hour and all time, by source
 ## - Graphs: cash, cash flow, people and production over time (15 min / 1 h / 6 h)
 ## Every number comes from Economy (the rules in scripts/sim/); this window only shows them.
 
 const TABS := [["production", "Production"], ["people", "People"], ["cash", "Cash flow"], ["graphs", "Graphs"]]
-const GRAPHS := [["cash", "Cash"], ["flow", "Cash flow"], ["people", "People"], ["production", "Production"]]
+const GRAPHS := [["cash", "Cash"], ["flow", "Cash flow"], ["people", "People"], ["life", "Births"], ["production", "Production"]]
+const CHILD_ROWS := 6  # age groups listed in "Children by age"; the rest are summed up
+const PEOPLE_FLOW := [["moved_in", "Moved in"], ["born", "Born"], ["grew_up", "Grew up"], ["died", "Died"]]
 const RANGES := [[900.0, "15 min"], [3600.0, "1 hour"], [21600.0, "6 hours"]]
 const UP := Color("2f7a1f")  # money in / surplus, readable on the cream panel
 const DOWN := Color("b63a2b")  # money out / shortfall
@@ -23,6 +26,7 @@ var _range_buttons := {}
 var _values := {}  # name -> Label whose text _refresh updates
 var _population_bar: ProgressBar
 var _happiness_bar: ProgressBar
+var _adults_bar: ProgressBar
 var _employed_bar: ProgressBar
 var _chart: LineChart
 
@@ -79,12 +83,28 @@ func _people_page() -> VBoxContainer:
 	var town := _section(page, "Population")
 	town.add_child(_value("population"))
 	_population_bar = _bar(town, "BlueBar")
+	var groups := _section(page, "Population by group")
+	_value_row(groups, "Adults", "group_adults")
+	_value_row(groups, "    with a job", "group_employed")
+	_value_row(groups, "    without a job", "group_unemployed")
+	_value_row(groups, "Children", "group_children")
+	_adults_bar = _bar(groups, "GoldBar")  # gold = adults' share, the dark rest = children
+	groups.add_child(_value("group_note"))
+	var kids := _section(page, "Children by age")
+	kids.add_child(_value("children_by_age"))
+	var flow := _section(page, "Comings and goings")
+	var grid := _grid(flow, ["", "Last hour", "All time"])
+	for row in PEOPLE_FLOW + [["net", "Net change"]]:
+		grid.add_child(_body(row[1]))
+		grid.add_child(_value("pf_hour_" + row[0], true))
+		grid.add_child(_value("pf_all_" + row[0], true))
+	flow.add_child(_value("next_birth"))
 	var mood := _section(page, "Happiness")
 	mood.add_child(_value("happiness"))
 	_happiness_bar = _bar(mood, "GreenBar")
 	_value_row(mood, "Food", "need_food")
 	_value_row(mood, "Jobs", "need_jobs")
-	_value_row(mood, "Moving in", "move_in")
+	_value_row(mood, "Births & newcomers", "move_in")
 	var why := _body(_happiness_explanation())
 	why.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	why.custom_minimum_size.x = WIDTH - 90
@@ -101,7 +121,7 @@ func _people_page() -> VBoxContainer:
 	for type_id in GameData.buildings:
 		if int(GameData.buildings[type_id].get("max_workers", 0)) > 0:
 			_value_row(by_type, GameData.buildings[type_id].name, "jobs_" + type_id)
-	var note := _body("When there are more jobs than people, every building that needs workers runs slower. Build houses so more people move in.")
+	var note := _body("When there are more jobs than adults, every building that needs workers runs slower. Children don't work: they grow up into workers. Build houses so babies have room to be born.")
 	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	note.custom_minimum_size.x = WIDTH - 70
 	note.modulate.a = 0.8
@@ -168,21 +188,22 @@ func _water_explanation() -> String:
 func _happiness_explanation() -> String:
 	var h: Dictionary = GameData.config.get("happiness", {})
 	var weights: Dictionary = h.get("weights", {})
-	var text := "Happiness mixes Food (%d%%) and Jobs (%d%%). Food comes from different foods selling at a Supermarket with workers; Jobs is the share of people with a job." % [roundi(100.0 * float(weights.get("food", 0.0))), roundi(100.0 * float(weights.get("jobs", 0.0)))]
-	text += " Happier villages attract people faster:"
+	var text := "Happiness mixes Food (%d%%) and Jobs (%d%%). Food comes from different foods selling at a Supermarket with workers; Jobs is the share of adults with a job." % [roundi(100.0 * float(weights.get("food", 0.0))), roundi(100.0 * float(weights.get("jobs", 0.0)))]
+	text += " Happier villages have more babies:"
 	var bands: Array = h.get("growth_speeds", [])
 	for i in range(bands.size() - 1, -1, -1):
 		var speed := float(bands[i].speed)
 		text += " from %d%% %s;" % [roundi(100.0 * float(bands[i].from)), _speed_text(speed)]
 	text = text.trim_suffix(";") + "."
-	text += " Needs only count from %d people." % int(h.get("needs_from_population", 0))
+	text += " Needs only count from %d people, and not in a new village's first %s hours." % [int(h.get("needs_from_population", 0)), str(h.get("grace_hours", 0))]
 	return text
 
 
-## A move-in speed in words: "nobody moves in", "half speed", "normal speed", "1.5x as fast".
+## A growth speed (babies, and newcomers when they come back) in words: "none", "half speed",
+## "normal speed", "1.5x as fast".
 func _speed_text(speed: float) -> String:
 	if speed <= 0.0:
-		return "nobody moves in"
+		return "none"
 	if is_equal_approx(speed, 1.0):
 		return "normal speed"
 	if is_equal_approx(speed, 0.5):
@@ -255,26 +276,29 @@ func _refresh_people() -> void:
 	var cap := Economy.population_capacity()
 	_show("population", "%d people · room for %d" % [e.population, cap])
 	_population_bar.value = 100.0 * e.population / maxf(cap, 1)
+	_refresh_groups(e)
 	var happy := Economy.happiness()
 	_show("happiness", "%d%% happy" % roundi(100.0 * float(happy.score)))
 	_happiness_bar.value = 100.0 * float(happy.score)
 	var foods := int(happy.foods)
 	var food_text := "%d%% · %d food%s selling" % [roundi(100.0 * float(happy.food)), foods, "" if foods == 1 else "s"]
 	_show("need_food", food_text, DOWN if float(happy.food) < 1.0 else LineChart.INK)
-	_show("need_jobs", "%d%% · %d of %d have a job" % [roundi(100.0 * float(happy.jobs)), e.employed, e.population], DOWN if float(happy.jobs) < 1.0 else LineChart.INK)
+	_show("need_jobs", "%d%% · %d of %d adults have a job" % [roundi(100.0 * float(happy.jobs)), e.employed, e.adults], DOWN if float(happy.jobs) < 1.0 else LineChart.INK)
 	var speed := float(happy.growth_speed)
 	var move_in := _speed_text(speed)
 	if e.population >= cap:
 		move_in += " · no room: build a house"
+	elif float(happy.grace_left) > 0.0:
+		move_in += " · new village: needs count in %s" % UITheme.duration(float(happy.grace_left))
 	elif not happy.needs_count:
 		move_in += " · small village, needs don't count yet"
-	_show("move_in", move_in, DOWN if speed < 1.0 else LineChart.INK)
+	_show("move_in", move_in, DOWN if speed < 1.0 or e.population >= cap else LineChart.INK)
 	_show("employed", str(e.employed))
 	_show("unemployed", str(e.unemployed), DOWN if e.unemployed > 0 else LineChart.INK)
 	_show("open_jobs", str(e.open_jobs))
 	_show("jobs", str(e.jobs))
-	_employed_bar.value = 100.0 * e.employed / maxf(e.population, 1)
-	_show("employed_share", "%d%% of people have a job" % roundi(100.0 * e.employed / maxf(e.population, 1)))
+	_employed_bar.value = 100.0 * e.employed / maxf(e.adults, 1)
+	_show("employed_share", "%d%% of adults have a job" % roundi(100.0 * e.employed / maxf(e.adults, 1)))
 	if e.open_jobs <= 0:
 		_show("work_speed", "Every post is filled")
 	else:
@@ -289,6 +313,50 @@ func _refresh_people() -> void:
 		if _values.has("jobs_" + type_id):
 			var n := int(counts.get(type_id, 0))
 			_show("jobs_" + type_id, "%d built · %d jobs" % [n, int(jobs.get(type_id, 0))])
+
+
+## Population by group, children by age, and who came and went.
+func _refresh_groups(e: Dictionary) -> void:
+	var people := maxf(e.population, 1)
+	_show("group_adults", "%d · %d%%" % [e.adults, roundi(100.0 * e.adults / people)])
+	_show("group_employed", str(e.employed))
+	_show("group_unemployed", str(e.unemployed), DOWN if e.unemployed > 0 else LineChart.INK)
+	_show("group_children", "%d · %d%%" % [e.children, roundi(100.0 * e.children / people)])
+	_adults_bar.value = 100.0 * e.adults / people
+	_show("group_note", "Adults work and have babies. Children don't work yet.")
+	var lines: Array[String] = []
+	var groups := Economy.children_groups()
+	var now := TimeService.now()
+	for i in mini(groups.size(), CHILD_ROWS):
+		var n := int(groups[i].count)
+		lines.append("%d %s · grow%s up in %s" % [n, "child" if n == 1 else "children", "s" if n == 1 else "", UITheme.duration(maxf(float(groups[i].grows_up_at) - now, 0.0))])
+	if groups.size() > CHILD_ROWS:
+		var rest := 0
+		for i in range(CHILD_ROWS, groups.size()):
+			rest += int(groups[i].count)
+		lines.append("…and %d younger" % rest)
+	_show("children_by_age", "No children yet." if lines.is_empty() else "\n".join(lines))
+	var hour := Economy.people_flow(3600.0)
+	var ever := Economy.people_stats()
+	var net_hour := 0
+	var net_all := 0
+	for row in PEOPLE_FLOW:
+		var key: String = row[0]
+		var sign := -1 if key == "died" else 1
+		if key != "grew_up":  # growing up changes who's an adult, not how many people there are
+			net_hour += sign * int(hour[key])
+			net_all += sign * int(ever[key])
+		_show("pf_hour_" + key, str(int(hour[key])) if float(hour.seconds) > 0.0 else "–")
+		_show("pf_all_" + key, str(int(ever[key])))
+	_show("pf_hour_net", ("%+d" % net_hour) if float(hour.seconds) > 0.0 else "–", _signed_color(net_hour))
+	_show("pf_all_net", "%+d" % net_all, _signed_color(net_all))
+	var birth := Economy.next_birth_in()
+	if not is_inf(birth):
+		_show("next_birth", "Next baby in %s" % UITheme.duration(maxf(birth, 0.0)))
+	elif e.population >= Economy.population_capacity():
+		_show("next_birth", "No babies: every home is full. Build a house.", DOWN)
+	else:
+		_show("next_birth", "No babies right now: the village is too unhappy.", DOWN)
 
 
 func _refresh_cash() -> void:
@@ -349,8 +417,10 @@ func _refresh_graph() -> void:
 	var history: Array = st.history.duplicate()
 	if history.is_empty() or now - float(history[-1].t) > 1.0:
 		var e := Economy.employment()
+		var ever := Economy.people_stats()
 		history.append({"t": now, "cash": Economy.currency(), "income": _sum(st.income), "spending": _sum(st.spending),
-			"population": e.population, "employed": e.employed, "jobs": e.jobs, "made": st.made})
+			"population": e.population, "adults": e.adults, "children": e.children, "employed": e.employed,
+			"jobs": e.jobs, "made": st.made, "born": ever.born, "died": ever.died, "grew_up": ever.grew_up})
 	var lines: Array = []
 	# Money is kept in cents; the graphs show dollars (/ 100).
 	match _graph:
@@ -362,11 +432,23 @@ func _refresh_graph() -> void:
 			lines.append({"name": "Out", "color": 1, "points": _per_minute(history, now, func(p): return float(p.spending) / 100.0)})
 			_chart.set_data(lines, -_range, 0.0, "/min", 1, "$")
 		"people":
-			var specs := [["People", "population"], ["Employed", "employed"], ["Jobs", "jobs"]]
+			# Older history points have no adults / children: those lines start where the data does.
+			var specs := [["People", "population"], ["Adults", "adults"], ["Children", "children"], ["Employed", "employed"], ["Jobs", "jobs"]]
 			for i in specs.size():
 				var key: String = specs[i][1]
-				lines.append({"name": specs[i][0], "color": i, "points": _points(history, now, func(p): return float(p.get(key, 0)))})
+				var known := history.filter(func(p): return p.has(key))
+				lines.append({"name": specs[i][0], "color": i, "points": _points(known, now, func(p): return float(p[key]))})
 			_chart.set_data(lines, -_range, 0.0)
+		"life":
+			# Births and deaths per hour, averaged over the hour before each point (they're rare
+			# events, so a shorter average would jump between 0 and a spike).
+			var specs := [["Born", "born"], ["Died", "died"], ["Grew up", "grew_up"]]
+			for i in specs.size():
+				var key: String = specs[i][1]
+				var known := history.filter(func(p): return p.has(key))
+				var per_minute := _per_minute(known, now, func(p): return float(p[key]), 3600.0)
+				lines.append({"name": specs[i][0], "color": i, "points": per_minute.map(func(v): return Vector2(v.x, v.y * 60.0))})
+			_chart.set_data(lines, -_range, 0.0, "/h", 1)
 		"production":
 			var i := 0
 			for res in GameData.resources:
@@ -386,14 +468,14 @@ func _points(history: Array, now: float, value: Callable) -> Array:
 
 
 ## For running totals (money in, items made): how fast they grew per minute, averaged over the
-## AVERAGE_OVER seconds before each point. Work arrives in batches (32 flour every 6 minutes),
-## so a minute-by-minute rate would jump between 0 and a spike.
-func _per_minute(history: Array, now: float, total: Callable) -> Array:
+## `over` seconds before each point (AVERAGE_OVER unless given). Work arrives in batches (32 flour
+## every 6 minutes), so a minute-by-minute rate would jump between 0 and a spike.
+func _per_minute(history: Array, now: float, total: Callable, over := AVERAGE_OVER) -> Array:
 	var out: Array = []
 	var start := 0  # oldest point inside the averaging window
 	for i in range(1, history.size()):
 		var t := float(history[i].t)
-		while start < i - 1 and float(history[start].t) < t - AVERAGE_OVER:
+		while start < i - 1 and float(history[start].t) < t - over:
 			start += 1
 		var minutes := maxf((t - float(history[start].t)) / 60.0, 0.001)
 		out.append(Vector2(t - now, (total.call(history[i]) - total.call(history[start])) / minutes))

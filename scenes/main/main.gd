@@ -256,7 +256,11 @@ func _place() -> void:
 	if result.ok:
 		village.stop_placement()
 		build_menu.end_placement()
-		hud.toast("%s built!" % GameData.buildings[type_id].name)
+		var room := int(GameData.buildings[type_id].get("population_capacity", 0))
+		if room > 0:  # a home only adds room; babies fill it over time
+			hud.toast("%s built! Room for %d more people: babies will fill it over time." % [GameData.buildings[type_id].name, room])
+		else:
+			hud.toast("%s built!" % GameData.buildings[type_id].name)
 		# Heads-up: once finished, its jobs won't all be filled even when the houses are full.
 		var levels: Dictionary = GameData.config.get("staffing_levels", {})
 		var share := float(levels.get(GameData.config.get("default_staffing", "high"), 1.0))

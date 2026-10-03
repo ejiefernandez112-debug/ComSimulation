@@ -369,6 +369,24 @@ func test_population_growth() -> void:
 	_check(report.get("population", 0) == 5, "report counts growth")
 
 
+## Building a home adds room, not people: they move in one at a time and fill homes oldest first.
+func test_home_adds_room_not_people() -> void:
+	var data := _data()
+	var state := Sim.new_game(data, T0)
+	Sim.settle(state, data, T0 + 100)  # the starting house fills up: 10 people
+	var cabin := Sim.find_building(state, Sim.build(state, data, "cabin", Vector2i(3, 3), T0 + 100).building_id)
+	_check(int(state.population.current) == 10, "building a home adds nobody")
+	_check(Sim.home_residents(state, data, cabin, T0 + 100) == 0, "nobody lives in a home being built")
+	_check(is_inf(Sim.next_arrival_at(state, data, T0 + 100)), "homes full: nobody is on the way")
+	var house: Dictionary = state.buildings[1]
+	_check(Sim.home_residents(state, data, house, T0 + 100) == 10, "the starting house holds the 10 people")
+	Sim.settle(state, data, T0 + 300)  # the cabin is finished: room for 5 more
+	_check(int(state.population.current) == 10, "a finished home still adds nobody at once")
+	_check(is_equal_approx(Sim.next_arrival_at(state, data, T0 + 300), T0 + 310.0), "the first newcomer arrives 10 s after it's finished")
+	Sim.settle(state, data, T0 + 330)
+	_check(int(state.population.current) == 13 and Sim.home_residents(state, data, cabin, T0 + 330) == 3, "people move in one at a time: 3 in the cabin after 30 s")
+
+
 func test_construction_time() -> void:
 	var data := _data()
 	var state := Sim.new_game(data, T0)
@@ -1645,6 +1663,167 @@ func test_happiness_stops_and_restarts_growth() -> void:
 	_check(int(state.population.current) == 10, "the 20-second wait starts when the store opens, not before")
 	Sim.settle(state, data, T0 + 1020)
 	_check(int(state.population.current) == 11, "the first person arrives 20 s after the store opens")
+
+
+# --- Births, children & deaths (plan.md §5.6) ----------------------------------------
+
+## Test data with births and deaths and no immigration: 10 founding adults in the starting house
+## (room 10), a buildable "big_house" (room 100) and "home" (room 10), both ready at once.
+## `birth` and `death` are per person per hour; children grow up after 2 hours, one age group
+## per hour.
+func _life_data(birth: float, death: float) -> Dictionary:
+	var data := _data()
+	data.config["population_growth_seconds"] = 0
+	data.config["starting_population"] = 10
+	data.config["life"] = {"birth_rate_per_hour": birth, "death_rate_per_hour": death, "grow_up_hours": 2, "child_group_hours": 1}
+	data.buildings["big_house"] = {"category": "residential", "build_cost": 0, "buildable": true, "population_capacity": 100}
+	data.buildings["home"] = {"category": "residential", "build_cost": 0, "buildable": true, "population_capacity": 10}
+	return data
+
+
+func test_starting_population() -> void:
+	var data := _data()
+	data.config["starting_population"] = 25
+	data.config.starting_buildings.append({"type": "crew_store", "position": [3, 0]})
+	var state := Sim.new_game(data, T0)
+	_check(int(state.population.current) == 10, "the founders never outnumber the starting homes (25 asked, room for 10)")
+	_check(Sim.adults(state) == 10 and Sim.children_count(state) == 0, "the founders are all adults")
+	_check(Sim.hired(state.buildings[3]) == 4, "the starting warehouse is staffed at once")
+	_check(int(Sim.new_game(_data(), T0).population.current) == 0, "no starting_population: an empty village, as before")
+
+
+func test_births_and_growing_up() -> void:
+	var data := _life_data(0.1, 0.0)  # 10 adults: one baby an hour
+	var state := Sim.new_game(data, T0)
+	Sim.settle(state, data, T0 + 36000)
+	_check(int(state.population.current) == 10 and int(Sim.people_stats(state).born) == 0, "homes full: no babies, however long")
+	Sim.build(state, data, "big_house", Vector2i(5, 5), T0 + 36000)
+	Sim.settle(state, data, T0 + 36000 + 3599)
+	_check(int(state.population.current) == 10, "no baby before the first hour is up")
+	var report := Sim.settle(state, data, T0 + 36000 + 3601)
+	_check(int(state.population.current) == 11 and Sim.children_count(state) == 1 and Sim.adults(state) == 10, "a baby after an hour: a child, not an adult")
+	_check(int(report.get("born", 0)) == 1, "the report counts the birth")
+	var grows_up := float(Sim.children_groups(state)[0].grows_up_at)
+	_check(grows_up > T0 + 36000 + 3601 and grows_up <= T0 + 36000 + 3600 + 7200, "it grows up within 2 hours of being born")
+	Sim.settle(state, data, grows_up - 1.0)
+	_check(Sim.children_count(state) == 2 and Sim.adults(state) == 10, "a second baby, and nobody has grown up yet")
+	report = Sim.settle(state, data, grows_up)
+	_check(Sim.adults(state) == 11 and Sim.children_count(state) == 1 and int(report.get("grew_up", 0)) == 1, "the first child grows up right on time")
+	_check(int(Sim.people_stats(state).born) == 2 and int(Sim.people_stats(state).grew_up) == 1, "lifetime counters")
+
+
+func test_deaths_in_proportion() -> void:
+	var data := _life_data(0.0, 0.1)  # 10% of each group an hour
+	var state := Sim.new_game(data, T0)
+	Sim.build(state, data, "big_house", Vector2i(5, 5), T0)
+	state.population.current = 20
+	state.population.children = [{"count": 5, "grows_up_at": T0 + 90000}, {"count": 5, "grows_up_at": T0 + 93600}]
+	var report := Sim.settle(state, data, T0 + 3601)
+	_check(Sim.adults(state) == 9 and Sim.children_count(state) == 9, "10 adults and 10 children: one of each died in an hour")
+	_check(int(Sim.children_groups(state)[1].count) == 4 and int(Sim.children_groups(state)[0].count) == 5, "the child came from the youngest group")
+	_check(int(report.get("died", 0)) == 2 and int(Sim.people_stats(state).died) == 2, "deaths are counted")
+	# Everyone works: an adult who dies leaves a post open.
+	var town := Sim.new_game(_life_data(0.0, 0.5), T0)
+	var farm := Sim.find_building(town, Sim.build(town, _life_data(0.0, 0.5), "crew_farm", Vector2i(5, 5), T0).building_id)
+	town.population.current = 2
+	Sim._hire(town, _life_data(0.0, 0.5), T0)
+	Sim.settle(town, _life_data(0.0, 0.5), T0 + 3601)  # 2 adults x 50% an hour: one dies
+	_check(Sim.adults(town) == 1 and Sim.hired(farm) == 1, "a worker died: the farm has one worker left")
+
+
+func test_demolish_home_who_leaves() -> void:
+	var data := _life_data(0.0, 0.0)
+	var state := Sim.new_game(data, T0)
+	var home := Sim.find_building(state, Sim.build(state, data, "home", Vector2i(5, 5), T0).building_id)
+	var farm := Sim.find_building(state, Sim.build(state, data, "crew_farm", Vector2i(6, 6), T0).building_id)
+	state.population.current = 18  # 4 adults (2 at the farm) + 14 children, in room for 20
+	state.population.children = [{"count": 7, "grows_up_at": T0 + 3600}, {"count": 7, "grows_up_at": T0 + 7200}]
+	Sim._hire(state, data, T0)
+	Sim.demolish(state, data, home.id, T0)  # room 10: 8 must leave
+	_check(int(state.population.current) == 10, "8 people moved away")
+	_check(Sim.adults(state) == 2 and Sim.hired(farm) == 2, "the 2 unemployed adults left first; the workers stayed")
+	_check(Sim.children_count(state) == 8 and Sim.children_groups(state).size() == 2 and int(Sim.children_groups(state)[1].count) == 1, "then 6 children, youngest first")
+
+
+## Births, deaths and children growing up while away = the same while playing in 7-second steps.
+func test_life_away_equals_playing() -> void:
+	var data := _life_data(0.5, 0.2)
+	var state := Sim.new_game(data, T0)
+	Sim.build(state, data, "big_house", Vector2i(5, 5), T0)
+	Sim.build(state, data, "crew_farm", Vector2i(6, 6), T0)
+	Sim.build(state, data, "crew_mill", Vector2i(7, 7), T0)
+	var played := state.duplicate(true)
+	var t := T0
+	while t < T0 + 20000:
+		t = minf(t + 7.0, T0 + 20000)
+		Sim.settle(played, data, t)
+	Sim.settle(state, data, T0 + 20000)
+	var same: bool = int(played.population.current) == int(state.population.current) \
+		and Sim.children_count(played) == Sim.children_count(state) \
+		and str(Sim.people_stats(played)) == str(Sim.people_stats(state)) \
+		and Sim.children_groups(played).size() == Sim.children_groups(state).size()
+	_check(same, "one long absence = playing in 7-second steps (%s vs %s)" % [Sim.people_stats(state), Sim.people_stats(played)])
+	_check(int(Sim.people_stats(state).born) > 0 and int(Sim.people_stats(state).died) > 0 and int(Sim.people_stats(state).grew_up) > 0, "(the test saw births, deaths and children growing up)")
+
+
+## A new village gets a grace period: needs don't count for its first hours.
+func test_happiness_grace_period() -> void:
+	var data := _needs_data()
+	data.config.happiness["grace_hours"] = 1
+	var state := Sim.new_game(data, T0)
+	state.population.current = 10  # no food, no jobs: 0% once needs count
+	var happy := Sim.happiness(state, data, T0 + 100)
+	_check(not happy.needs_count and happy.score == 1.0 and is_equal_approx(float(happy.grace_left), 3500.0), "in the first hour needs don't count")
+	_check(Sim.happiness(state, data, T0 + 3600).needs_count and Sim.happiness(state, data, T0 + 3600).score == 0.0, "after it, they do")
+	state.erase("started_at")  # a village from before the grace period existed
+	_check(Sim.happiness(state, data, T0 + 100).needs_count, "older villages get no grace")
+
+
+## Jobs counts adults only: children don't need a job.
+func test_jobs_need_counts_adults() -> void:
+	var data := _needs_data()
+	var state := Sim.new_game(data, T0)
+	Sim.build(state, data, "big_house", Vector2i(3, 3), T0)
+	Sim.build(state, data, "crew_farm", Vector2i(6, 6), T0)
+	state.population.current = 14
+	state.population.children = [{"count": 10, "grows_up_at": T0 + 90000}]
+	Sim._hire(state, data, T0)  # 4 adults, 2 of them at the farm
+	_check(is_equal_approx(float(Sim.happiness(state, data, T0).jobs), 0.5), "2 of 4 adults have a job: 50% (children don't count)")
+	_check(int(Sim.employment(state, data, T0).unemployed) == 2, "2 adults unemployed")
+
+
+## Version 5 saves had no children: everyone in them is an adult.
+func test_old_save_gets_children() -> void:
+	var data := _data()
+	var state := Sim.new_game(data, T0)
+	state.population.current = 7
+	var old := JSON.parse_string(SaveFormat.to_text(state, T0)) as Dictionary
+	old.save_version = 5
+	old.population.erase("children")
+	old.population.erase("life_carry")
+	old.stats.erase("people")
+	old.erase("started_at")
+	var result := SaveFormat.from_text(JSON.stringify(old), data)
+	var s: Dictionary = result.state if result.ok else {}
+	_check(result.ok and int(s.save_version) == 6, "a version 5 save loads as version 6")
+	_check(result.ok and Sim.adults(s) == 7 and Sim.children_count(s) == 0 and s.population.children.is_empty(), "everyone in it is an adult")
+	_check(result.ok and int(Sim.people_stats(s).born) == 0 and not s.has("started_at"), "zeroed counters and no grace period")
+
+
+## The real data: founders, no immigration, births and deaths switched on.
+func test_real_life_data() -> void:
+	var data := {"resources": GameDataScript.load_json("res://data/resources.json"),
+		"buildings": GameDataScript.load_json("res://data/buildings.json"),
+		"config": GameDataScript.load_json("res://data/game_config.json")}
+	var state := Sim.new_game(data, T0)
+	_check(int(state.population.current) == int(data.config.starting_population) and int(state.population.current) > 0, "real data: a new game starts with its founders")
+	var store := {}
+	for b in state.buildings:
+		if data.buildings[b.type].get("category", "") == "storage":
+			store = b
+	_check(Sim.storage_capacity(state, data, store) == int(data.buildings[store.type].capacity), "real data: the starting warehouse is fully staffed")
+	_check(float(data.config.population_growth_seconds) <= 0.0, "real data: nobody moves in (immigration is off for now)")
+	_check(not data.config.get("life", {}).is_empty(), "real data: births and deaths are switched on")
 
 
 ## The real data: the needs are switched on and sensible.

@@ -1,10 +1,20 @@
 {
 	"_note": "Global tuning values. PLACEHOLDERS (plan.md 5.1 / 5.6 / 5.8).",
 	"starting_cash": 10000,
-	"population_growth_seconds": 10,
-	"_happiness": "Village happiness (plan.md 5.6 'Needs & happiness'): Food and Jobs needs, mixed by weights into one 0-1 score. food_scores = score for 0, 1, 2 or more different foods selling at a staffed Supermarket. Jobs = share of people with a job. Needs only count from needs_from_population people (below that, happiness is 100%). growth_speeds: the move-in speed for each happiness band (from = lowest score of the band; speed 1 = one person every population_growth_seconds, 0 = nobody moves in). PLACEHOLDERS.",
+	"_population": "starting_population = adults a new game starts with (never more than the starting homes hold). population_growth_seconds = seconds between adults moving in from outside (immigration) at normal speed; 0 = nobody moves in (immigration is switched off for now, plan.md 5.6: the village grows through births).",
+	"starting_population": 50,
+	"population_growth_seconds": 0,
+	"_life": "Births, children and deaths (plan.md 5.6). birth_rate_per_hour = babies per adult per hour (times the move-in speed from happiness; only while homes have room). Children don't work; they grow up into adults after grow_up_hours. Babies born in the same child_group_hours form one age group. death_rate_per_hour = share of adults and of children who die each hour. PLACEHOLDERS.",
+	"life": {
+		"birth_rate_per_hour": 0.02,
+		"death_rate_per_hour": 0.005,
+		"grow_up_hours": 24,
+		"child_group_hours": 1
+	},
+	"_happiness": "Village happiness (plan.md 5.6 'Needs & happiness'): Food and Jobs needs, mixed by weights into one 0-1 score. food_scores = score for 0, 1, 2 or more different foods selling at a staffed Supermarket. Jobs = share of adults with a job. Needs only count from needs_from_population people (below that, happiness is 100%) and after a new village's first grace_hours. growth_speeds: the move-in and birth speed for each happiness band (from = lowest score of the band; speed 1 = normal, 0 = nobody moves in and no babies). PLACEHOLDERS.",
 	"happiness": {
 		"needs_from_population": 10,
+		"grace_hours": 3,
 		"food_scores": [0.0, 0.7, 1.0],
 		"weights": { "food": 0.5, "jobs": 0.5 },
 		"growth_speeds": [
@@ -72,6 +82,10 @@
 	"starting_buildings": [
 		{ "type": "construction_office", "position": [9, 9] },
 		{ "type": "small_house", "position": [12, 9] },
+		{ "type": "small_house", "position": [15, 9] },
+		{ "type": "small_house", "position": [18, 9] },
+		{ "type": "small_house", "position": [12, 12] },
+		{ "type": "small_house", "position": [15, 12] },
 		{ "type": "warehouse", "position": [6, 9] }
 	]
 }

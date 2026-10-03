@@ -108,5 +108,21 @@ static func status(b: Dictionary) -> Dictionary:
 				return _no_workers(b, -1.0)
 			return _with_speed(b, "Selling %d product%s · next sells out in %s" % [selling, "" if selling == 1 else "s", UITheme.duration(soonest)], -1.0, speed)
 		"residential":
-			return {"text": "Home for %d people" % int(def.get("population_capacity", 0)), "progress": -1.0, "good": true}
+			# A home only gives room: babies (and, later, newcomers) fill the oldest homes first.
+			var room := int(def.get("population_capacity", 0))
+			var here := Economy.home_residents(b)
+			var text := "%d of %d living here" % [here, room]
+			var progress := float(here) / maxf(room, 1)
+			if here < room:
+				var birth := Economy.next_birth_in()
+				var arrival := Economy.next_arrival_in()
+				if not is_inf(birth) and birth <= arrival:
+					text += " · next baby in the village in %s" % UITheme.duration(maxf(birth, 0.0))
+				elif not is_inf(arrival):
+					text += " · next newcomer in %s" % UITheme.duration(maxf(arrival, 0.0))
+				elif Economy.adults() <= 0:
+					return {"text": text + " · no babies: there are no adults", "progress": progress, "good": false}
+				else:
+					return {"text": text + " · no babies: the village is too unhappy", "progress": progress, "good": false}
+			return {"text": text, "progress": progress, "good": true}
 	return {"text": "Your headquarters", "progress": -1.0, "good": true}

@@ -1,6 +1,6 @@
 extends ModalWindow
 ## "Welcome back!" (plan.md §6, Offline Summary): shown once at start-up after the game was closed
-## for a while. Lists what the buildings made, who moved in, the wages paid and what needs
+## for a while. Lists what the buildings made, who was born, grew up or died, the wages paid and what needs
 ## attention. It only shows Economy's numbers; the catch-up itself happened in the game rules.
 
 
@@ -32,6 +32,12 @@ func show_if_away() -> bool:
 		row.add_child(_amount("cash", "+" + UITheme.money(int(report.get("store_sales", 0)))))
 	if int(report.get("population", 0)) > 0:
 		_row("Moved in").add_child(_amount("population", "+%d people" % int(report.population)))
+	if int(report.get("born", 0)) > 0:
+		_row("Born").add_child(_amount("population", "+%d babies" % int(report.born)))
+	if int(report.get("grew_up", 0)) > 0:
+		_row("Grew up").add_child(_amount("population", "%d children became adults" % int(report.grew_up)))
+	if int(report.get("died", 0)) > 0:
+		_row("Died").add_child(_amount("population", "-%d people" % int(report.died)))
 	if roundi(int(report.get("wages", 0)) / 100.0) > 0:  # at least $1 (money is in cents)
 		_row("Wages paid").add_child(_amount("cash", "-" + UITheme.money(int(report.wages))))
 	if roundi(int(report.get("water", 0)) / 100.0) > 0:

@@ -63,6 +63,14 @@ static func _migrate(state: Dictionary, version: int, data: Dictionary) -> void:
 		# goods cost, so they get the standard cost of making them.
 		_standard_cost_tags(state, data)
 		version = 5
+	if version < 6:
+		# Version 6: children, births and deaths (plan.md §5.6). Everyone in an older save is an
+		# adult; no part-people are on the way yet. There's no "started_at", so an older village
+		# gets no new-village grace period.
+		state.population["children"] = []
+		state.population["life_carry"] = {}
+		Simulation.people_stats(state)  # adds the zeroed counters
+		version = 6
 	state["save_version"] = version
 
 

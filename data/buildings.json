@@ -7,7 +7,7 @@
 	},
 	"small_house": {
 		"name": "Small House", "category": "residential", "menu_tab": "housing",
-		"description": "A cosy home. People move in over time.",
+		"description": "A cosy home. Babies born in the village fill it over time.",
 		"build_cost": 150, "buildable": true, "build_time": 5, "max_workers": 0,
 		"population_capacity": 10
 	},

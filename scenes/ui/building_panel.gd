@@ -424,11 +424,8 @@ func _refresh() -> void:
 	_status.text = status.text
 	_progress.visible = status.progress >= 0.0
 	_progress.value = status.progress * 100.0
-	if def.category == "residential":
-		_status.text = "%s · %d living here now" % [status.text, Economy.population()]
-		_progress.visible = true
-		_progress.theme_type_variation = "BlueBar"
-		_progress.value = 100.0 * Economy.population() / maxf(Economy.population_capacity(), 1)
+	# Homes show how full they are in blue (the population colour); everything else in green.
+	_progress.theme_type_variation = "BlueBar" if def.category == "residential" else ""
 	for i in _slots.size():
 		var filled: bool = i < b.queue.size()
 		var finished: bool = i == 0 and b.blocked

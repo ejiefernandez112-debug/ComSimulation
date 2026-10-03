@@ -378,6 +378,44 @@ func population_capacity() -> int:
 	return Simulation.population_capacity(state, data(), TimeService.now())
 
 
+## People living in this home (homes fill oldest first; 0 while it's being built).
+func home_residents(building: Dictionary) -> int:
+	return Simulation.home_residents(state, data(), building, TimeService.now())
+
+
+## Seconds until the next person moves in (INF when the homes are full or nobody is moving in).
+func next_arrival_in() -> float:
+	var now := TimeService.now()
+	return Simulation.next_arrival_at(state, data(), now) - now
+
+
+## Seconds until the next baby is born (INF when none is coming).
+func next_birth_in() -> float:
+	var now := TimeService.now()
+	return Simulation.next_birth_at(state, data(), now) - now
+
+
+## Adults (everyone who isn't a child: they work and have babies).
+func adults() -> int:
+	return Simulation.adults(state)
+
+
+## The children's age groups, oldest first: [{"count", "grows_up_at"}]. Read it; don't change it.
+func children_groups() -> Array:
+	return Simulation.children_groups(state)
+
+
+## Who came and went over (up to) the last `window` seconds:
+## {"moved_in", "born", "grew_up", "died", "seconds"}.
+func people_flow(window: float) -> Dictionary:
+	return Simulation.people_flow(state, window, TimeService.now())
+
+
+## Lifetime counters: {"moved_in", "born", "grew_up", "died"}. Read it; don't change it.
+func people_stats() -> Dictionary:
+	return Simulation.people_stats(state)
+
+
 ## Village happiness: {"score", "food", "jobs", "foods", "needs_count", "growth_speed"}
 ## (see Simulation.happiness).
 func happiness() -> Dictionary:
@@ -489,7 +527,8 @@ func production_rates() -> Dictionary:
 	return Simulation.production_rates(state, data(), TimeService.now())
 
 
-## {"population", "jobs", "employed", "unemployed", "open_jobs"}
+## {"population" (everyone), "adults", "children", "jobs", "employed", "unemployed" (adults
+## without a job), "open_jobs"}
 func employment() -> Dictionary:
 	return Simulation.employment(state, data(), TimeService.now())
 
