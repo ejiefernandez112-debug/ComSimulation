@@ -910,6 +910,8 @@ static func can_build(state: Dictionary, data: Dictionary, type_id: String, cell
 		return _fail(str(def.coming_soon))
 	if def.is_empty() or not def.get("buildable", false):
 		return _fail("This building can't be built.")
+	if at_build_limit(state, data, type_id):
+		return _fail("You can have only %d %s." % [int(def.max_count), def.get("name", "of these")] if int(def.max_count) != 1 else "You already have a %s: one is all you need." % def.get("name", "building"))
 	if not _in_plot(state, cell):
 		return _fail("That spot is outside your land.")
 	if not building_at(state, cell).is_empty():
@@ -923,6 +925,18 @@ static func can_build(state: Dictionary, data: Dictionary, type_id: String, cell
 	if state.profile.currency < int(quote.cost):
 		return _fail("Not enough money.")
 	return _ok(quote)
+
+
+## True when the village already has as many of this building as it may ("max_count" in
+## buildings.json; the Trading Post: 1). Ones still being built count too.
+static func at_build_limit(state: Dictionary, data: Dictionary, type_id: String) -> bool:
+	var def: Dictionary = data.buildings.get(type_id, {})
+	if not def.has("max_count"):
+		return false
+	var have := 0
+	for b in state.buildings:
+		have += 1 if b.type == type_id else 0
+	return have >= int(def.max_count)
 
 
 ## Build: buy its materials and pay its crew now (construction_quote); it's ready after the
@@ -2394,6 +2408,98 @@ static func tax_bracket(state: Dictionary, data: Dictionary, now: float) -> Dict
 			result.rate = float(brackets[i].rate)
 			result.next_at = cents(float(brackets[i + 1].from)) if i + 1 < brackets.size() else -1
 	return result
+
+
+# --- Trading Post (plan.md §5.22) -------------------------------------------------
+# A trader from off the island, at the Trading Post (one per village). It buys ANY item (raw,
+# half-made or finished) at trade.sell_share of its normal price (§5.12) and sells any item at
+# trade.buy_share (game_config.json). Instant, with no demand limit: just a worse price than the
+# village pays. Selling pays sales tax like any sale (§5.9); bought goods go into the Warehouse
+# with what was paid as their cost tag (§5.14). It gives raw and half-made goods a value, so a
+# player can specialise (buy flour instead of farming wheat). The start of the Dock (§5.11).
+
+## True when the village has a Trading Post that's built and not suspended.
+static func has_trading_post(state: Dictionary, data: Dictionary, now: float) -> bool:
+	for b in state.buildings:
+		if data.buildings.get(b.type, {}).get("category", "") == "trade" and is_built(b, now) and not is_suspended(b):
+			return true
+	return false
+
+
+## The trader's price for one unit, in cents: side "sell" = what it pays you, "buy" = what you
+## pay it (at least 1 cent).
+static func trade_price(data: Dictionary, resource_id: String, side: String) -> int:
+	var shares: Dictionary = data.config.get("trade", {})
+	if side == "sell":
+		return maxi(roundi(unit_price(data, resource_id) * float(shares.get("sell_share", 1.0))), 0)
+	return maxi(roundi(unit_price(data, resource_id) * float(shares.get("buy_share", 1.0))), 1)
+
+
+## Whether `qty` × `resource_id` could be sold to the trader now (changes nothing): {"ok",
+## "error", "price" (cents each), "gross", "tax", "earned", "cost" (their cost tags), "profit"}.
+static func can_trade_sell(state: Dictionary, data: Dictionary, resource_id: String, qty: int, now: float) -> Dictionary:
+	if not has_trading_post(state, data, now):
+		return _fail("You need a Trading Post to trade (Build → Shops).")
+	if not data.resources.has(resource_id):
+		return _fail("Unknown item.")
+	if qty <= 0:
+		return _fail("Choose how many to sell.")
+	if int(state.inventory.get(resource_id, 0)) < qty:
+		return _fail("You don't have that many.")
+	var price := trade_price(data, resource_id, "sell")
+	var gross := qty * price
+	var tax := sales_tax(state, data, gross, now)
+	var cost := roundi(average_cost(state, resource_id) * qty)
+	return _ok({"price": price, "gross": gross, "tax": tax, "earned": gross - tax, "cost": cost, "profit": gross - tax - cost})
+
+
+## Sell to the trader (see can_trade_sell): the goods leave the Warehouse, the money (after
+## sales tax) reaches cash at once.
+static func trade_sell(state: Dictionary, data: Dictionary, resource_id: String, qty: int, now: float) -> Dictionary:
+	settle(state, data, now)
+	var check := can_trade_sell(state, data, resource_id, qty, now)
+	if not check.ok:
+		return check
+	var made_for := float(_take_cost(state.inventory, _costs(state, "inventory_cost"), {resource_id: qty}).get(resource_id, 0.0))
+	_remove_from(state.inventory, {resource_id: qty})
+	var sale := _record_sale(state, data, resource_id, qty, int(check.gross), made_for, now)
+	sale["price"] = int(check.price)
+	return _ok(sale)
+
+
+## Whether `qty` × `resource_id` could be bought from the trader now (changes nothing): {"ok",
+## "error", "price" (cents each), "cost" (all of it)}. It needs the cash (no buying into debt)
+## and room in the Warehouse.
+static func can_trade_buy(state: Dictionary, data: Dictionary, resource_id: String, qty: int, now: float) -> Dictionary:
+	if not has_trading_post(state, data, now):
+		return _fail("You need a Trading Post to trade (Build → Shops).")
+	if not data.resources.has(resource_id):
+		return _fail("Unknown item.")
+	if qty <= 0:
+		return _fail("Choose how many to buy.")
+	var price := trade_price(data, resource_id, "buy")
+	var cost := qty * price
+	if int(state.profile.currency) < cost:
+		return _fail("Not enough money: that costs %s." % _money_text(cost))
+	if warehouse_total(state) + qty > warehouse_cap(state, data):
+		return _fail("Not enough room in the warehouse.")
+	return _ok({"price": price, "cost": cost})
+
+
+## Buy from the trader (see can_trade_buy): paid now, counted as "Trading Post purchases"; the
+## goods go into the Warehouse with what was paid as their cost tag.
+static func trade_buy(state: Dictionary, data: Dictionary, resource_id: String, qty: int, now: float) -> Dictionary:
+	settle(state, data, now)
+	var check := can_trade_buy(state, data, resource_id, qty, now)
+	if not check.ok:
+		return check
+	var cost := int(check.cost)
+	state.profile.currency -= cost
+	var spending: Dictionary = stats(state).spending
+	spending["purchases"] = int(spending.get("purchases", 0)) + cost
+	_add_to(state.inventory, {resource_id: qty})
+	_put_cost(_costs(state, "inventory_cost"), {resource_id: float(cost)})
+	return check
 
 
 # --- Supermarket (plan.md §5.16) -------------------------------------------------

@@ -213,11 +213,21 @@ func _random_action(rng: RandomNumberGenerator, state: Dictionary, now: float, e
 		var bonus: String = _pick(rng, _data.config.get("wage_bonuses", {}).keys() + ["nonsense"])
 		result = Sim.set_bonus(state, _data, b.get("id", "none"), bonus, now)
 		text = "set wage bonus of %s to %s" % [_name(b), bonus]
-	elif roll < 73:
+	elif roll < 70:
 		var res: String = _pick(rng, _data.resources.keys())
 		var qty := rng.randi_range(0, int(state.inventory.get(res, 0)) + 3)
 		result = Sim.sell(state, _data, res, qty, now)
 		text = "sell %d %s to the Retailer" % [qty, res]
+	elif roll < 73:
+		# The Trading Post (plan.md §5.22): sell to or buy from the trader, sensible amounts or not.
+		var res: String = _pick(rng, _data.resources.keys() + ["nonsense"])
+		var qty := rng.randi_range(-1, int(state.inventory.get(res, 0)) + 50)
+		if rng.randf() < 0.5:
+			result = Sim.trade_sell(state, _data, res, qty, now)
+			text = "sell %d %s to the trader" % [qty, res]
+		else:
+			result = Sim.trade_buy(state, _data, res, qty, now)
+			text = "buy %d %s from the trader" % [qty, res]
 	elif roll < 85:
 		var b := _some_building(rng, state, ["retail"])
 		var res: String = _pick(rng, Sim.shop_products(_data) + ["wheat"])
@@ -308,6 +318,18 @@ func _sensible_action(rng: RandomNumberGenerator, state: Dictionary, now: float)
 		if int(state.inventory[res]) > 0 and rng.randf() < 0.3:
 			var amount := rng.randi_range(1, int(state.inventory[res]))
 			options.append(func(): return ["sell %d %s to the Retailer" % [amount, res], Sim.sell(state, _data, res, amount, now)])
+	if Sim.has_trading_post(state, _data, now):
+		# A player who trades: sells some stock, and buys ingredients a building is missing.
+		for res in state.inventory:
+			if int(state.inventory[res]) > 0 and rng.randf() < 0.15:
+				var amount := rng.randi_range(1, int(state.inventory[res]))
+				options.append(func(): return ["sell %d %s to the trader" % [amount, res], Sim.trade_sell(state, _data, res, amount, now)])
+		for b in state.buildings:
+			for recipe in _data.buildings[b.type].get("recipes", []):
+				for res in recipe.get("inputs", {}):
+					if int(state.inventory.get(res, 0)) < int(recipe.inputs[res]) and rng.randf() < 0.3:
+						var amount := int(recipe.inputs[res]) * rng.randi_range(1, 12)
+						options.append(func(): return ["buy %d %s from the trader" % [amount, res], Sim.trade_buy(state, _data, res, amount, now)])
 	if options.is_empty():
 		return {}
 	var done: Array = _pick(rng, options).call()
@@ -338,6 +360,12 @@ func _invariants(state: Dictionary, now: float, before: Dictionary, baseline: in
 	broken = _goods_ok("the warehouse", state.inventory, state.get("inventory_cost", {}))
 	if broken != "":
 		return broken
+	# No more of a building than its max_count (the Trading Post: 1).
+	var counts := {}
+	for b in state.buildings:
+		counts[b.type] = int(counts.get(b.type, 0)) + 1
+		if _data.buildings[b.type].has("max_count") and int(counts[b.type]) > int(_data.buildings[b.type].max_count):
+			return "%d of %s, more than its max_count" % [counts[b.type], b.type]
 	var total_before := Sim.warehouse_total(before)
 	var total := Sim.warehouse_total(state)
 	if total > total_before and total > Sim.warehouse_cap(state, _data):

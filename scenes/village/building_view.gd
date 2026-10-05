@@ -22,6 +22,7 @@ const CATEGORY_COLORS := {
 	"construction": Color("e0a43a"),
 	"power": Color("f2c94c"),
 	"retail": Color("6fb07f"),
+	"trade": Color("c46a5a"),
 }
 
 static var show_names := false

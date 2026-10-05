@@ -27,6 +27,8 @@
 		"grow_up_hours": 6,
 		"child_group_hours": 1
 	},
+	"_trade": "The Trading Post's trader (plan.md 5.22): it pays sell_share of an item's normal price (plan.md 5.12) when you sell to it, and charges buy_share when you buy from it. Selling pays sales tax. PLACEHOLDERS.",
+	"trade": { "sell_share": 0.6, "buy_share": 1.5 },
 	"_items": "item_categories = the kinds of items (resources.json \"category\") and their names on screen. Stores sell the categories in their \"sells\" list (buildings.json); the Food need counts only food.",
 	"item_categories": {
 		"food": { "name": "Food" },

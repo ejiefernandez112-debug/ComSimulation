@@ -198,5 +198,12 @@
 			{ "shelves": 6 },
 			{ "shelves": 7 }
 		]
+	},
+	"trading_post": {
+		"_comment": "Trade (plan.md 5.22): a trader from off the island buys any item at trade.sell_share of its normal price and sells any item at trade.buy_share (game_config.json). Instant, no demand limit. max_count = most a village may have. No workers, so it needs no road. The start of the Dock (plan.md 5.11). All PLACEHOLDERS.",
+		"name": "Trading Post", "category": "trade", "menu_tab": "shops",
+		"description": "A trader from off the island buys anything you have, raw or finished, and sells you anything you need. Worse prices than your village pays, but no waiting. One per village.",
+		"buildable": true, "max_workers": 0, "max_count": 1,
+		"materials": { "bricks": 800, "cement": 80, "steel": 20, "construction_materials": 40 }
 	}
 }

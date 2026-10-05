@@ -44,6 +44,7 @@ func _ready() -> void:
 	building_panel.resume_requested.connect(_resume)
 	building_panel.upgrade_requested.connect(_ask_upgrade)
 	building_panel.stock_requested.connect(_stock)
+	building_panel.trade_requested.connect(_trade)
 	building_panel.clear_shelf_requested.connect(_ask_clear_shelf)
 	Economy.shelves_sold.connect(_on_shelves_sold)
 	Economy.people_changed.connect(_on_people_changed)
@@ -134,7 +135,7 @@ func _on_building_tapped(building_id: String) -> void:
 	if not Economy.waiting_goods(b).is_empty():
 		_collect(building_id)
 	village.select(building_id)
-	if GameData.buildings[b.type].category in ["extractor", "processor", "storage", "utility", "construction", "power", "retail"]:
+	if GameData.buildings[b.type].category in ["extractor", "processor", "storage", "utility", "construction", "power", "retail", "trade"]:
 		building_bar.close()
 		building_panel.show_building(building_id)
 	else:
@@ -421,6 +422,27 @@ func _stock(building_id: String, resource_id: String, qty: int, tag: String) -> 
 		building_panel.choose_defaults()  # the form moves on to the next food not on a shelf yet
 	else:
 		hud.toast(result.error, true)
+
+
+## Selling to or buying from the Trading Post's trader (plan.md §5.22): instant.
+func _trade(side: String, resource_id: String, qty: int) -> void:
+	var item := BuildingInfo.resource_name(resource_id)
+	var post: String = building_panel.building_id
+	if side == "sell":
+		var sold := Economy.trade_sell(resource_id, qty)
+		if not sold.ok:
+			hud.toast(sold.error, true)
+			return
+		village.show_gain(post, {resource_id: -qty})
+		var tax := " (%s sales tax)" % UITheme.money(int(sold.tax)) if int(sold.tax) > 0 else ""
+		hud.toast("Sold %s %s to the trader for %s%s." % [UITheme.number(qty), item, UITheme.money(int(sold.earned)), tax])
+	else:
+		var bought := Economy.trade_buy(resource_id, qty)
+		if not bought.ok:
+			hud.toast(bought.error, true)
+			return
+		village.show_gain(post, {resource_id: qty})
+		hud.toast("Bought %s %s from the trader for %s." % [UITheme.number(qty), item, UITheme.money(int(bought.cost))])
 
 
 ## Taking a shelf down ends its sale early, so ask first and show what comes back.

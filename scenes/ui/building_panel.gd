@@ -16,6 +16,7 @@ signal resume_requested(building_id: String)
 signal stock_requested(building_id: String, resource_id: String, qty: int, tag: String)
 signal clear_shelf_requested(building_id: String, index: int)
 signal upgrade_requested(building_id: String)
+signal trade_requested(side: String, resource_id: String, qty: int)
 
 var building_id := ""
 var _shown_level := 0  # the level the rows were built for: an upgrade finishing rebuilds them
@@ -58,6 +59,7 @@ var _stock_button: Button
 var _chosen_item := ""
 var _chosen_tag := ""
 var _chosen_amount := 0
+var _trade_box: TradeBox  # the Trading Post's Sell / Buy form (plan.md §5.22)
 
 
 func _ready() -> void:
@@ -97,6 +99,7 @@ func _build_rows(b: Dictionary, def: Dictionary) -> void:
 	_tag_buttons.clear()
 	_preview.clear()
 	_stock_button = null
+	_trade_box = null
 	var about := _body(def.get("description", ""))
 	about.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	about.custom_minimum_size.x = WIDTH - 70  # wrapped text needs a width, or it measures one word per line
@@ -167,6 +170,14 @@ func _build_rows(b: Dictionary, def: Dictionary) -> void:
 	if def.category == "retail":
 		_build_shelves(b)
 		_build_stock_form()
+
+	if def.category == "trade":
+		# The Trading Post (plan.md §5.22): sell anything to the trader, or buy anything from it.
+		var trade := _section("Trade")
+		_trade_box = TradeBox.new()
+		_trade_box.setup(WIDTH - 70)
+		_trade_box.trade_requested.connect(func(side, res, qty): trade_requested.emit(side, res, qty))
+		trade.add_child(_trade_box)
 
 	if int(def.get("max_workers", 0)) > 0:
 		_build_workers(b, def)
@@ -479,6 +490,8 @@ func _refresh() -> void:
 		_refresh_shelves(b)
 	if _stock_button:
 		_refresh_stock_form()
+	if _trade_box:
+		_trade_box.refresh()
 
 
 ## Warehouses: one dark tile per item in stock, [icon] amount like the HUD's item counters, in

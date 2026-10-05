@@ -8,7 +8,7 @@ extends RefCounted
 
 const NAMES := {"rent": "Rent", "demolish": "Demolish refunds", "batch_refunds": "Cancelled batches",
 	"construction": "Construction", "roads": "Roads", "wages": "Wages", "water": "Water", "power": "Power", "tax": "Sales tax",
-	"switch_fees": "Switching products"}
+	"switch_fees": "Switching products", "purchases": "Trading Post purchases"}
 const NOTE_SIZE := 15
 
 var _panel  # the Statistics window (stats_panel.gd)

@@ -204,6 +204,10 @@ static func _status_now(b: Dictionary) -> Dictionary:
 			return _batch_status(b, r)
 		"power":
 			return _power_status(b)
+		"trade":
+			# The Trading Post (plan.md §5.22): the trader's prices, as shares of the normal price.
+			var shares: Dictionary = GameData.config.get("trade", {})
+			return {"text": "Open: the trader buys anything at %d%% of its price and sells anything at %d%%" % [roundi(float(shares.get("sell_share", 1.0)) * 100.0), roundi(float(shares.get("buy_share", 1.0)) * 100.0)], "progress": -1.0, "good": true}
 		"retail":
 			var selling := 0
 			var soonest := INF  # seconds until the first shelf sells out

@@ -18,7 +18,7 @@ const GameDataScript = preload("res://scripts/autoload/game_data.gd")
 ## Folders that aren't the game's own code: Godot's cache, exports, and the 3D art sources.
 ## Folders with a .gdignore file are skipped too.
 const SKIP_DIRS := [".godot", ".git", ".claude", "build", "art", "Sprites kit"]
-const CATEGORIES := ["civic", "residential", "storage", "utility", "construction", "power", "extractor", "processor", "retail"]
+const CATEGORIES := ["civic", "residential", "storage", "utility", "construction", "power", "extractor", "processor", "retail", "trade"]
 ## Every setting buildings.json / resources.json / game_config.json may use. Anything else is
 ## reported as a NOTE: usually a typo the game would silently ignore ("storage_capp"), or a new
 ## setting, which then belongs in these lists.
@@ -26,7 +26,7 @@ const BUILDING_KEYS := ["name", "category", "description", "menu_tab", "build_co
 	"build_time", "max_workers", "worker_type", "fixed_workers", "staffed_first", "fixed_wage",
 	"households", "housing_tier", "hut", "wealth", "rent_per_household", "power_mw",
 	"capacity", "water_per_hour", "water_supply", "recipes", "shelves", "upgrades", "materials", "crew", "road_hub",
-	"construction_crew", "power_supply", "power_radius", "grid_mw", "coming_soon", "sells", "switch_fee"]
+	"construction_crew", "power_supply", "power_radius", "grid_mw", "coming_soon", "sells", "switch_fee", "max_count"]
 ## What a level in "upgrades" may change (plus an optional fixed "cost" and own "time"), and the
 ## least each may be.
 const UPGRADE_STATS := {"max_workers": 0, "capacity": 1, "shelves": 1, "households": 1, "water_supply": 1, "power_supply": 1, "power_radius": 1}
@@ -37,7 +37,7 @@ const CONFIG_KEYS := ["starting_cash", "starting_population", "population_growth
 	"stats_sample_seconds", "stats_history_size", "money_log_minutes", "money_log_size", "pricing", "water", "sales_tax_window_hours",
 	"sales_tax_brackets", "market_fee", "retail", "staffing_levels", "default_staffing", "wage_bonuses",
 	"bonus_output", "default_bonus", "worker_types", "island", "starting_buildings", "construction", "roads", "power",
-	"item_categories"]
+	"item_categories", "trade"]
 ## A production recipe is one hour of work: the batch length the player picks is counted in them.
 const BATCH_HOUR := 3600.0
 
@@ -137,6 +137,7 @@ func _check_buildings(data: Dictionary, tabs: Dictionary) -> void:
 		_number_at_least(def, "build_time", 0.0, where, false)
 		_check_materials(config, def, where)
 		_whole_at_least(def, "max_workers", 0, where, false)
+		_whole_at_least(def, "max_count", 1, where, false)
 		if def.has("menu_tab") and not tabs.has(def.menu_tab):
 			_fail("%s: menu_tab '%s' isn't a tab in build_menu.json" % [where, def.menu_tab])
 		if def.get("buildable", false) and not def.has("menu_tab"):
@@ -318,6 +319,14 @@ func _check_config(data: Dictionary) -> void:
 	var c: Dictionary = data.config
 	var where := "game_config.json"
 	_unknown_keys(c, CONFIG_KEYS, where)
+	if c.has("trade"):
+		# The trader (plan.md §5.22): it must pay less than it charges, or buying and selling
+		# back would make money from nothing.
+		_unknown_keys(c.trade, ["sell_share", "buy_share"], where + " trade")
+		_number_at_least(c.trade, "sell_share", 0.0, where + " trade", true)
+		_number_at_least(c.trade, "buy_share", 0.0, where + " trade", true)
+		if float(c.trade.get("sell_share", 0.0)) >= float(c.trade.get("buy_share", 1.0)):
+			_fail("%s trade: sell_share must be below buy_share (or buying and selling back makes money)" % where)
 	for kind in c.get("item_categories", {}):
 		_unknown_keys(c.item_categories[kind], ["name"], where + " item_categories '%s'" % kind)
 		if str(c.item_categories[kind].get("name", "")) == "":

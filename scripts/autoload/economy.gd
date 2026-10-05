@@ -351,6 +351,42 @@ func sell(resource_id: String, qty: int) -> Dictionary:
 	return _after(Simulation.sell(state, data(), resource_id, qty, TimeService.now()))
 
 
+# --- Trading Post (plan.md §5.22) ---
+
+## True when the village has a working Trading Post.
+func has_trading_post() -> bool:
+	return Simulation.has_trading_post(state, data(), TimeService.now())
+
+
+## The trader's price for one unit (cents): side "sell" = what it pays you, "buy" = what you pay.
+func trade_price(resource_id: String, side: String) -> int:
+	return Simulation.trade_price(data(), resource_id, side)
+
+
+## What selling that to the trader would bring ({"ok", "error", "price", "gross", "tax", "earned",
+## "cost", "profit"}); changes nothing.
+func can_trade_sell(resource_id: String, qty: int) -> Dictionary:
+	return Simulation.can_trade_sell(state, data(), resource_id, qty, TimeService.now())
+
+
+func trade_sell(resource_id: String, qty: int) -> Dictionary:
+	return _after(Simulation.trade_sell(state, data(), resource_id, qty, TimeService.now()))
+
+
+## What buying that from the trader would cost ({"ok", "error", "price", "cost"}); changes nothing.
+func can_trade_buy(resource_id: String, qty: int) -> Dictionary:
+	return Simulation.can_trade_buy(state, data(), resource_id, qty, TimeService.now())
+
+
+func trade_buy(resource_id: String, qty: int) -> Dictionary:
+	return _after(Simulation.trade_buy(state, data(), resource_id, qty, TimeService.now()))
+
+
+## True when the village already has as many of this building as it may (the Trading Post: 1).
+func at_build_limit(type_id: String) -> bool:
+	return Simulation.at_build_limit(state, data(), type_id)
+
+
 # --- Supermarket (plan.md §5.16) ---
 
 ## Put `qty` × `resource_id` on a free shelf at price tag `tag` ("normal", "sale", ...).

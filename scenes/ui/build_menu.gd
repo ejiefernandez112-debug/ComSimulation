@@ -471,6 +471,11 @@ func _show_details(type_id: String) -> void:
 		"road":
 			_makes.add_child(_icon("road", 26))
 			_makes.add_child(_body("%s a tile · ready at once · removing is free" % UITheme.money(Economy.road_price())))
+		"trade":
+			# "Buys anything at 60%, sells anything at 150% of its price" (plan.md §5.22)
+			var shares: Dictionary = GameData.config.get("trade", {})
+			_makes.add_child(_icon("market", 26))
+			_makes.add_child(_body("Buys anything at %d%%, sells anything at %d%% of its price · no workers" % [roundi(float(shares.get("sell_share", 1.0)) * 100.0), roundi(float(shares.get("buy_share", 1.0)) * 100.0)]))
 		"retail":
 			# "Sells Food on 4 shelves" (its "sells" categories), or the goods' icons if it has no list.
 			var kinds: Array[String] = []
@@ -518,10 +523,14 @@ func _refresh() -> void:
 	var short := _shortfall(_shown)
 	_cost.add_theme_color_override("font_color", UITheme.BAD if short > 0 and not locked else UITheme.TEXT)
 	_cost_note.text = str(_def(_shown).get("coming_soon", "Not available yet")) if locked else ("Need %s more" % UITheme.money(short) if short > 0 else "")
+	if not locked and _shown != ROAD and Economy.at_build_limit(_shown):
+		_cost_note.text = "Already built: one is all you need"  # max_count (the Trading Post: 1)
 	_build.disabled = not _can_place(_shown)
 
 
 func _can_place(type_id: String) -> bool:
+	if type_id != ROAD and Economy.at_build_limit(type_id):
+		return false
 	return _def(type_id).get("buildable", false) and _shortfall(type_id) <= 0
 
 

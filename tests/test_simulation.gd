@@ -1656,6 +1656,87 @@ func test_old_save_gets_product() -> void:
 	_check(Sim.product_of(data, Sim.find_building(round_trip.state, busy.id)) == "grow_flour", "the product is kept in the save")
 
 
+# --- Trading Post (plan.md §5.22) ------------------------------------------------
+
+## Test data with a Trading Post (instant, no workers, one per village) whose trader pays half
+## the normal price and charges double: wheat ($2) sells for $1 and costs $4; flour ($3): $1.50 / $6.
+func _trade_data() -> Dictionary:
+	var data := _data()
+	data.buildings["post"] = {"name": "Trading Post", "category": "trade", "build_cost": 0, "buildable": true, "max_count": 1}
+	data.config["trade"] = {"sell_share": 0.5, "buy_share": 2.0}
+	return data
+
+
+## [state, data] with a Trading Post built.
+func _trade_town() -> Array:
+	var data := _trade_data()
+	var state := Sim.new_game(data, T0)
+	Sim.build(state, data, "post", Vector2i(5, 5), T0)
+	return [state, data]
+
+
+func test_trade_needs_trading_post() -> void:
+	var data := _trade_data()
+	var state := Sim.new_game(data, T0)
+	state.inventory["wheat"] = 10
+	var refused := Sim.trade_sell(state, data, "wheat", 5, T0)
+	_check(not refused.ok and refused.error.contains("Trading Post") and int(state.inventory.wheat) == 10, "no Trading Post: no trader, nothing changes")
+	_check(not Sim.can_trade_buy(state, data, "flour", 1, T0).ok, "and nothing to buy")
+	Sim.build(state, data, "post", Vector2i(5, 5), T0)
+	_check(Sim.has_trading_post(state, data, T0) and Sim.can_trade_sell(state, data, "wheat", 5, T0).ok, "with one, the trader buys")
+
+
+## Selling to the trader: half price, at once, paid like any sale (statistics, sales tax).
+func test_trade_sell() -> void:
+	var town := _trade_town()
+	var state: Dictionary = town[0]
+	var data: Dictionary = town[1]
+	state.inventory["wheat"] = 10
+	state["inventory_cost"] = {"wheat": 500.0}  # made for $0.50 each
+	_check(Sim.trade_price(data, "wheat", "sell") == 100 and Sim.trade_price(data, "wheat", "buy") == 400, "wheat: the trader pays $1, charges $4")
+	var preview := Sim.can_trade_sell(state, data, "wheat", 10, T0)
+	_check(preview.ok and int(preview.gross) == 1000 and int(preview.cost) == 500 and int(preview.profit) == 500 and int(state.inventory.wheat) == 10, "the preview: $10 for 10, made for $5, $5 profit; nothing changes")
+	var sold := Sim.trade_sell(state, data, "wheat", 10, T0)
+	_check(sold.ok and int(sold.earned) == 1000 and state.profile.currency == 50000 + 1000, "sold 10 wheat for $10, cash at once")
+	_check(int(state.inventory.get("wheat", 0)) == 0 and not state.inventory_cost.has("wheat"), "they left the warehouse with their cost tag")
+	_check(int(Sim.stats(state).income.sales) == 1000 and int(Sim.stats(state).sold.wheat) == 10, "it's a sale in the statistics")
+	_check(not Sim.trade_sell(state, data, "wheat", 1, T0).ok and not Sim.trade_sell(state, data, "wheat", 0, T0).ok, "can't sell what you don't have, or nothing")
+	_check(Sim.cash_check(state).ok, "cash check adds up")
+
+
+## Buying from the trader: double price, paid now, the goods carry what was paid; it needs the
+## cash and room in the warehouse.
+func test_trade_buy() -> void:
+	var town := _trade_town()
+	var state: Dictionary = town[0]
+	var data: Dictionary = town[1]
+	var before := int(Sim.balance_sheet(state, data, T0).company_value)
+	var bought := Sim.trade_buy(state, data, "flour", 5, T0)
+	_check(bought.ok and int(bought.cost) == 3000 and state.profile.currency == 50000 - 3000, "5 flour at $6 each: $30")
+	_check(int(state.inventory.flour) == 5 and is_equal_approx(float(state.inventory_cost.flour), 3000.0), "in the warehouse, carrying what was paid")
+	_check(int(Sim.stats(state).spending.purchases) == 3000 and Sim.cash_check(state).ok, "counted as purchases; cash check adds up")
+	_check(int(Sim.balance_sheet(state, data, T0).company_value) == before, "buying turns cash into goods: worth the same")
+	state.profile.currency = 500
+	var poor := Sim.trade_buy(state, data, "flour", 1, T0)
+	_check(not poor.ok and poor.error.contains("$6") and state.profile.currency == 500 and int(state.inventory.flour) == 5, "short of cash: refused, nothing changes")
+	state.profile.currency = 10000000
+	var full := Sim.trade_buy(state, data, "wheat", 996, T0)
+	_check(not full.ok and full.error.contains("room") and not state.inventory.has("wheat"), "no room for 996 more in a 1000 warehouse: refused")
+
+
+## One Trading Post per village (max_count); after demolishing it, another can be built.
+func test_trade_one_per_village() -> void:
+	var town := _trade_town()
+	var state: Dictionary = town[0]
+	var data: Dictionary = town[1]
+	_check(Sim.at_build_limit(state, data, "post") and not Sim.at_build_limit(state, data, "farm"), "one built: at its limit (farms have none)")
+	var second := Sim.build(state, data, "post", Vector2i(6, 6), T0)
+	_check(not second.ok and second.error.contains("already have") and state.buildings.size() == 4, "a second Trading Post is refused")
+	var post := Sim.find_building(state, state.buildings[3].id)
+	_check(Sim.demolish(state, data, post.id, T0).ok, "demolish it")
+	_check(Sim.build(state, data, "post", Vector2i(6, 6), T0).ok, "then another can be built")
+
+
 # --- Supermarket (plan.md §5.16) ------------------------------------------------
 
 ## Test data with a Supermarket ("market": 2 shelves, 2 workers at $36/hour). Flour and bread
@@ -2772,7 +2853,8 @@ func test_real_shop_data() -> void:
 	for type in data.buildings:
 		if not data.buildings[type].get("buildable", false):
 			continue
-		_check(Sim.max_level(data, type) == 4, "real data: %s goes up to Level 4" % type)
+		if data.buildings[type].has("upgrades"):  # a Trading Post has nothing to upgrade
+			_check(Sim.max_level(data, type) == 4, "real data: %s goes up to Level 4" % type)
 		for level in range(1, Sim.max_level(data, type) + 1):
 			_check(Sim.construction_seconds(data, type, level) == times[level - 1], "real data: %s Level %d takes %s s" % [type, level, times[level - 1]])
 
