@@ -1,13 +1,12 @@
 extends Control
 ## The bar that pops up at the bottom of the screen when a building is tapped, Clash-of-Clans
 ## style: the building's name and what it's doing, plus round action buttons. Info opens the
-## building panel; Collect and Produce act straight away; the Construction Office offers Build;
-## Move starts moving the building.
+## building panel; Collect acts straight away; Produce (an idle Farm, Mill or Bakery) opens the
+## panel to set up a batch; City Hall offers Build; Move starts moving the building.
 ## The buttons only ask (signals); main.gd does the action through Economy.
 
 signal info_requested(building_id: String)
 signal collect_requested(building_id: String)
-signal produce_requested(building_id: String)
 signal build_requested
 signal move_requested(building_id: String)
 
@@ -57,7 +56,7 @@ func _ready() -> void:
 		row.add_child(b)
 	_info.pressed.connect(func(): info_requested.emit(building_id))
 	_collect.pressed.connect(func(): collect_requested.emit(building_id))
-	_produce.pressed.connect(func(): produce_requested.emit(building_id))
+	_produce.pressed.connect(func(): info_requested.emit(building_id))  # the batch is set up there
 	_build.pressed.connect(build_requested.emit)
 	_move.pressed.connect(func(): move_requested.emit(building_id))
 	hide()
@@ -90,27 +89,26 @@ func _refresh() -> void:
 		close()
 		return
 	var def: Dictionary = GameData.buildings[b.type]
-	_title.text = "%s (Level %d)" % [def.name, int(b.level)]
+	_title.text = "%s (Level %d)" % [def.name, Economy.building_level(b)]
 	var status := BuildingInfo.status(b)
 	_status.text = status.text
 	_status.add_theme_color_override("font_color", UITheme.TEXT if status.good else Color("ffd166"))
 	_progress.visible = status.progress >= 0.0
 	_progress.value = status.progress * 100.0
 
-	var has_goods: bool = not b.storage.is_empty()
-	_collect.visible = has_goods
-	if has_goods:
-		var res: String = b.storage.keys()[0]
-		_collect.set_icon(res)
+	var waiting := Economy.waiting_goods(b)
+	_collect.visible = not waiting.is_empty()
+	if _collect.visible:
+		_collect.set_icon(waiting.keys()[0])
 		_collect.set_caption("Collect %s" % UITheme.number(BuildingInfo.stored(b)))
 
-	_produce.visible = def.category == "processor"
+	# Produce opens the building window, where the batch's length and bonus are chosen.
+	_produce.visible = Economy.makes_batches(b) and not Economy.has_batch(b)
 	if _produce.visible:
 		var r := BuildingInfo.recipe(b.type)
 		_produce.set_icon(BuildingInfo.output_of(r))
-		_produce.set_caption(BuildingInfo.amounts(r.inputs))
-		# Greyed when it can't start, but still tappable, so the player is told why.
-		_produce.set_color("yellow" if Economy.can_enqueue(building_id, r.id).ok else "grey")
+		_produce.set_caption("New batch")
+		_produce.set_color("yellow" if Economy.batch_max_hours(building_id, r.id, Economy.workers(b).bonus) > 0 else "grey")
 
 	_build.visible = def.category == "civic"
 

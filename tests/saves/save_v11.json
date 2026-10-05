@@ -1,0 +1,517 @@
+{
+	"buildings": [
+		{
+			"batch": {},
+			"built_at": 0.0,
+			"hired": 0,
+			"id": "b1",
+			"job_started_at": 1000000.0,
+			"level": 1,
+			"paid": 0,
+			"position": [
+				9,
+				9
+			],
+			"storage": {},
+			"type": "city_hall"
+		},
+		{
+			"batch": {},
+			"built_at": 0.0,
+			"hired": 4,
+			"id": "b2",
+			"job_started_at": 1000000.0,
+			"level": 1,
+			"paid": 171500,
+			"position": [
+				9,
+				11
+			],
+			"road": true,
+			"storage": {},
+			"type": "construction_office"
+		},
+		{
+			"batch": {},
+			"built_at": 0.0,
+			"hired": 0,
+			"id": "b3",
+			"job_started_at": 1000000.0,
+			"level": 1,
+			"paid": 69500,
+			"position": [
+				12,
+				9
+			],
+			"storage": {},
+			"type": "public_housing"
+		},
+		{
+			"batch": {},
+			"built_at": 0.0,
+			"hired": 0,
+			"id": "b4",
+			"job_started_at": 1000000.0,
+			"level": 1,
+			"paid": 69500,
+			"position": [
+				15,
+				9
+			],
+			"storage": {},
+			"type": "public_housing"
+		},
+		{
+			"batch": {},
+			"built_at": 0.0,
+			"hired": 0,
+			"id": "b5",
+			"job_started_at": 1000000.0,
+			"level": 1,
+			"paid": 69500,
+			"position": [
+				18,
+				9
+			],
+			"storage": {},
+			"type": "public_housing"
+		},
+		{
+			"batch": {},
+			"built_at": 0.0,
+			"hired": 0,
+			"id": "b6",
+			"job_started_at": 1000000.0,
+			"level": 1,
+			"paid": 69500,
+			"position": [
+				12,
+				12
+			],
+			"storage": {},
+			"type": "public_housing"
+		},
+		{
+			"batch": {},
+			"built_at": 0.0,
+			"hired": 0,
+			"id": "b7",
+			"job_started_at": 1000000.0,
+			"level": 1,
+			"paid": 69500,
+			"position": [
+				15,
+				12
+			],
+			"storage": {},
+			"type": "public_housing"
+		},
+		{
+			"batch": {},
+			"built_at": 0.0,
+			"hired": 4,
+			"id": "b8",
+			"job_started_at": 1000000.0,
+			"level": 1,
+			"paid": 256500,
+			"position": [
+				6,
+				9
+			],
+			"road": true,
+			"storage": {},
+			"type": "warehouse"
+		},
+		{
+			"batch": {},
+			"built_at": 1003600.0,
+			"hired": 0,
+			"id": "b9",
+			"job_started_at": 1003600.0,
+			"level": 1,
+			"paid": 73880,
+			"position": [
+				17,
+				8
+			],
+			"storage": {},
+			"type": "small_house"
+		},
+		{
+			"batch": {},
+			"built_at": 1003600.0,
+			"hired": 0,
+			"id": "b10",
+			"job_started_at": 1003600.0,
+			"level": 1,
+			"paid": 73880,
+			"position": [
+				9,
+				8
+			],
+			"storage": {},
+			"type": "small_house"
+		},
+		{
+			"batch": {},
+			"built_at": 1003600.0,
+			"hired": 0,
+			"id": "b11",
+			"job_started_at": 1003600.0,
+			"level": 1,
+			"paid": 73880,
+			"position": [
+				5,
+				9
+			],
+			"storage": {},
+			"type": "small_house"
+		},
+		{
+			"batch": {
+				"bonus": "small",
+				"collected": {},
+				"cost": 40800.0,
+				"hours": 2,
+				"input_cost": {},
+				"inputs": {},
+				"made_hours": 0,
+				"recipe_id": "grow_wheat",
+				"units": {
+					"wheat": 132
+				},
+				"wages": 28800
+			},
+			"bonus": "small",
+			"built_at": 1003600.0,
+			"hired": 0,
+			"id": "b12",
+			"job_started_at": 1011400.0,
+			"level": 1,
+			"paid": 146260,
+			"position": [
+				11,
+				7
+			],
+			"road": false,
+			"staffing": "low",
+			"storage": {},
+			"type": "wheat_farm"
+		}
+	],
+	"inventory": {},
+	"inventory_cost": {},
+	"last_saved_at": 1011400.0,
+	"next_building_id": 13,
+	"plot": {
+		"grid_size": [
+			20,
+			20
+		]
+	},
+	"population": {
+		"children": [
+			{
+				"count": 1,
+				"grows_up_at": 1018800.0
+			},
+			{
+				"count": 8,
+				"grows_up_at": 1022400.0
+			},
+			{
+				"count": 7,
+				"grows_up_at": 1026000.0
+			},
+			{
+				"count": 6,
+				"grows_up_at": 1029600.0
+			}
+		],
+		"current": 72,
+		"growth_anchor": 1011400.0,
+		"growth_speed": 0.5,
+		"life_carry": {
+			"adult_deaths": 0.7916666666666665,
+			"adult_leaves": 0.16666666666666666,
+			"born": 0.9166666666666667,
+			"child_deaths": 0.1796666666374998,
+			"child_leaves": 0.07333333333333335
+		},
+		"move_in_speed": 0.0
+	},
+	"profile": {
+		"currency": 9585166
+	},
+	"rent_carry": 0.6666666666666856,
+	"roads": [
+		[
+			6,
+			10,
+			2500
+		],
+		[
+			7,
+			10,
+			2500
+		],
+		[
+			8,
+			10,
+			2500
+		],
+		[
+			9,
+			10,
+			2500
+		],
+		[
+			10,
+			10,
+			2500
+		],
+		[
+			11,
+			10,
+			2500
+		],
+		[
+			12,
+			10,
+			2500
+		],
+		[
+			13,
+			10,
+			2500
+		],
+		[
+			14,
+			10,
+			2500
+		],
+		[
+			15,
+			10,
+			2500
+		],
+		[
+			16,
+			10,
+			2500
+		],
+		[
+			17,
+			10,
+			2500
+		],
+		[
+			18,
+			10,
+			2500
+		],
+		[
+			12,
+			11,
+			2500
+		],
+		[
+			15,
+			11,
+			2500
+		]
+	],
+	"save_version": 11,
+	"settled_at": 1011400.0,
+	"started_at": 1000000.0,
+	"stats": {
+		"adjustments": 8500000,
+		"capital": {
+			"buildings": 813000,
+			"cash": 1500000
+		},
+		"history": [
+			{
+				"adults": 50,
+				"born": 0,
+				"cash": 10000000,
+				"children": 0,
+				"died": 0,
+				"employed": 8,
+				"grew_up": 0,
+				"income": 0,
+				"jobs": 8,
+				"made": {},
+				"moved_away": 0,
+				"moved_in": 0,
+				"population": 50,
+				"spending": 0,
+				"t": 1000000.0
+			},
+			{
+				"adults": 50,
+				"born": 7,
+				"cash": 9626100,
+				"children": 7,
+				"died": 0,
+				"employed": 8,
+				"grew_up": 0,
+				"income": 0,
+				"jobs": 8,
+				"made": {},
+				"moved_away": 0,
+				"moved_in": 0,
+				"population": 57,
+				"spending": 373900,
+				"t": 1003600.0
+			},
+			{
+				"adults": 50,
+				"born": 15,
+				"cash": 9591700,
+				"children": 15,
+				"died": 0,
+				"employed": 8,
+				"grew_up": 0,
+				"income": 400,
+				"jobs": 8,
+				"made": {},
+				"moved_away": 0,
+				"moved_in": 0,
+				"population": 65,
+				"spending": 408700,
+				"t": 1007200.0
+			},
+			{
+				"adults": 50,
+				"born": 22,
+				"cash": 9586100,
+				"children": 22,
+				"died": 0,
+				"employed": 8,
+				"grew_up": 0,
+				"income": 800,
+				"jobs": 8,
+				"made": {},
+				"moved_away": 0,
+				"moved_in": 0,
+				"population": 72,
+				"spending": 414700,
+				"t": 1010800.0
+			},
+			{
+				"adults": 50,
+				"born": 22,
+				"cash": 9585166,
+				"children": 22,
+				"died": 0,
+				"employed": 8,
+				"grew_up": 0,
+				"income": 866,
+				"jobs": 8,
+				"made": {},
+				"moved_away": 0,
+				"moved_in": 0,
+				"population": 72,
+				"spending": 415700,
+				"t": 1011400.0
+			}
+		],
+		"income": {
+			"demolish": 0,
+			"rent": 866,
+			"sales": 0
+		},
+		"made": {},
+		"money_log": [
+			{
+				"adjustments": 0,
+				"income": {
+					"demolish": 0,
+					"sales": 0
+				},
+				"sales_by_item": {},
+				"spending": {
+					"construction": 0,
+					"roads": 0,
+					"tax": 0,
+					"wages": 0,
+					"water": 0
+				},
+				"t": 1000000.0
+			},
+			{
+				"adjustments": 8500000,
+				"income": {
+					"demolish": 0,
+					"sales": 0
+				},
+				"sales_by_item": {},
+				"spending": {
+					"construction": 367900,
+					"roads": 0,
+					"tax": 0,
+					"wages": 6000,
+					"water": 0
+				},
+				"t": 1003600.0
+			},
+			{
+				"adjustments": 8500000,
+				"income": {
+					"demolish": 0,
+					"rent": 400,
+					"sales": 0
+				},
+				"sales_by_item": {},
+				"spending": {
+					"construction": 367900,
+					"roads": 0,
+					"tax": 0,
+					"wages": 40800,
+					"water": 0
+				},
+				"t": 1007200.0
+			},
+			{
+				"adjustments": 8500000,
+				"income": {
+					"demolish": 0,
+					"rent": 800,
+					"sales": 0
+				},
+				"sales_by_item": {},
+				"spending": {
+					"construction": 367900,
+					"roads": 0,
+					"tax": 0,
+					"wages": 46800,
+					"water": 0
+				},
+				"t": 1010800.0
+			}
+		],
+		"people": {
+			"born": 22,
+			"died": 0,
+			"grew_up": 0,
+			"moved_away": 0,
+			"moved_in": 0
+		},
+		"sales_by_item": {},
+		"sold": {},
+		"spending": {
+			"construction": 367900,
+			"roads": 0,
+			"tax": 0,
+			"wages": 47800,
+			"water": 0
+		}
+	},
+	"wage_carry": 0.0,
+	"water_meter": {
+		"base_cost": 0.0,
+		"cycle_start": 1000000.0,
+		"m3": 0.0
+	}
+}

@@ -31,7 +31,7 @@ static func from_text(text: String, data: Dictionary) -> Dictionary:
 	if version < 1:
 		return _fail("This isn't a save file.")
 	var warnings: Array[String] = []
-	var problem := _check_shape(state)
+	var problem := _check_shape(state, version)
 	if problem != "":
 		return _fail("The save file is damaged (%s)." % problem)
 	_drop_unknown(state, data, warnings)
@@ -41,6 +41,11 @@ static func from_text(text: String, data: Dictionary) -> Dictionary:
 
 ## Upgrades an older save one version at a time, so old saves keep working.
 static func _migrate(state: Dictionary, version: int, data: Dictionary) -> void:
+	if version < 11:
+		# Version 11 renamed the headquarters to City Hall (plan.md §5.15): it was saved as
+		# "construction_office", an id that now means the new Construction Office. Renamed before
+		# the other steps, so the roads of step 10 start from City Hall.
+		_headquarters_to_city_hall(state, data)
 	if version < 2:
 		# Version 2: the warehouse became a real building (plan.md §5.10). Older saves get the
 		# starter warehouse, or they would have no room for goods at all.
@@ -84,7 +89,111 @@ static func _migrate(state: Dictionary, version: int, data: Dictionary) -> void:
 				if b.type == "small_house":
 					b.type = "public_housing"
 		version = 7
+	if version < 8:
+		# Version 8: the balance sheet (plan.md §5.19). Older saves didn't keep what was paid for
+		# each building or what the company started with, so they get list prices, and a starting
+		# cash that makes the cash check add up.
+		_balance_sheet_start(state, data)
+		version = 8
+	if version < 9:
+		# Version 9: production batches (plan.md §5.1). Farms, Mills and Bakeries no longer have a
+		# job queue or their own storage: everything in them goes to the Warehouse.
+		_queues_to_warehouse(state, data)
+		version = 9
+	if version < 10:
+		# Version 10: roads (plan.md §5.20). Buildings with workers need a road to the Construction
+		# Office, so older saves get free roads laid to every building that can be reached, and
+		# the workers are handed out again by the new rule.
+		state["roads"] = []
+		if Simulation.stats(state).has("spending"):
+			Simulation.stats(state).spending["roads"] = 0
+		Simulation.lay_roads_to_all(state, data)
+		Simulation._hire(state, data, float(state.get("settled_at", 0.0)))
+		version = 10
+	if version < 11:
+		# Version 11: building and upgrading need workers from a Construction Office (plan.md
+		# §5.15). Older saves get one free, already standing beside their roads, and the workers
+		# are handed out again (it's staffed first).
+		Simulation.add_free_crew_office(state, data)
+		Simulation._hire(state, data, float(state.get("settled_at", 0.0)))
+		version = 11
+	if version < 12:
+		# Version 12: electricity (plan.md §5.5). Mills and Bakeries need power, which reaches only
+		# buildings inside the power network around City Hall. Older saves get a power meter, a
+		# power line in the spending, and free Electric Substations so every building that uses
+		# power is inside the network; then power is handed out by the new rule.
+		var at := float(state.get("settled_at", 0.0))
+		Simulation.utility_meter(state, "power", at)
+		if Simulation.stats(state).has("spending"):
+			Simulation.stats(state).spending["power"] = 0
+		Simulation.cover_all_with_power(state, data)
+		Simulation._hire(state, data, at)
+		version = 12
 	state["save_version"] = version
+
+
+## Saves before version 11 called the headquarters "construction_office"; it is City Hall now.
+static func _headquarters_to_city_hall(state: Dictionary, data: Dictionary) -> void:
+	if not data.buildings.has("city_hall"):
+		return
+	for b in state.buildings:
+		if b.type == "construction_office":
+			b.type = "city_hall"
+
+
+## For a version 8 save: each Farm, Mill and Bakery hands its stored goods (with their cost tags)
+## and its queued jobs to the Warehouse: every job's ingredients come back in full, and a finished
+## job that was waiting for room comes as its products, at their standard cost. The Warehouse may
+## end up over full (nothing is thrown away; nothing new comes in until there's room again).
+## Then the building is idle, ready for its first batch.
+static func _queues_to_warehouse(state: Dictionary, data: Dictionary) -> void:
+	var inventory_cost: Dictionary = Simulation._costs(state, "inventory_cost")
+	for b in state.buildings:
+		if Simulation.makes_batches(data, b):
+			Simulation._add_to(state.inventory, b.get("storage", {}))
+			Simulation._put_cost(inventory_cost, b.get("storage_cost", {}))
+			var def: Dictionary = data.buildings.get(b.type, {})
+			for i in b.get("queue", []).size():
+				var job: Dictionary = b.queue[i]
+				var recipe := Simulation._recipe(def, job.get("recipe_id", ""))
+				if recipe.is_empty():
+					continue
+				if i == 0 and bool(b.get("blocked", false)):
+					Simulation._add_to(state.inventory, recipe.outputs)
+					for res in recipe.outputs:
+						Simulation._put_cost(inventory_cost, {res: int(recipe.outputs[res]) * Simulation.standard_unit_cost(data, res)})
+				else:
+					Simulation._add_to(state.inventory, recipe.get("inputs", {}))
+					Simulation._put_cost(inventory_cost, job.get("input_cost", {}))
+			b["storage"] = {}
+			b["storage_cost"] = {}
+		b.erase("queue")
+		b.erase("blocked")
+		b["batch"] = {}
+
+
+## Balance sheet numbers for a version 7 save: each building's price at its level ("paid"; an
+## upgrade under way also "upgrade_paid"), and the starting capital: the starter buildings at
+## list price, and the cash that "start + money in − money out = cash now" needs (any old dev
+## tool changes, which weren't counted then, end up in it).
+static func _balance_sheet_start(state: Dictionary, data: Dictionary) -> void:
+	for b in state.buildings:
+		var level := Simulation.building_level(b)
+		var paid := Simulation.construction_value(data, b.type, level)
+		if b.has("upgrade_done_at") and level < Simulation.max_level(data, b.type):
+			b["upgrade_paid"] = Simulation.level_value(data, b.type, level + 1)
+			paid += int(b.upgrade_paid)
+		b["paid"] = paid
+	var s := Simulation.stats(state)
+	var starters := 0
+	for entry in data.config.get("starting_buildings", []):
+		starters += Simulation.construction_value(data, entry.type)
+	var income: Dictionary = s.get("income", {})
+	var spending: Dictionary = s.get("spending", {})
+	s["capital"] = {"cash": int(state.profile.currency) - Simulation._total(income) + Simulation._total(spending),
+		"buildings": starters}
+	s["adjustments"] = 0
+	s["money_log"] = []
 
 
 ## Cost tags for a version 4 save: every stock (warehouse, building storage, queued batches'
@@ -96,11 +205,11 @@ static func _standard_cost_tags(state: Dictionary, data: Dictionary) -> void:
 	state["inventory_cost"] = inventory_cost
 	for b in state.buildings:
 		var storage_cost := {}
-		for res in b.storage:
+		for res in b.get("storage", {}):
 			storage_cost[res] = int(b.storage[res]) * Simulation.standard_unit_cost(data, res)
 		b["storage_cost"] = storage_cost
 		var def: Dictionary = data.buildings.get(b.type, {})
-		for job in b.queue:
+		for job in b.get("queue", []):  # (a warehouse added by step 2 has none)
 			var paid := {}
 			for recipe in def.get("recipes", []):
 				if recipe.id == job.get("recipe_id", ""):
@@ -170,8 +279,9 @@ static func _whole_numbers(value: Variant) -> Variant:
 	return value
 
 
-## "" if the state has everything the game rules expect, otherwise what's wrong.
-static func _check_shape(state: Dictionary) -> String:
+## "" if the state has everything the game rules expect (for a save of `version`), otherwise
+## what's wrong.
+static func _check_shape(state: Dictionary, version: int) -> String:
 	for key in ["profile", "plot", "population", "inventory"]:
 		if typeof(state.get(key)) != TYPE_DICTIONARY:
 			return "no %s" % key
@@ -190,10 +300,20 @@ static func _check_shape(state: Dictionary) -> String:
 			return "a building without a name"
 		if typeof(b.get("position")) != TYPE_ARRAY or b.position.size() != 2:
 			return "a building without a place"
-		if typeof(b.get("storage")) != TYPE_DICTIONARY or typeof(b.get("queue")) != TYPE_ARRAY:
+		if typeof(b.get("storage")) != TYPE_DICTIONARY:
 			return "a building without storage"
-		if not _is_number(b.get("job_started_at")) or typeof(b.get("blocked")) != TYPE_BOOL:
+		if not _is_number(b.get("job_started_at")):
 			return "a building without its timer"
+		if version < 9 and typeof(b.get("queue", [])) != TYPE_ARRAY:
+			return "a building with a broken queue"
+		if version >= 9 and not _batch_ok(b.get("batch")):
+			return "a building with a broken batch"
+	if version >= 10:
+		if typeof(state.get("roads")) != TYPE_ARRAY:
+			return "no roads"
+		for road in state.roads:
+			if typeof(road) != TYPE_ARRAY or road.size() != 3 or not _is_number(road[0]) or not _is_number(road[1]) or not _is_number(road[2]):
+				return "a broken road"
 	return ""
 
 
@@ -211,6 +331,21 @@ static func _drop_unknown(state: Dictionary, data: Dictionary, warnings: Array[S
 		if not data.resources.has(res):
 			state.inventory.erase(res)
 			warnings.append("Removed goods the game no longer has (%s)." % res)
+
+
+## A building's batch: {} (idle), or one with everything the rules read.
+static func _batch_ok(batch: Variant) -> bool:
+	if typeof(batch) != TYPE_DICTIONARY:
+		return false
+	if batch.is_empty():
+		return true
+	for key in ["units", "collected", "inputs", "input_cost"]:
+		if typeof(batch.get(key)) != TYPE_DICTIONARY:
+			return false
+	for key in ["hours", "made_hours", "cost", "wages"]:
+		if not _is_number(batch.get(key)):
+			return false
+	return typeof(batch.get("recipe_id")) == TYPE_STRING and typeof(batch.get("bonus")) == TYPE_STRING and int(batch.hours) >= 1
 
 
 static func _is_number(value: Variant) -> bool:

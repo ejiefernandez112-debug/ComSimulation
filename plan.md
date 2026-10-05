@@ -1,10 +1,18 @@
-# Project Plan: MMO Business Simulation Game
+# Project Plan: Island Village Builder (production chains + player market)
 
-_Last updated: 2026-10-01 (review pass — see Section 15 for what changed)_
+_Last updated: 2026-10-04 (pitch rewritten as a village builder; earlier: 2026-10-01 review pass, see Section 15)_
 
 ## 1. Pitch
 
-An MMO business/economy simulation game inspired by **Sim Companies** (production chains, shared player-driven market), with visual polish closer to **Clash of Clans** (isometric buildings, building-level production animations — e.g. a distillery bubbling). No combat, no troops. Increasingly, it also leans toward **Tropico**-style town management — population, employment, and education systems sit alongside the pure production/trading loop. Includes a live player-driven stock market/exchange system (closest existing reference: **TyconX: Business Tycoon Game**).
+**A cozy island village builder: grow a town from a handful of founders by building farms, mills and bakeries. Keep your people fed, housed and employed, and trade what you make with other players.**
+
+- **Anno** and **SimCity BuildIt**: production chains (wheat → flour → bread) whose goods keep a growing town alive and happy
+- **Tropico**: population, needs, jobs and education
+- **Clash of Clans**: the look. Isometric village view, building-level production animations (e.g. a distillery bubbling). No combat, no troops
+- **Sim Companies**: the shared, player-driven market where players set prices. **Anno Online** (browser MMO, closed 2018) is a precedent for player-to-player trading in an Anno-like game
+- **TyconX: Business Tycoon Game**: the live player-driven stock market/exchange
+
+**Selling point:** an Anno-style village combined with a Sim Companies-style live player market is a rare mix. (Changed 2026-10-04 from "MMO business simulation": the population systems made the village, not the company, the heart of the game. Who the player *is*, company owner or village founder, is still open; it affects names like Company Tax and company size, §5.9.1.)
 
 Solo developer, works full time, building in off-hours, no prior coding/engine experience, planning to rely heavily on **Claude Code** rather than learning traditional programming from scratch.
 
@@ -73,22 +81,28 @@ These are cheap now and very expensive to retrofit later. Include them in instru
 	 - ✅ **Wheat Farm** made in Blender (2026-10-01): red gambrel barn with cupola, silo, fenced wheat field with scarecrow, yard with hay bales, sacks and a cart. Designed for **2×2**, but shown on 1 tile until footprints grow (the studio's `tiles` setting in `tools/sprite_studio.json` goes 1 → 2 then)
 	 - Still to do: Flour Mill, Bakery, Small House, Construction Office in Blender (same style kit); trees and rocks as sprites; bigger footprints (decided: 2×2)
   3. **The island itself** — 3D terrain built in the studio from the same coastline seed (flat plot in the middle, cliffs and beaches around it, mountain and forest at the back), baked once into a background picture cut into chunks for phones
-  4. **Life** — spinning mill sails, bakery smoke, swaying trees, drifting cloud shadows, birds, boats
+  4. **Life** — spinning mill sails, bakery smoke, swaying trees, drifting cloud shadows, birds, boats. ✅ People walking and cars driving on the roads (2026-10-05, §5.20; simple shapes drawn in code for now)
 - **Audio** — not yet planned (see Open Questions); placeholder SFX for collect/sell/build go a long way for game feel even in Phase 1.
 
 ## 5. Game Mechanics
 
 ### 5.1 Core Production Loop
 - Pattern: **Extractor** (no inputs) → **Processor A** (raw → intermediate) → **Processor B** (intermediate → final product)
-- **Production model:** discrete timers (CoC-style)
-- Each building has: recipe, timer duration, batch size, storage cap, job queue (up to 3–5 stacked)
-- **Resource flow (proposed — confirm):**
-  - Inputs are taken from the **Warehouse** at the moment a job is *queued* (not when it starts), so a queued job can never stall for missing inputs
-  - Finished output sits in the **building's own storage** (the Storage Cap column in 5.4) until the player taps **Collect**, which moves it to the Warehouse
-  - A job cannot complete if the building's output storage is full; the queue pauses until the player collects
-  - The **Warehouse** has its own overall cap: since 2026-10-02 it is the room of all Warehouse buildings together (§5.10)
-- **Offline/idle production:** included from Phase 1a — elapsed real time simulates completed jobs on reopen, capped by the jobs already queued and by output storage capacity
-- **Design tension (resolved 2026-10-01):** target offline window is ~1–2 hours. Extractors produce continuously until storage is full; processor batches/timers were scaled ×4 with queues of 8 (see 5.4). Implemented in `scripts/sim/simulation.gd`.
+- **Production batches (decided and built 2026-10-05, on trial; Sim Companies style).** They replaced the job queue, the building storage and the Farm growing on its own:
+  - A Farm, Mill or Bakery runs **one batch at a time**, of as many **hours of work** as the player picks: **1 to 48 h** (`batch.max_hours` in `game_config.json`). Each recipe is **one hour of work** (`duration` 3600 in `buildings.json`), so a batch of 24 h is 24 × the recipe
+  - **Choosing the length (few buttons):** the window offers `batch.default_hours` (24) or less if stock runs out. **− / +** move the finish time an hour at a time ("24 h · done Tue 6:00 PM"); **All** = as long as the ingredients in the Warehouse and the cash for the wages last
+  - **Before starting, the window shows** what the batch makes and costs: units, ingredients (at their cost tags), labor, water (estimate), **total cost**, **cost per unit** and the selling price. **Start** asks once more with the whole breakdown
+  - **Starting pays everything at once:** all the ingredients leave the Warehouse (with their cost tags) and **all the wages are paid now** (the full Level 1 crew for every hour, whatever the staffing). It needs the cash for the wages. So the batch's **cost and cost per unit are locked in**, and so is its **bonus** (§5.6)
+  - **Hourly harvest:** every finished hour of work makes its **share of the batch** (units ÷ hours, rounded down so the shares add up exactly). The shares wait **in the batch** (no building storage any more) and a bubble floats over the building; tapping it collects them into the Warehouse. Several hours can pile up; collect any time. A full Warehouse takes what fits; the rest keeps waiting. The batch never pauses
+  - **Fewer workers = the batch takes longer**, never costs more (speed = workers working ÷ Level 1's crew, as before). No workers: it waits
+  - When every hour is made and collected, the building is **idle** until the next batch. One batch at a time: a finished batch must be collected before the next starts
+  - **Cancel** (a running batch): the hours already made stay, to collect, at the batch's cost per unit; of the hours not made yet (work on the current hour is lost), `cancel_refund_in_progress` (**50%**) of their ingredients and wages comes back. Counted as money in ("Cancelled batches")
+  - **A building with a batch can't be upgraded, suspended or demolished**: finish (or cancel) it and collect first
+  - Older saves (version 8) hand everything in their queues and storage to the Warehouse when loaded (queued ingredients in full, a finished batch as its products)
+  - Rules: `start_batch`, `batch_quote`, `batch_max_hours`, `cancel_batch`, `ready_units`, `collect` in `scripts/sim/simulation.gd`
+- The **Warehouse** has its own overall cap: since 2026-10-02 it is the room of all Warehouse buildings together (§5.10)
+- **Offline/idle production:** included from Phase 1a. Elapsed real time works out the finished hours of each batch on reopen, in one calculation
+- **Design tension (2026-10-01, changed 2026-10-05):** the target offline window was ~1–2 hours (short timers and queues of 8). With batches of up to 48 h the game is now "check in a few times a day", like Sim Companies; production per hour was cut to a tenth so a 24 h batch fits the Warehouse (§5.4)
 - **Land/grid:** bounded plot, expandable (spend currency) — details deferred
 - **Building upgrades (Phase 2):** cost **construction materials + laborers** from the Construction Office (no money fee; decided 2026-10-02, §5.15) + time, improve batch size/timer/storage/recipes — capped by Construction Office level (see 5.8)
 
@@ -110,23 +124,23 @@ These are cheap now and very expensive to retrofit later. Include them in instru
 
 **Chain 1 — Food & Agriculture (Phase 1a):**
 
-| Building | Type | Recipe | Output | Timer | Batch | Storage Cap |
-|---|---|---|---|---|---|---|
-| Wheat Farm | Extractor (continuous, no queue) | (none) | Wheat | 60s | 10 Wheat | 900 (90 min) |
-| Flour Mill | Processor A (queue 8 = 48 min) | 40 Wheat → | 32 Flour | 6 min | 32 Flour | 256 |
-| Bakery | Processor B (queue 8 = 80 min) | 32 Flour → | 24 Bread (Final) | 10 min | 24 Bread | 192 |
+| Building | Type | One hour of work (the recipe) | A 24 h batch |
+|---|---|---|---|
+| Wheat Farm | Extractor (no ingredients) | → 60 Wheat | 1,440 Wheat |
+| Flour Mill | Processor A | 40 Wheat → 32 Flour | 960 Wheat → 768 Flour |
+| Bakery | Processor B | 20 Flour → 15 Bread (Final) | 480 Flour → 360 Bread |
 
-_Rescaled 2026-10-01 for the ~1–2h offline window: batches ×4 and timers ×4, so the per-minute rates below are unchanged. Live values are in `data/buildings.json`._
+_Changed 2026-10-05 for production batches (§5.1): every recipe is one hour of work, and output per hour was cut to a tenth of the old rates (600 Wheat / 320 Flour / 144 Bread an hour), so a 24 h batch fits a 10,000 Warehouse. Wages and water per hour stayed, so cost per unit and the cost-based prices went up about ×10, and profit per hour stayed about the same. Shop appetites were cut to a tenth too (§5.16). No building storage or queue any more. Live values are in `data/buildings.json`._
 
-**Balance check (per building, running continuously):**
+**Balance check (per building, running continuously, full staff, no bonus):**
 
 | Building | Consumes | Produces |
 |---|---|---|
-| Wheat Farm | — | 10 Wheat/min |
-| Flour Mill | 6.7 Wheat/min | 5.3 Flour/min |
-| Bakery | 3.2 Flour/min | 2.4 Bread/min |
+| Wheat Farm | — | 60 Wheat/h |
+| Flour Mill | 40 Wheat/h | 32 Flour/h |
+| Bakery | 20 Flour/h | 15 Bread/h |
 
-- One Wheat Farm can feed ~1.5 Flour Mills; one Flour Mill can feed ~1.7 Bakeries. With one of each, the Farm and Mill will pile up surplus — which is fine (it gives the player something to sell), but intentional.
+- One Wheat Farm can feed ~1.5 Flour Mills; one Flour Mill can feed ~1.6 Bakeries. With one of each, the Farm and Mill will pile up surplus — which is fine (it gives the player something to sell), but intentional.
 - Overall conversion: **10 Wheat → 8 Flour → 6 Bread**, i.e. 1 Bread ≈ 1.67 Wheat. For processing to be worth it, the Retailer price of Bread must be comfortably above 1.67× the Wheat price *plus* a margin for the extra build cost and waiting time (same logic for Flour vs. Wheat: 1 Flour = 1.25 Wheat).
 
 **Chain 2 — Dairy/Pastry (Phase 2, interconnected via shared Flour):**
@@ -139,7 +153,19 @@ _Rescaled 2026-10-01 for the ~1–2h offline window: batches ×4 and timers ×4,
 
 ### 5.5 Industrial Category — Electricity & Employees (Phase 2/3)
 
-> **Electricity design planned 2026-10-02, not built yet.** All numbers are PLACEHOLDERS (they will go in `data/*.json`). Scaled to the Phase 1a economy (buildings $2,000–$8,000, wages $15/worker/hour), not to Tropico's.
+> **Electricity design planned 2026-10-02; partly built 2026-10-05 (on trial), see 5.5.0.** All numbers are PLACEHOLDERS (in `data/*.json`). Scaled to the Phase 1a economy (buildings $2,000–$8,000, wages $15/worker/hour), not to Tropico's.
+
+#### 5.5.0 What's built (2026-10-05, on trial)
+The user asked for a Wind Turbine, a Solar Power Plant (High School graduates), a Nuclear Power Plant (uranium store, College graduates, greyed "soon") and an Electric Substation that expands grid coverage. Built Tropico-style, which **replaces** two rules below (proportional slowdown in 5.5.1, connection sizes in 5.5.3):
+- **All or nothing:** a building that needs more MW than is left gets **none and doesn't work at all** (the user's rule: "needs 10, the town has 9 → it won't operate"). Power goes to buildings **oldest first**; one that doesn't fit is skipped, so a smaller newer one can still use what's left. Suspending a building frees its power
+- **Who uses power:** Flour Mill 3 MW and Bakery 4 MW while making a batch (with workers); a lived-in home its `power_mw` (nothing happens yet to a home without power: it's only shown). Farms, shops, warehouses: none
+- **Coverage (Tropico-style radius):** City Hall, each plant and each Electric Substation cover a circle of `power_radius` tiles (City Hall 5, Wind Turbine 3, Substation 6 → 7/8/9 when upgraded; it stays on while upgraded). Circles that overlap join one network, starting at City Hall. Buildings outside it get no power ("No power" sign); plants outside it add nothing. Placing a power building, or selecting one, shows the network's tiles in yellow and its own circle (green = joins, orange = doesn't)
+- **City Hall's grid link:** the public grid adds up to **10 MW** (`grid_mw`) on top of your plants, at **$25/MWh**, metered and billed every 12 h like water (`game_config.json` → `power`). Own plants' power is used first and costs only their wages (a Wind Turbine has none: free)
+- **Wind Turbine:** 5 MW steady (7 / 9 / 11 when upgraded), no workers, ~$6,000. Steady output for now; wind changes and day/night later (5.5.4)
+- **Solar Power Plant** (8 MW, 4 High-skilled workers) and **Nuclear Power Plant** (300 MW, 20 Professionals, uranium store) are in the Build menu greyed out with a "coming soon" reason (`coming_soon`) until schools exist (5.7)
+- **Cost per unit and prices** include power (MW × hours × the grid price), like water
+- **Rules:** `Simulation.power_summary` / `_update_power` (run with hiring at every moment that can change it, so time away stays one calculation), `power_network`, `cover_all_with_power`; bills share the water code (`utility_meter`, `_bill_if_due`)
+- **Save version 12:** older saves get a power meter and free Electric Substations so every building that uses power is inside the network; new games start with one Substation at [16, 11]
 
 #### 5.5.1 How power works: a grid, not a stockpile
 - **Electricity** is a utility, not a warehouse item: it can't be stored, carried or sold at the Retailer. It is a **flow**: plants **produce** a steady number of MW, working buildings **use** a steady number of MW
@@ -222,18 +248,17 @@ Everything stays **one calculation**, never a replay. Anything that changes powe
 
 - **Small House** (Residential) — +10 population capacity, one-time build cost, no recipe. **Included in Phase 1a's starting kit.**
 - **Population** grows automatically toward capacity, shown on the persistent HUD. **Houses only give room; they never add people by themselves.** A house's window shows its own residents ("4 of 10 living here · next in 2m"): people fill the oldest homes first (`Simulation.home_residents`, display only). Until 2026-10-03 it wrongly showed the whole village's population in every house, which looked like each new house added people. People move in one at a time: +1 every `population_growth_seconds`, **slowed from 10 s to 3 min on 2026-10-03** (a house used to fill in about a minute, which looked like "+10 people"; now it fills in 20–30 min, and births will matter too). The pace is still set by happiness; offline growth is calculated from `last_saved_at` like production
-- **Workers & wages (built 2026-10-01, pulled forward from Phase 2/3):** each production building can employ up to `max_workers` (8 at level 1; Wheat Farm, Flour Mill, Bakery). The player picks its **Staffing** in the building window: **Low 4 / Medium 6 / High 8** (`staffing_levels` in `game_config.json`, as shares of `max_workers`; new buildings start at High). **Speed = workers actually working ÷ max_workers** (6 of 8 = 75%). *(The even-share rule, "10 people for 14 jobs = 71% each", was replaced on 2026-10-02 by whole, tied workers hired by bonus: see **Hiring & wage bonuses** below.)* **Worker types:** only **Low-skilled** can be hired now; High-skilled (high school graduates, e.g. engineers) and Professional (college graduates) are in the data with their wages but switched off until schools exist (§5.7). **Wages** (fixed PLACEHOLDERS, to move to the backend later): Low-skilled 15 / High-skilled 30 / Professional 60 per worker per hour, paid for every worker actually working, also while the game is closed. **Wages are only paid while a building is producing** (decided 2026-10-02): a halted building (storage full) or an idle Mill/Bakery (no jobs queued) pays nothing; its workers stay tied to it, unpaid, and are back the moment it restarts (changed 2026-10-02, see below; before, they were freed). **Cash may go below 0 (debt)**: sales pay it back; nothing can be built while in debt; the HUD shows debt in red. Prices were raised (Flour 4, Bread 8) so each step still pays after wages. The Small House is buildable so players can grow the workforce. Offline catch-up stays one calculation: the time away is split only at the moments staffing changes (a person moves in, a building finishes, a building fills up or runs out of jobs) and each piece is worked out in one go; part-coins of wages carry over so many short settles cost the same as one long one
+- **Workers & wages (built 2026-10-01, pulled forward from Phase 2/3):** each production building can employ up to `max_workers` (8 at level 1; Wheat Farm, Flour Mill, Bakery). The player picks its **Staffing** in the building window: **Low 4 / Medium 6 / High 8** (`staffing_levels` in `game_config.json`, as shares of `max_workers`; new buildings start at High). **Speed = workers actually working ÷ max_workers** (6 of 8 = 75%). *(The even-share rule, "10 people for 14 jobs = 71% each", was replaced on 2026-10-02 by whole, tied workers hired by bonus: see **Hiring & wage bonuses** below.)* **Worker types:** only **Low-skilled** can be hired now; High-skilled (high school graduates, e.g. engineers) and Professional (college graduates) are in the data with their wages but switched off until schools exist (§5.7). **Wages** (fixed PLACEHOLDERS, to move to the backend later): Low-skilled 15 / High-skilled 30 / Professional 60 per worker per hour, paid for every worker actually working, also while the game is closed. **Wages are only paid for work** (decided 2026-10-02; since 2026-10-05 a Farm, Mill or Bakery pays a batch's wages all at the start, §5.1): an idle building pays nothing; its workers stay tied to it and are back the moment it restarts (changed 2026-10-02, see below; before, they were freed). **Cash may go below 0 (debt)**: sales pay it back; nothing can be built while in debt; the HUD shows debt in red. Prices were raised (Flour 4, Bread 8) so each step still pays after wages. The Small House is buildable so players can grow the workforce. Offline catch-up stays one calculation: the time away is split only at the moments staffing changes (a person moves in, a building finishes, a building fills up or runs out of jobs) and each piece is worked out in one go; part-coins of wages carry over so many short settles cost the same as one long one
 - **Hiring & wage bonuses (decided 2026-10-02):**
   - **Whole workers only.** Each building has a real headcount (`hired`, stored in the save), never a share like 4.3. Speed = workers working ÷ max_workers (3 of 8 = 37%)
   - **Workers are tied to their building.** Nobody moves on their own, and there's no job-hopping. A building only loses workers when the player decides: **lowers its staffing** (the extra workers are freed), **suspends** it or **demolishes** it (all freed; a resumed building queues again for workers)
-  - **Full or idle buildings keep their workers**, unpaid, until they restart (wages only while producing)
+  - **Idle buildings keep their workers** until their next batch
+  - **Wages of a Farm, Mill or Bakery are paid per batch, all at the start (changed 2026-10-05, §5.1):** the full Level 1 crew × wage × the batch's hours. Warehouses and shops still pay their working workers by the hour
   - **Fixed minimum wage** per worker type, set by the game (`wage_per_hour` in `worker_types`: low-skilled $15, high-skilled $30, professional $60). Players can't pay less. Phase 4: the server could change it, like a law
-  - **Wage bonus per building**, chosen in its window like staffing (Tropico-style budget): **None 0% / Small +20% / Good +40% / Big +60%** (`wage_bonuses` in `game_config.json`; whole dollars: $15 → $18 / $21 / $24). New buildings start at None. Shown as "Wage: $15 + $6 bonus = $21 per worker / hour"
-  - **Warehouses are always staffed first** (decided 2026-10-02; `staffed_first` in `buildings.json`): they get free workers before every other building, whatever bonus the others pay, and lose them last, so storage room never vanishes while people are free
-  - **Who gets free workers** (new arrivals, or workers freed by the player), after the warehouses: each takes an open post at the building with the **biggest bonus**. Same bonus: they take turns one at a time, the emptiest building (fewest hired compared with what it asked for) first, then the older building. Open posts = what the staffing level asks for, at finished, non-suspended buildings
-  - **Fewer people** (a house demolished): the unemployed leave first, then workers at the buildings with the **smallest bonus** (newest building first among equals)
-  - Raising a bonus doesn't pull workers from other buildings (they're tied); it puts the building first in line for the next free workers
-  - Later (Phase 3, happiness): a bigger bonus could also make workers happier and more productive, like Tropico's budget. Not now: it would change the whole balance
+  - **Wage bonus = more units per batch (changed 2026-10-05, on trial).** Chosen **per batch** in the batch set-up: **None / Small / Good / Big** pays **+0 / 20 / 40 / 60%** on the minimum wage (`wage_bonuses`) and the batch makes **+0 / 10 / 20 / 30% units** (`bonus_output`; PLACEHOLDERS). It's how a player gets more out of a building without more workers. **Locked in** once the batch starts: it can't change until the batch is done and collected. The window remembers the last choice. Cost per unit rises a little with a bonus (wages up more than units), but each batch makes more
+  - **Warehouses are always staffed first** (decided 2026-10-02; `staffed_first` in `buildings.json`): they get free workers before every other building, and lose them last, so storage room never vanishes while people are free
+  - **Who gets free workers** (new arrivals, or workers freed by the player), after the warehouses: they take turns one at a time, the emptiest building (fewest hired compared with what it asked for) first, then the older building. Open posts = what the staffing level asks for, at finished, non-suspended buildings. *(Until 2026-10-05 the biggest bonus got free workers first; the bonus now makes more units instead.)*
+  - **Fewer people** (a house demolished): the unemployed leave first, then workers at the newest building (warehouses last)
   - **Warehouses get no bonus** (decided 2026-10-02; `fixed_wage` in `buildings.json`): they always pay the minimum wage, since they're staffed first anyway
   - Offline catch-up stays one calculation: each person moving in takes the best open post at that moment
 - **Needs & happiness (planned and built 2026-10-03, on trial):** people get two **needs**, combined into one **village happiness** score that changes only **how fast people move in**. Inspired by Tropico's needs, kept much simpler. All numbers are PLACEHOLDERS (a `happiness` block in `game_config.json`)
@@ -241,33 +266,34 @@ Everything stays **one calculation**, never a replay. Anything that changes powe
   - **Jobs:** the share of **adults** with a job (uses `Simulation.employment()`; 100% when there are no adults)
   - **Housing (added 2026-10-03, §5.18):** the share of households with a real home, `1 − homeless ÷ households` (100% when everyone has a home). Homeless households in Makeshift Huts lower it
   - **Village happiness** = Food, Jobs and Housing mixed equally (`happiness.weights` 1 / 1 / 1, as shares of their total), shown as one **0–100%**
+  - **Homeless penalty (decided and built 2026-10-04):** on top of the three needs, every household living in a Makeshift Hut takes **2 points** off happiness, at most **30** (`happiness.homeless_penalty` `per_household` 0.02, `max` 0.3; PLACEHOLDERS). Only while needs count. Shown as its own "Homeless" line in Statistics → People. Added because migrant workers live in huts when homes are full, and the Housing need alone made huts hurt too little (6 huts of 24 households cost about 8 points; with the penalty about 20)
   - **A small village doesn't complain:** needs only count from **10 people** (`happiness.needs_from_population`); below that, happiness is 100%. So the start of the game (no Supermarket yet) isn't punished
-  - **Effect: births and move-in speed, and people leaving (leaving added 2026-10-03)**, in steps (`happiness.growth_speeds`, each band with `speed` and `leave_per_hour`). Nobody works slower:
+  - **Effect: births, job seekers moving in, and people leaving (leaving added 2026-10-03, job seekers 2026-10-04)**, in steps (`happiness.growth_speeds`, each band with `speed` (births), `move_in` (job seekers; same as `speed` if left out) and `leave_per_hour`). Nobody works slower:
 
-	| Happiness | Births and move-in speed | People leaving the island | One newcomer every (3 min base; immigration is off for now) |
+	| Happiness | Birth speed | A group of up to 5 job seekers every (2 min base) | People leaving the island (in groups of 5) |
 	|---|---|---|---|
-	| 80–100% | ×1.5 | none | 2 min |
-	| 50–79% | ×1 | none | 3 min |
-	| 20–49% | ×0.5 | **1% an hour** | 6 min |
-	| 0–19% | none | **3% an hour** | — |
+	| 80–100% | ×1.5 | 80 s | none |
+	| 50–79% | ×1 | 2 min | none |
+	| 20–49% | ×0.5 | nobody comes | **2% an hour** (1% before 2026-10-04) |
+	| 0–19% | none | nobody comes | **5% an hour** (3% before 2026-10-04) |
 
-  - **People leaving (decided 2026-10-03):** in an unhappy village, that share of adults and of children leaves each hour, with part-people carried over like deaths, so it happens at predictable moments and time away stays one calculation. Adults go like deaths: the jobless first (they're the Broke households, housed last, so the **homeless leave first**), workers keep their posts; children from the youngest group. Counted as "Left the island" (`stats.people.moved_away`; Statistics → People, the Births graph, Welcome back). This keeps the village from outgrowing its homes: grown-up children with no home make the village unhappy, and people leave until it's happy enough
+  - **People leaving (decided 2026-10-03):** in an unhappy village, that share of adults and of children leaves each hour, with part-people carried over like deaths, so it happens at predictable moments and time away stays one calculation. **In groups (2026-10-04):** the part-people carry fills up to `happiness.leave_group_size` (5) before anyone goes, then the whole group leaves at once (adults and children each in their own groups; fewer if fewer are left). Adults go like deaths: the jobless first (they're the Broke households, housed last, so the **homeless leave first**), workers keep their posts; children from the youngest group. Counted as "Left the island" (`stats.people.moved_away`; Statistics → People, the Births graph, Welcome back). This keeps the village from outgrowing its homes: grown-up children with no home make the village unhappy, and people leave until it's happy enough
 
   - **Shown** as a happiness % on the HUD next to Population; tapping it opens a breakdown (e.g. "Food 70%: 1 of 2 foods on shelves", "Jobs 100%", and the current move-in speed)
   - **Offline stays one calculation:** happiness can only change at predictable moments the settle already splits on (a shelf sells out, a person arrives, a building finishes or changes workers, a player action), so each piece of time grows at that piece's speed. When the speed step changes, the growth anchor restarts from that moment
-  - **Save:** happiness itself is worked out from the state, like population capacity, so it can't drift. The save only remembers the move-in speed in force (`population.growth_speed`), to know when it changes; older saves without it start at normal speed, so no `SAVE_VERSION` bump
+  - **Save:** happiness itself is worked out from the state, like population capacity, so it can't drift. The save only remembers the speeds in force (`population.growth_speed` for births, `population.move_in_speed` for job seekers), to know when they change; older saves without them start at normal speed (no `move_in_speed`: the birth speed), so no `SAVE_VERSION` bump
   - Below 10 people happiness counts as 100%, so a new village grows at ×1.5
   - **Not now (later ideas):** happiness changing worker speed, wage bonus → happiness (above), housing quality (unhappy people leaving: built, above)
   - **Code:** `Simulation.happiness` (→ `{score, food, jobs, foods, needs_count, growth_speed}`), `foods_selling`, `_update_growth_speed` (read at the start of each settle piece); every arrival is a split point while needs are on. HUD: a "% happy" row (green / gold / red bar by move-in speed); tapping it opens Statistics → People, which has the breakdown
 - **Births, children & deaths (planned and built 2026-10-03, on trial):** Tropico grows its population by immigration, births and events, and simulates every citizen. We keep people as **group counts** (no per-person simulation) and add births, children and a steady death rate. All numbers are PLACEHOLDERS (a `life` block in `game_config.json`)
-  - **Immigration is switched off for now (decided 2026-10-03):** `population_growth_seconds` is 0, so the village grows **only through births**. Immigration comes back later as a special feature (e.g. arrivals by boat at the Dock §5.11, or an immigration campaign). The rules for it stay in place
+  - **Immigration was switched off (2026-10-03), then came back as migrant workers (decided and built 2026-10-04):** playtesting showed births alone were too slow: three farms stood without workers, which wasn't fun. Now newcomers are **migrant workers** (`move_in_only_for_jobs`): a **group of up to 5 adults** (`move_in_group_size`, since 2026-10-04; one adult before) every **2 minutes** (`population_growth_seconds` 120, times the happiness band's `move_in`), but **only while a job is open that no adult already here could take** and **only at 50% happiness or more**. They **don't need a free home** (`move_in_needs_home` false, decided after a second playtest where full homes left 12 jobs open): with no room they live in **Makeshift Huts** (§5.18) until the player builds homes, which lowers the Housing need, so the player is still pushed to build homes and too many huts stop the migrants (under 50%) and make people leave, the homeless first. They stop by themselves when the jobs are filled, so the village can't run away; the 2-minute wait starts when a job opens. The open jobs are read at the start of each settle piece (a building finishing partway doesn't let several in at once), so time away stays the same as playing through. A boat at the Dock (§5.11) or an immigration campaign could still come later as extras
   - **Founders (decided 2026-10-03):** every new game (first start, or New game in Settings) starts with **50 adults** (`starting_population`) in **5 Small Houses**, never more than the starting homes hold; the Warehouse is staffed at once
   - **Grace period (decided 2026-10-03):** needs don't count in a new village's first **3 hours** (`happiness.grace_hours`), so 46 unemployed founders don't freeze births before the player builds jobs and a Supermarket. Saves from before have no start time, so no grace
   - **Two groups:** **adults** move in, work and have babies; **children** are born here, live in homes and eat, but don't work. Population = adults + children. Elderly / old age: a later idea
   - **Immigrants are adults.** Moving in works exactly as now (happiness sets the pace)
-  - **Births:** babies per hour = adults **with a home** × `birth_rate_per_hour` (**0.01** since 2026-10-03, halved from 0.02: 100 adults ≈ 1 an hour) × the speed from happiness (an unhappy village has fewer babies; below 20% none). Homeless adults have no babies. Part-babies carry over (`birth_carry`), like part-cents of wages, so many short settles give the same as one long one
-  - **Room:** since housing types (§5.18), room is counted in **households** of 2 adults + 2 children. A baby needs a free child place in a household with a real home; a newcomer (when immigration returns) needs room for an adult in a real home
-  - **Growing up:** a child becomes an adult (a free worker, hired by the usual rules) `grow_up_hours` (24) after birth. Births in the same game hour form one **age group** `{count, grows_up_at}`, so the save holds at most ~24 groups
+  - **Births:** babies per hour = **all** adults × `birth_rate_per_hour` (**0.1** since 2026-10-04, 10x the 0.01 before: 100 adults ≈ 10 an hour) × the speed from happiness (an unhappy village has fewer babies; below 20% none). Since 2026-10-04 a house isn't needed: adults in huts have babies too. Part-babies carry over (`birth_carry`), like part-cents of wages, so many short settles give the same as one long one
+  - **Room:** since housing types (§5.18), room is counted in **households** of 2 adults + 2 children. A baby needs a free child place in a household (2 per family, house or hut alike); a job seeker needs room for an adult in a real home
+  - **Growing up:** a child becomes an adult (a free worker, hired by the usual rules) `grow_up_hours` (**6** since 2026-10-04; 24 before) after birth. Births in the same game hour form one **age group** `{count, grows_up_at}`, so the save holds at most ~6 groups
   - **Deaths: a steady rate (decided 2026-10-03).** Deaths per hour = people × `death_rate_per_hour` (0.005 = 0.5% an hour, an average life of ~200 hours ≈ 8 real days). **In proportion:** adults and children each die at that rate with their own part-person carry, so each group loses its share. A child is taken from the youngest age group; an adult like when a home is demolished: unemployed first, then workers at the smallest bonus. A dead worker's post opens and the usual hiring rules fill it. Deaths free home room, so babies and newcomers keep the village turning over. Rejected for now: **life stages** (child → adult → elderly → dies at a fixed age), because immigrants all arrive "the same age" and would die in waves; it may come back with elderly people and pensions
   - **Needs:** Food counts everyone (children eat: Supermarket demand = all people). Jobs = share of **adults** with a job. The "needs from 10 people" threshold counts everyone
   - **Fewer homes (a house demolished):** ~~unemployed adults leave first, then children, then workers~~ replaced by housing types (§5.18): nobody leaves; households without a home put up Makeshift Huts
@@ -275,12 +301,12 @@ Everything stays **one calculation**, never a replay. Anything that changes powe
   - **Save (version 6, built):** `population.children: [{count, grows_up_at}]`, `population.life_carry` (`{born, adult_deaths, child_deaths, adult_leaves, child_leaves}`: part-people still to come), `started_at` (for the grace period), `stats.people`. The migration step makes everyone in an older save an adult, with no part-people and no grace. **Version 7** (housing types, §5.18): a save from before housing types (no Public Housing, Villa or hut) gets its Small Houses back as **Public Housing**, since they were free homes; otherwise its jobless households would be homeless the moment it loads
   - **Display:** the HUD stays "people / room"; Welcome back lists "+N moved in, +N born, +N grew up, −N died"
   - **Statistics by group (decided 2026-10-03):** Statistics → People gets a **Population by group** section:
-    - **Groups now:** Adults (split into Employed / Unemployed) and Children, each with its count and share of the village (e.g. "Children 18 · 15%"), shown as one stacked bar
-    - **Children by age:** one row per age group, e.g. "6 children grow up in 3 h 20 min", soonest first
-    - **Comings and goings, last hour and all time:** moved in, born, grew up, died, and the net change ("+12 people this hour")
+	- **Groups now:** Adults (split into Employed / Unemployed) and Children, each with its count and share of the village (e.g. "Children 18 · 15%"), shown as one stacked bar
+	- **Children by age:** one row per age group, e.g. "6 children grow up in 3 h 20 min", soonest first
+	- **Comings and goings, last hour and all time:** moved in, born, grew up, died, and the net change ("+12 people this hour")
 	- **Graphs:** the People graph gets lines for Adults, Children and Employed (the history points also record `adults` and `children`), plus a **Births** graph (born, died, grew up per hour, averaged over the hour before each point: they're rare events)
 	- Counters live in `stats` (`stats.people: {moved_in, born, grew_up, died}`, all time), so they're saved and the last-hour numbers come from the history, like cash flow
-    - New groups slot in later without a new screen: Elderly (old age) and education levels (§5.7: Uneducated / High School / College graduates)
+	- New groups slot in later without a new screen: Elderly (old age) and education levels (§5.7: Uneducated / High School / College graduates)
   - **Why groups, not individuals:** simulating each person would mean rewriting hiring, saves and offline catch-up, and is heavy on phones and on a Phase 4 server. For Tropico flavour, tapping a house could later show **generated** named residents ("Maria, 34, Bakery worker"), made from a fixed seed and never stored
   - **Later ideas (not now):** schools take children (§5.7: children → graduates), elderly & old age, a Clinic / healthcare changing the death rate, special events (a player-paid festival or immigration campaign, or calendar immigration waves; never random dice), the named-residents view
   - **Code:** `Simulation.adults`, `children_count`, `children_groups`, `people_stats`, `people_flow`, `next_birth_at`; rates read at the start of each settle piece (`_life_rates`), the piece ends at the next birth, death or grow-up (`_next_life_event`), then `_settle_life` applies it; `_remove_children` for deaths (since housing types, demolished homes send nobody away, §5.18); `_hire` and `employment()` count adults. Screens: house window ("next baby in the village in …"), Statistics → People (Population by group, Children by age, Comings and goings), Graphs (Adults / Children lines, Births), Welcome back (Born / Grew up / Died)
@@ -294,14 +320,16 @@ Everything stays **one calculation**, never a replay. Anything that changes powe
 - Advanced Industrial buildings require a minimum graduate tier for their Employees, not just headcount — segments the workforce by education level, incentivizing players to build Schools ahead of need
 - **Needs clarifying:** whether Graduates remain part of Population (and of the Employment Matching formula) or are removed from it when they enroll — see Open Questions
 
-### 5.8 Construction Office & Starting Kit (Phase 1a)
+### 5.8 City Hall, Construction Office & Starting Kit (Phase 1a)
 
-- **Construction Office** — mandatory anchor building (Town-Hall equivalent); required to exist before other construction; has its own level that caps other buildings' max upgrade level, separate from the XP/Level system (leveling active from Phase 2)
+- **City Hall** (renamed 2026-10-05; it was called the Construction Office) — the anchor building (Town-Hall equivalent): pre-built, can't be built or demolished, and every road starts here (§5.20). Idea for later: its own level caps other buildings' upgrade level, separate from the XP/Level system
+- **Construction Office** (built 2026-10-05, on trial, §5.15) — a separate, buildable building whose workers are the construction workers. Building or upgrading anything (not roads) needs free ones, so at least one office is required; the last one can't be demolished
 - **Starting kit (Phase 1a):**
-  - Construction Office — pre-built, Level 1, already placed
+  - City Hall — pre-built, already placed
+  - Construction Office — pre-built beside the road, 4 construction workers
   - **5 Public Housing** buildings (Residential, §5.18) — pre-built, already placed, home to the **50 founding adults** (`starting_population`, decided 2026-10-03; before, 1 Small House and 0 people)
   - Warehouse — pre-built (added 2026-10-02, §5.10), room for 10,000 goods with its 4 workers
-  - Starting cash — **$10,000** (`starting_cash` in `game_config.json`; raised from $5,750 on 2026-10-02 so a new player can afford the basic buildings, including their first Supermarket, §5.16; still tunable)
+  - Starting cash — **$15,000** (`starting_cash` in `game_config.json`; raised from $5,750 on 2026-10-02 so a new player can afford the basic buildings, including their first Supermarket, §5.16, to $12,000 on 2026-10-04 so they still can when construction materials are at their highest price, §5.15, and to **$15,000** on 2026-10-05 because production batches pay their wages up front, §5.1; still tunable)
   - Wheat Farm — **not** pre-built; building it is the player's first tutorial action
 
 ### 5.9 Taxes & Fees (sales tax built 2026-10-02)
@@ -455,7 +483,7 @@ A coastal building, inspired by Tropico's docks. Unlocked later in the game (whe
 ### 5.13 Water: the public water supply (decided 2026-10-02)
 
 The first **utility** (electricity, §5.5, will work the same way and reuse the same rules).
-- **Source: the government's public water supply only**, piped in from outside the village. Players don't build water sources (no wells for now; maybe later as an upgrade path)
+- **Source: the government's public water supply**, piped in from outside the village. *(Since 2026-10-05 players can also build their own Water Treatment Plants, §5.13.1; the public supply covers whatever they don't.)*
 - **A flow, not a good:** buildings use a steady number of **m³ per hour** while they work; nothing is stored or carried. Automatic, no buttons
 - **Who uses it** (`water_per_hour` in `buildings.json`, PLACEHOLDERS): **Wheat Farm 30 m³/h** (irrigation). Bakery: TBD (Section 11). Flour Mill: none
 - **Only while producing**, the same rule as wages and power: a halted, idle or suspended building uses none. A building at part speed (short of workers) uses that share (6 of 8 workers = 75% of its water)
@@ -471,11 +499,48 @@ The first **utility** (electricity, §5.5, will work the same way and reuse the 
   - Cost per unit (building window) still uses the current price per m³: the bill changes *when* you pay, not *what* it costs
 - **In prices (§5.12):** a batch's water (at the base price) is one more cost line, so a water price change flows down the chain. Farm: 30 m³/h × $2 = $60/h → Wheat **$0.53 → $0.64**, Flour $2.60 → $2.75, Bread $9.92 → $10.14
 
+#### 5.13.1 Water Treatment Plant: your own water (decided and built 2026-10-05, on trial)
+The user asked for Water Treatment Plants. Their choices: the plant is your own water supply, its water costs its running costs, and spare water isn't sold ("most farms need water").
+
+**What the plant does**
+- **It is a flow, like the public supply.** A plant cleans `water_supply` m³ an hour when all its workers are working. Fewer workers clean less (2 of 4 = half).
+- **Your buildings use its water first.** Only the rest is drawn from the public supply, metered and billed (12-hour cycle, tiers as above).
+- **Spare water is lost.** Nothing is stored or sold.
+- **It is a utility.** It has new category `utility`, a new Build menu tab **Utilities**, fixed workers and the minimum wage. Like a warehouse, its workers are paid by the hour and it is always working unless suspended. It closes while upgrading, and the public supply covers in the meantime.
+
+**What its water costs**
+- **Its own water costs only its wages.** At Level 1, 4 × $15 / 60 m³ = **$1.00 a m³**, against $2 public.
+- **It pays only if the water gets used.** One Wheat Farm uses 30 m³/h, so with just one farm half the water is spare and the real cost is the same as public water. Two farms save about $60/h.
+- **Batch cost per unit** estimates the water with the plants' spare water first at their price and the rest at the public price.
+- **The farm's Water line** shows the blended cost.
+- **Selling prices (§5.12)** still use the public base price, as the standard.
+
+**Numbers** (all PLACEHOLDERS, in `buildings.json`)
+
+| Level | Workers | m³/h | ≈ $ per m³ |
+|---|---|---|---|
+| 1 | 4 | 60 | 1.00 |
+| 2 | 6 | 100 | 0.90 |
+| 3 | 8 | 140 | 0.86 |
+| 4 | 10 | 180 | 0.83 |
+
+Materials: 600 Bricks, 60 Cement, 20 Steel and 30 Construction materials (about $2,900 with the crew).
+
+**Shown:**
+- the plant's window, e.g. "Cleaning 60 m³/h · your buildings use 30 · 30 spare", its price per m³ and "Water Cleaned";
+- Statistics → Water bill → "Using now: X m³/h · Y from your plants, Z public".
+
+**Later:**
+- electricity for the plant (§5.5);
+- a sprite (it shows as a placeholder for now).
+
 ### 5.14 Cost per unit (decided and built 2026-10-02)
 
 **What it costs YOU to make one unit**, shown in each production building's window. It is a fact about your company, separate from the selling price (§5.12, the designer's price). Same approach as Sim Companies (research report in `C:\Program Files\Project_AI\MYSIMS\reports\Sim Companies production cost.md`).
 
 **Cost per unit = (ingredients + wages + water + later electricity) for one batch ÷ units the batch makes**
+
+**Since production batches (2026-10-05, §5.1)** the whole batch's cost is worked out and **locked in when it starts**: ingredients at their cost tags, the wages paid then (whole cents, bonus included), and water as an **estimate** (`water_per_hour` × hours × today's price; the real water still goes on the 12-hour bill). Every unit collected carries cost ÷ units. The set-up shows it before starting (units, ingredients, labor, water, total, cost per unit, sells for). The worked example below uses the old per-minute batches; with the new data a wheat costs about **$3.00**, a flour **$7.50**, a bread **$18.00** to make (standard numbers), about ×10 the old values, because output per hour was cut to a tenth (§5.4).
 
 | Line | Counted at | Changes when… |
 |---|---|---|
@@ -529,9 +594,56 @@ If you sold the flour instead: 32 × $2.75 = $88 → baking earns $135 more
 
 **How the rules can keep the tags exact** (for building it): per unit, wages = `max_workers` × wage per worker × batch time ÷ units (the same whatever the staffing, see above), and water = `water_per_hour` × batch time × price ÷ units. So a finished batch's cost can be worked out the moment it finishes, without tracking every second; the save stores each stock's **total cost** next to its amount (average = total ÷ amount).
 
-### 5.15 Building Upgrades & the Construction Company (planned 2026-10-02, Phase 2; not built)
+### 5.15 Building Upgrades & the Construction Company (planned 2026-10-02; upgrades to Level 4 with materials + a crew bought at market prices built 2026-10-04, on trial; real construction workers from the Construction Office built 2026-10-05, on trial; material buildings not built)
 
-**Upgrades cost materials + labor, not a money fee** (decided 2026-10-02). Realistic: you buy the materials (from your own production, an in-game supplier, or from other players from Phase 4) and pay the laborers who build it.
+**Construction workers (built 2026-10-05, on trial; the user's choices).** The Construction Office is a real employer, separate from City Hall (§5.8):
+- **Crew per job:** building anything needs **1 construction worker**; an upgrade needs **one more per level** (Level 2 → 2, Level 3 → 3, Level 4 → 4). The same for every building (`construction.crew` = 1, `crew_per_level` = 1). Roads need none
+- **Busy until done:** the workers stay on the job until the building or upgrade is finished, then they're free for the next one
+- **How many:** each Construction Office employs **4** villagers (Level 2: 6, Level 3: 8, Level 4: 10). They're real jobs, hired before other buildings (`staffed_first`, so the village can always build), and the office needs a road like any workplace. The total across all offices is the crew
+- **Not enough free:** the job can't start yet. The message says how long until enough are free, or (when the job needs more than all offices have, e.g. Level 4 with one 4-worker office busy elsewhere) to upgrade the office or build another
+- **Paid per project:** the Labor line of the quote (workers × hours × $15) is paid when the work starts; idle construction workers cost nothing, so the office has no hourly wage bill
+- **Stays open while upgraded,** like homes and warehouses
+- Save version 11: the old headquarters (saved as `construction_office`) becomes `city_hall`, and older saves get a free Construction Office on the free tile nearest City Hall beside a linked road
+- Not built: a waiting list that starts jobs by itself; real material buildings (below)
+
+**Construction requirements (built 2026-10-04, the user's choices).** Building and every upgrade need **Bricks, Cement, Steel, Construction materials and labor**. The same rules apply to every building:
+- **Fixed amounts per level, doubling each level.** Each building has its own Level 1 amounts (`materials` in `buildings.json`, sized so bigger buildings need more). Level 2 needs 2×, Level 3 4×, Level 4 8× (`construction.level_growth` = 2 in `game_config.json`)
+- **Labor = a construction crew**: ~~8 laborers at Level 1, doubling each level~~ (replaced 2026-10-05 by real construction workers, above: 1, then one more per level). Paid once at the low-skilled minimum wage ($15/h) for the hours the work takes
+- **Construction time** (`construction.level_seconds`):
+
+| | Time | Crew | Labor |
+|---|---|---|---|
+| Build (Level 1) | 1:00 h | 8 | $120 |
+| Upgrade to Level 2 | 1:00 h | 16 | $240 |
+| Upgrade to Level 3 | 2:00 h | 32 | $960 |
+| Upgrade to Level 4 | 3:00 h | 64 | $2,880 |
+
+- **Materials are bought from an in-game supplier at today's market price** when the work starts, so the cost shown is approximate ("≈ $1,850"). Each material's price is its base price (Bricks $1, Cement $10 a bag, Steel $50 a beam, Construction materials $20 a crate) give or take up to 20%, a new price every hour. The price comes from the hour alone, so time away = playing and nothing is saved. Once material buildings exist (below), materials will become real goods
+- **Everything is paid at the start** (materials + crew), so work never stalls. The building's value on the balance sheet is what was actually paid; its share in selling prices (§5.12), demolish refund and the starting buildings use its value at base prices
+- **Level 1 amounts** (PLACEHOLDERS; a Wheat Farm is about $1,820 at base prices):
+
+| Building | Bricks | Cement | Steel | Constr. materials |
+|---|---|---|---|---|
+| Public Housing | 160 | 16 | 4 | 8 |
+| Regular House | 200 | 20 | 5 | 10 |
+| Villa | 1,200 | 120 | 30 | 60 |
+| Warehouse | 600 | 60 | 15 | 30 |
+| Wheat Farm | 400 | 40 | 10 | 20 |
+| Flour Mill | 1,000 | 100 | 25 | 50 |
+| Bakery | 1,600 | 160 | 40 | 80 |
+| Supermarket | 500 | 50 | 13 | 25 |
+
+- Starting cash raised to $12,000 so a Wheat Farm + Flour Mill + Supermarket is affordable even at the highest prices. A new building now takes an hour before it works
+- **Robotic workers: coming soon.** Shown greyed out in every building's Upgrade section; what they do is still open (Section 11)
+
+**How upgrades work** (built 2026-10-04, on trial):
+- **Data:** each building's `upgrades` in `buildings.json` lists Level 2, 3 and 4: the numbers that change (`max_workers`, `storage_cap`, `queue_size`, `capacity`, `shelves`, `households`); anything a level leaves out stays as the level below. (Test data may still give a level a fixed `cost` and its own `time`)
+- **Bigger building:** farms, mills and bakeries get +50% / +100% / +150% workers, storage and queue; Warehouse 2× / 3× / 4× workers and room; Supermarket 5 / 6 / 7 shelves; homes 1.5× / 2× / 2.5× households
+- **Speed counts against Level 1's crew:** a farm with 12 of 8 workers works 1.5× as fast. Wages per batch stay the same (more workers, shorter batch), so the gain is more output per building, not cheaper goods
+- **Closes while upgrading** (farms, mills, bakeries, Supermarkets): no posts, no wages, nothing made or sold; the batch in progress is paused, not lost, and queued jobs stay. This replaces the "after this batch / start now" choice above with something simpler. **Homes and warehouses stay in use**; their extra room counts from the moment the upgrade is done
+- **No Construction Office cap yet**, and one upgrade at a time per building. Offline: the upgrade's end is a moment settling splits on, so time away = playing. Stored on the building as `upgrade_started_at` / `upgrade_done_at`; no save format change
+
+**Upgrades cost materials + labor, not a money fee** (decided 2026-10-02; built above with an in-game supplier). Realistic: you buy the materials (from your own production, an in-game supplier, or from other players from Phase 4) and pay the laborers who build it. The rest of this section is the plan for later.
 
 **Construction materials** (new goods, made by ordinary production buildings, priced by the cost-based formula, §5.12):
 
@@ -543,7 +655,7 @@ If you sold the flour instead: 32 × $2.75 = $88 → baking earns $135 more
 | Cement | Cement Plant (uses power) | Limestone (Quarry) |
 | Steel | Steel Mill (uses power) | Iron ore + Coal (Coal Mine, §5.5) |
 
-- **Simple rule: the higher the level, the more materials and the bigger the crew** (decided 2026-10-02). Each building has a **base cost** for Level 2 in `buildings.json`; each next level multiplies it by a growth factor (`upgrade_growth` in `game_config.json`, PLACEHOLDER ×1.6). New material types join as levels go up: Level 2 Planks + Bricks, Level 3 adds Cement, Level 4+ adds Steel. Crew size and hours grow the same way
+- **Simple rule: the higher the level, the more materials and the bigger the crew** (decided 2026-10-02; settled 2026-10-04 as **doubling per level**, all four materials from Level 1, see above)
 - **Material buildings are ordinary buildings every player can build**, but not yet: they arrive in a later phase with upgrades (not in the current early stage)
 - Each level says what it improves (batch, timer, storage, workers; the Warehouse's Level 2 doubles its workers, §5.10)
 - Still capped by the Construction Office's level (§5.8)
@@ -553,7 +665,7 @@ If you sold the flour instead: 32 × $2.75 = $88 → baking earns $135 more
 - Every **upgrade** needs some laborers for some time (e.g. 5 laborers for 6 hours). Laborers on a project are tied up until it's done, so the crew size limits how many projects run at once. A higher Construction Office level gives a bigger crew
 - **Laborers are paid per project, not per hour:** the fee (laborers × wage × hours) is paid once when the project starts, so a project can never stall halfway. Idle laborers cost nothing. The fee goes to people in the game, so it's a **money sink**
 - Materials are also taken from the warehouse when the project starts (like a job's ingredients)
-- Whether **new buildings** also need the construction company and materials (today: cash + 5 seconds) is still open (Section 11)
+- **New buildings** need materials and a crew too (decided 2026-10-04)
 
 **A building stops while it is upgraded** (decided 2026-10-02). That makes upgrading a real decision (production is lost), instead of something you always do.
 - **"Upgrade after this batch"** (default): the batch being made finishes, then the upgrade starts. Nothing is lost
@@ -569,9 +681,9 @@ If you sold the flour instead: 32 × $2.75 = $88 → baking earns $135 more
 ### 5.16 Supermarket — the Retail building, with village demand (built 2026-10-02, on trial)
 
 The Retail building (selling to the village) is the **Supermarket** (`supermarket` in `buildings.json`, category `retail`, Build Menu tab "Shops"). It replaced the temporary Sell test buttons. **On trial:** built in its own Git commit so it can be undone if the design doesn't feel right.
-- **The player builds it** (not pre-built). $2,500 (PLACEHOLDER), so the $10,000 start covers a Wheat Farm + Flour Mill + Supermarket (§5.8)
+- **The player builds it** (not pre-built). About $2,270 of materials and crew (PLACEHOLDER, §5.15), so the $12,000 start covers a Wheat Farm + Flour Mill + Supermarket even at the highest material prices (§5.8)
 - **Sells finished food only:** Flour and Bread now; fruits later (§5.17). **Raw Wheat can't be sold** (decided 2026-10-02): only items with an `appetite` in `resources.json` go on shelves
-- **Shelves:** 4 per store (`shelves`). Each shelf sells one product; **several shelves sell at once**. A product can be on **only one shelf in the whole village** at a time (the village has one appetite for it), so extra stores let you sell more *different* products, not more of the same
+- **Shelves:** 4 per store (`shelves`). Each shelf sells one product; **several shelves sell at once**. **Each store sells on its own (changed 2026-10-04):** a product can be on only one shelf *per store*, but several stores can sell the same product at once. The village still has one appetite for it, so the stores **share its shoppers**: 2 stores selling flour each sell it half as fast, and total flour sold per hour stays the same (`Simulation.selling_counts`; only stores that are selling count: built, not suspended, with workers). When one sells out, the others speed up at that moment (a split point already). Before, a product could be on only one shelf in the whole village, which blocked a second Supermarket from selling flour at all. The same food in two stores still counts as one food for happiness
 - **Putting food on a shelf:** choose the food, the amount (slider or All) and a **price tag**. The goods leave the warehouse at once (with their cost tags, §5.14); the window first shows the price, how many the village buys per hour, the time to sell out, sales, cost to make, sales tax and profit
 - **Price tags** (our own idea instead of typing a price; `retail.price_tags` in `game_config.json`, PLACEHOLDERS from a demand curve speed = 1 ÷ price³):
 
@@ -583,7 +695,7 @@ The Retail building (selling to the village) is the **Supermarket** (`supermarke
 | Premium | +10% | 0.75× |
 | Luxury | +20% | 0.58× |
 
-- **Village demand:** a shelf sells **people × the item's appetite × the tag's speed** per hour (appetite PLACEHOLDERS: Bread 3.6, Flour 3.2 per person per hour, tuned so ~40 people buy what one Farm + Mill + Bakery make; the game only shows village totals). The rate and price are fixed when the goods go on the shelf, so more people help the *next* shelf
+- **Village demand:** a shelf sells **people × the item's appetite × the tag's speed** per hour (appetite PLACEHOLDERS: Bread 0.36, Flour 0.32 per person per hour since 2026-10-05, a tenth of before like production (§5.4), tuned so ~40 people buy what one Farm + Mill + Bakery make; the game only shows village totals). The rate and price are fixed when the goods go on the shelf, so more people help the *next* shelf
 - **Variety brings shoppers ("one-stop shop", our own idea):** +10% for each different product on the store's shelves beyond the first (`retail.variety_bonus`). It changes the moment a shelf sells out, so keeping shelves full keeps shoppers coming
 - **Workers: a fixed 4 at the minimum wage** (decided 2026-10-02, like the warehouse: `fixed_workers`, `fixed_wage`): no Low / Medium / High and no bonus, because neither did anything worth having here (half the workers sell half as fast for the same total wages; a bonus only wins hiring priority). More only by upgrading later. **Not staffed first:** it waits its turn for free people; short of people, shelves sell slower (3 of 4 = 75%). Paid per hour **only while a shelf is selling**; empty shelves = idle, no wages. Electricity later (0 MW for now)
 - **Paid at the end of each shelf batch** (decided 2026-10-02): when a shelf sells out, its sales minus sales tax (§5.9; Company Tax when that's built) reach cash. Taking a shelf down early (red X, asks first) pays for what's sold so far and returns the rest to the warehouse; demolish and suspend do the same
@@ -632,7 +744,7 @@ Housing gets **types**, each with a name, a base build cost, a number of househo
 - **Later:** apartments, condos and more types; a Housing need in happiness (§5.6); housing upgrades (§5.15)
 - **✅ Built 2026-10-03 — what the rules do, including choices made while building:**
   - **Fallback:** households first take homes *meant* for their class; any still without a home then take any leftover home they can afford, so a Well off household lives in Public Housing rather than on the street, but Broke and Poor households get first claim on it
-  - **Babies need child places:** 2 per household **with a real home**; homeless households in huts have none. More homes don't add child places by themselves (households come from adults), but housing the homeless does. This replaces the old "no room in homes → no births" rule
+  - **Babies need child places:** 2 per household, **house or hut alike** (since 2026-10-04; before that only households with a real home had them). Child places come from adults, not homes. This replaces the old "no room in homes → no births" rule
   - **Nobody leaves any more:** demolishing a home makes its households move to other homes or put up huts (the old "people over the room move away" rule is gone)
   - **Huts can't be demolished** (they'd only go up again): they go by themselves once their household has a home. They take a tile, so a build on a tile where a hut just went up is refused ("That spot is taken")
   - **Rent** is collected like wages (also while away), shown as "Rent" under money in (Statistics → Cash flow) and in the Welcome back window
@@ -641,6 +753,92 @@ Housing gets **types**, each with a name, a base build cost, a number of househo
   - **Screens:** house window ("4 of 6 households · 7 adults, 3 children · rent $4.00/h"), Build Menu ("6 households · for Broke, Poor · free · 0.3 MW when lived in"), Statistics → People: Housing (households per type, homeless, rent coming in, homes' power) and Households by wealth
   - **Sprites:** temporary Kenney stand-ins (Public Housing `building-e`, Villa `building-a`, Makeshift Hut `detail-awning`), like the other buildings
   - **Code:** `Simulation.housing()` (who lives where, worked out from the counts), `adults_by_class`, `wealth_class_of`, `rent_per_household`, `adult_room`, `_update_huts` (run after every hiring), `_collect_rent`, `dev_set_rent`. No save version change: huts are ordinary buildings, and `dev_rent` / `rent_carry` are optional
+
+### 5.19 Balance sheet, cash check & money log (built 2026-10-04)
+The player wanted a balance sheet (like Sim Companies') and to be sure **every cent of cash is tracked: where it came from and where it went**.
+- **Every cash change is counted** under money in (sales by item, rent, demolish refunds) or money out (construction incl. upgrades, wages, water, sales tax). Developer-tool cash changes are counted separately (`stats.adjustments`), so they don't show up as income in the graphs.
+- **Cash check** (Statistics → Cash flow): starting cash + all money in − all money out (± dev tools) = cash now, exact to the cent. The invariant test checks this after every step of every random game.
+- **Balance sheet** (Statistics → Balance), all at what was paid (decided with the user):
+  - **Owned:** cash; shop sales not paid yet (Supermarket goods sold but paid only when the shelf sells out or is taken down; after the sales tax they'll pay); goods per item at their cost tags (§5.14), wherever they are (warehouse, building storage, unsold on shelves); ingredients in queued batches; buildings at **price paid** (build + upgrades, no wear); buildings and upgrades still being built
+  - **Owed:** debt (cash below $0); the water bill so far this cycle
+  - **Company value** = owned − owed. **Starting capital** = starting cash + the starter buildings at their build cost (they were free, but count at list price). **Profit kept** = company value − starting capital
+  - Demolishing shows as a loss of the half of the price that isn't refunded
+- **Money log** (Statistics → Cash flow): money in and out per **30-minute block** (`money_log_minutes`), the last 24 hours (`money_log_size` 48), by source; the running block is shown live; time spent away = one block. Kept cheap on purpose (the user asked): it saves a copy of the running totals every 30 minutes, never one entry per payment.
+- **Save version 8:** each building keeps `paid` (and `upgrade_paid` while an upgrade is under way), `stats.capital`, `stats.adjustments`, `stats.money_log`. Older saves get list prices and the starting cash that makes the cash check add up.
+- **Not built (ideas):** a profit & loss statement (would need the cost of goods sold vs actual wages paid tracked as well), wear on buildings (depreciation), a CSV export.
+- **Code:** `Simulation.balance_sheet`, `cash_check`, `money_log`, `_record_money_log`; `scenes/ui/money_pages.gd`
+
+### 5.20 Roads & traffic (built 2026-10-05, on trial)
+The user asked for roads, intersections, bridges, overpasses and flyovers, with people walking and cars driving ("or we copy Tropico"). They chose:
+- **roads matter:** a building works only with a road;
+- **traffic is for show:** no jams;
+- **roads first, bridges later.**
+
+All numbers are PLACEHOLDERS, in the `roads` block of `game_config.json`.
+
+**Road tiles**
+- A road goes on any free tile of the plot. It costs **$25 a tile** (`price`), paid at once and ready at once, with no crew and no waiting.
+- Removing a road is free, and nothing is paid back.
+- Buildings, Makeshift Huts and moved buildings can't stand on a road.
+- Corners, T-junctions and crossroads appear by themselves, from each tile's road neighbours.
+
+**The network**
+- The network starts at **City Hall** (`"road_hub": true` in `buildings.json`; it was called the Construction Office until 2026-10-05).
+- A road tile is **linked** when roads lead from it to a tile beside the office.
+
+**Who needs a road**
+- Every building with workers (`max_workers` > 0) needs a road, except the office. This includes farms, mills, bakeries, Supermarkets, warehouses and Water Treatment Plants.
+- The road must be a linked road on one of the 4 tiles beside the building (not diagonal).
+- **Without a road there are no posts:** no workers, no wages and no work, so the building stops, like a suspended one. A running batch waits.
+- Homes and huts don't need roads yet (a later idea).
+- A road (or a move) can't cut off a warehouse while the other warehouses don't have room for the goods.
+
+**Time away stays one calculation**
+- Road links only change when the player acts: building or removing road, or building, moving or demolishing a building. Every one of those actions settles first.
+- The links are worked out again whenever workers are handed out (`_hire`), and each building keeps a `road` flag.
+
+**New games and old saves**
+- A new game starts with roads joining the office, the Warehouse and the houses (`starting_roads`). They count in the starting capital at their price.
+- Save version 10: older saves get **free roads laid automatically**, the shortest way from each building, oldest first.
+  - These roads are worth $0 on the balance sheet.
+  - A building no road can reach shows "No road".
+
+**Screens**
+- **Road Mode:** Build → Roads → Road.
+  - Drag from a tile to stretch a road, straight or with one corner. Green tiles are new road, faint tiles are already road, and red tiles are blocked.
+  - The bar shows the tiles and the cost; ✓ builds it, and Road Mode stays on for the next stretch.
+  - The blue/red switch changes between laying and removing road.
+  - Two fingers still pan and zoom.
+- **A building with no road:**
+  - a red "no road" sign floats over it;
+  - its window has a **No road** section that says why and points to Build → Roads (no automatic road: the player lays every road; the "Build road" button was removed 2026-10-05 at the user's request);
+  - its status says why it stopped.
+- **Placing a building** where no road reaches warns, but doesn't block.
+- **Money screens:** roads show under money out ("Roads") and on the balance sheet ("Roads", at the price paid).
+
+**Traffic (for show only)**
+- Little people walk on the pavements and cars and vans drive on the right-hand lane, from road tile to road tile.
+  - About 1 walker per 4 workers at work, at most 30.
+  - About 1 car per working building plus 1 per 10 road tiles, at most 12. About half the cars drive to the Warehouse, like deliveries.
+- They never slow anything down and are never saved, so randomness is fine here, and none of it is in the rules. There are half as many on the Low detail setting.
+
+**Art** (clean isometric city-block look, from a reference picture the user chose, 2026-10-05)
+- The roads are drawn in code for now: grey asphalt, a pale pavement on both sides and a dashed centre line.
+- **Pedestrian crossings:** zebra stripes only at corners, T-junctions and crossroads, on each arm (the crossings in front of buildings were removed at the user's request).
+- **Street lights:** a few lamp posts on the pavements (every 4th straight tile, alternating sides, and one at each junction; none on bends; reduced 2026-10-05 at the user's request). They stand in the y-sorted Objects layer, so people, cars and buildings pass in front of and behind them.
+- **Building plots:** every building (not the Makeshift Huts) stands on its own little island, a lawn with a raised pavement edge and a few bushes. No road runs into a building (the driveway stubs were removed at the user's request). Placeholder boxes are a bit smaller than a tile, so the lawn shows around them.
+- Later: 16 road pieces made in Blender and photographed by the sprite studio.
+
+**Later ideas (not now)**
+- **Bridges**, once there is water to cross: a river through the plot, or the Dock (§5.11). A road tile over water would be a bridge.
+- Homes needing roads, so people can reach work.
+- Distance mattering, so workers far away along the roads are slower (closer to Tropico).
+- Road upgrades (dirt → asphalt).
+- **Not planned:** overpasses and flyovers (they need height, which is hard in a flat 2D picture game on a 20×20 plot), and real traffic jams (they would need a car-by-car replay, which breaks the rule that time away is one calculation).
+
+**Code**
+- `scripts/sim/simulation.gd` "Roads": `road_quote`, `build_roads`, `can_remove_roads`, `remove_roads`, `linked_roads`, `_update_road_links`, `needs_road`, `on_road`, `road_path_for` + `lay_roads_to_all` (only for the old-save upgrade).
+- Map and screens: `scenes/village/road_layer.gd` (drawing), `scenes/village/traffic.gd` (people and cars), Road Mode in `scenes/village/village.gd`.
 
 ## 6. UI/UX Screens
 
@@ -651,10 +849,12 @@ Housing gets **types**, each with a name, a base build cost, a number of househo
 - **Building Panel** — current recipe, timer progress, job queue, collect button, upgrade button (upgrade button from Phase 2) — ✅ built, plus a **Workers** section: Low / Medium / High staffing buttons, workers working (of asked for, max), wages per hour, and the production rate at the current speed
   - ✅ Built 2026-10-01, Clash-of-Clans style: tapping a building selects it (bounce + glow + ring) and shows an action bar (Info / Collect / Produce / Build); tapping a building with goods waiting also collects; "ready" bubbles float over buildings; "+32"/"-40" numbers rise on collect/produce. Info opens the full panel (recipe, progress, queue slots, storage, Collect / Make). Files: `scenes/ui/building_bar.gd`, `building_panel.gd`
   - Industrial buildings (extractor/processor) skip the bar: tapping opens the panel straight away
-  - **Cancel a batch:** tap a queue slot. A waiting batch refunds 100% of its ingredients at once; the batch being made refunds 50% after an "are you sure?" (`cancel_refund_waiting` / `cancel_refund_in_progress` in `game_config.json`). A finished batch can't be cancelled (collect it). No "pause": with no upkeep costs, pausing would gain nothing over cancelling
-  - **Demolish:** red button at the bottom of the panel, with a confirm window showing what comes back: 50% of the build cost (`demolish_refund`), goods inside, and queued ingredients (same refund rules). Only buildings the player can build can be demolished (starters stay). Refused if the warehouse can't hold what comes back
+  - **Production batch (built 2026-10-05, §5.1; replaced the queue slots, Fill, Make and the storage bar):** the Production box shows what one hour of work makes, then (`scenes/ui/batch_box.gd`):
+	- **Idle:** Bonus buttons (None / +10% / +20% / +30% units), the length row `[−] 24 h · done Tue 6:00 PM [+] [All]`, and the lines Makes / Ingredients / Labor (paid now) / Water (estimate) / Total cost / Cost per unit / Sells for, then **Start 24 h batch** (greyed but tappable with the reason when it can't start). Start opens a "Start this batch?" window with the whole breakdown ("Back" / "Start")
+	- **With a batch:** status ("Making Flour · 6 of 24 h · done at 6:00 PM"), progress bar, "Ready: 192 Flour" with **Collect**, what's locked in (hours, bonus, cost, cost per unit), and **Cancel batch** (asks first, showing the refund)
+	- The action bar's Produce button (idle production buildings) opens the panel to set up a batch
+  - **Demolish:** red button at the bottom of the panel, with a confirm window showing what comes back: 50% of the build cost (`demolish_refund`) and goods inside. Only buildings the player can build can be demolished (starters stay). Refused while it has a batch, or if the warehouse can't hold what comes back
   - **Move:** blue button in the panel (or the action bar for the Construction Office / Small House). Uses Placement Mode: the building fades where it stands, a preview follows the pointer, tap a free tile. Free, works for every building, and production carries on through the move
-  - **Fill queue:** "Fill xN" beside the Now heading queues as many batches as there are free slots and ingredients for. The Now box shows status, progress and the queue together (its first slot is the batch being made)
 - **Recipe Select** — sub-panel of Building Panel (once 2+ recipes unlocked)
 - **Inventory/Warehouse** — all resources held, quantities, storage caps
 - **Retailer/Sell Screen** — sellable resources, current NPC price, quantity selector, sell button
@@ -728,7 +928,7 @@ PlayerSave
 - **Safe writing:** the new save goes to `save.tmp` first and is then swapped in; the previous save is kept as `save.backup.json`. A damaged save is renamed `save.unreadable-<time>.json` (never overwritten) and the backup is loaded instead; if both fail, a new game starts and the player is told
 - Test runs never touch the real save (`Engine` meta `running_tests`)
 - Dev clock: if a save was made after the dev panel skipped time ahead, a debug build skips ahead again on loading
-- Saved as-is today: `profile.currency`, `plot`, `next_building_id`, `buildings` (with `job_started_at`, `built_at`, `blocked`, `staffing`), `inventory`, `population` (with `children` age groups and `life_carry`, version 6), `started_at`, `settled_at`, `wage_carry`, `sales_log`, `stats` (with `people` counters). Not yet: xp/level, quests, badges (later phases)
+- Saved as-is today: `profile.currency`, `plot`, `next_building_id`, `buildings` (with `job_started_at`, `built_at`, `staffing`, and since version 9 `batch`: `{recipe_id, hours, bonus, units, cost, wages, inputs, input_cost, collected, made_hours}` or `{}`; the job `queue` and `blocked` are gone), `inventory`, `population` (with `children` age groups and `life_carry`, version 6), `started_at`, `settled_at`, `wage_carry`, `sales_log`, `stats` (with `people` counters; `capital`, `adjustments` and `money_log`, version 8), each building's `paid` / `upgrade_paid` (version 8), `roads` (`[x, y, cents paid]` per tile) and each building's `road` flag (version 10, §5.20). Not yet: xp/level, quests, badges (later phases)
 
 **Phase 4 additions:**
 - Market/Exchange and Contract data are shared/global state — not part of an individual player's save
@@ -822,8 +1022,10 @@ A hidden dev menu (key combo on PC, secret tap sequence on mobile) for testing t
 - [ ] Specific per-building education-tier requirements for Employees
 - [ ] Construction Office upgrade cost curve and exact level-cap relationship to other buildings
 - [x] Upgrades (5.15): materials and amounts per level → **our own simple rule: base cost × growth factor per level; higher level = more materials and a bigger crew** (decided 2026-10-02). Exact base numbers set when built
-- [ ] Upgrades (5.15): do **new buildings** also need the construction company and materials, or only upgrades? (Maybe cash only for the first, cheap buildings, so a new player is never stuck)
-- [ ] Upgrades (5.15): before Phase 4, where materials come from when your own chain is short (in-game supplier?) and whether an in-game contractor rents out laborers
+- [x] Upgrades (5.15): do **new buildings** also need the construction company and materials, or only upgrades? → **Yes, new buildings too: materials + a crew of 8, 1 h** (decided 2026-10-04)
+- [x] Upgrades (5.15): before Phase 4, where materials come from when your own chain is short → **an in-game supplier at a market price that moves ±20% every hour; materials are bought automatically when work starts** (decided 2026-10-04). Still open: whether an in-game contractor rents out laborers
+- [ ] Upgrades (5.15): what **Robotic workers** do (shown as "coming soon"), what they cost, and from which level
+- [ ] Upgrades (5.15): per-building crew sizes (every building uses 8 for now) and whether laborers become real villagers taken from their jobs
 - [x] Upgrades (5.15): who can build the material buildings (Lumber Camp, Sawmill, Clay Pit, Brick Kiln, Quarry, Cement Plant, Steel Mill)? → **every player, from the later phase that brings upgrades**; not available in the early stage (decided 2026-10-02)
 - [ ] Population growth rate tuning and House capacity numbers beyond the first Small House
 - [x] Should people have needs? → **Yes: Food and Jobs, one village happiness score that only changes move-in speed** (decided and built 2026-10-03, 5.6; on trial)
@@ -880,6 +1082,71 @@ A hidden dev menu (key combo on PC, secret tap sequence on mobile) for testing t
 Both are functional, self-contained HTML/JS artifacts used to validate the trading-mechanic math and UX before porting logic into Godot.
 
 ## 15. Revision Log
+
+**2026-10-05 (Electricity: Wind Turbine, Substation, Solar + Nuclear coming soon, on trial):**
+- The user asked (Build menu, new Power tab) for a Wind Turbine (no workers, a smaller amount of power), a Solar Power Plant (needs High School graduates), a Nuclear Power Plant (uranium store, College; greyed out "soon") and an Electric Substation that expands the grid's coverage.
+- Their choices: Tropico-style all-or-nothing power (a building that doesn't fit gets none and stops), oldest building first; coverage by radius with overlapping circles; City Hall's public grid link (10 MW, billed); Solar and Nuclear greyed out until schools; steady output for now.
+- Built (5.5.0): power use on the Mill and Bakery, the network and its coverage view on the map, "No power" warnings, power bill in Statistics and Welcome back, power in batch costs and prices. Own Blender models for all four buildings.
+- Save version 12: older saves get free Substations covering their buildings that use power.
+
+**2026-10-05 (City Hall and real construction workers, on trial):**
+- The user asked for the Construction Office to be a real construction company, needed to build or upgrade anything except roads, with 1 construction worker to build and one more per level for upgrades, and for the old headquarters to become City Hall.
+- Their choices: 4 workers per office; paid per project; when all are busy the job can't start yet; more crew by upgrading the office (6 / 8 / 10) or building another.
+- Built (§5.8, §5.15): City Hall (the road hub), a buildable Construction Office (starts pre-built), crew checks on building and upgrading, the office's window shows free workers and what they're on. New sprites: City Hall keeps the old headquarters picture, the office uses Kenney building-d (temporary).
+- Save version 11: the headquarters is renamed City Hall and older saves get a free Construction Office by the roads.
+
+**2026-10-05 (Roads & traffic, on trial):**
+- The user asked for roads, intersections, bridges, overpasses and flyovers, with people and cars. They chose:
+  - roads that matter: buildings with workers need a road to the Construction Office;
+  - traffic for show only;
+  - roads first, bridges later.
+- Overpasses and flyovers are not planned (§5.20).
+- Built:
+  - road tiles at $25, with automatic corners, T-junctions and crossroads;
+  - Road Mode (drag to lay or remove road);
+  - later the same day, at the user's request: the automatic "Build road" button and the road stubs into buildings were removed; buildings got their own plots (lawn and pavement edge), and roads got lamp posts and more zebra crossings;
+  - a "no road" sign over cut-off buildings;
+  - walkers and cars;
+  - starting roads in new games.
+- Save version 10: old saves get free roads laid automatically.
+
+**2026-10-05 (Water Treatment Plant, on trial):**
+- The user asked for Water Treatment Plants. Their choices: your own water supply (your buildings use it first, and the public supply covers the rest), its water costs only its running costs (wages), and spare water isn't sold.
+- Built:
+  - a new category `utility`;
+  - a Build menu tab Utilities;
+  - Level 1 needs 4 workers and cleans 60 m³/h, about $1 a m³ against $2 public, with upgrades to Level 4;
+  - only public water is metered on the bill;
+  - batch water estimates and the farm's water line use the cheaper own water.
+- No save change (5.13.1).
+
+**2026-10-05 (production batches, on trial):**
+- The user asked for Sim Companies-style production: pick a batch length (finish time, or All the stock allows, up to 48 h), see the total cost, labor, finish time and cost per unit before producing, collect an hourly share from a bubble, and a worker bonus that adds units per batch instead of hiring more workers. Their choices: all three production buildings, production slowed ÷10 so 24 h fits the Warehouse, no building storage (only the Warehouse), wages paid up front, cancel with a 50% refund of the unworked part, the bonus locked in per batch and no longer deciding hiring. Starting cash raised to $15,000 since wages are now paid up front. Save version 9 (5.1, 5.4, 5.6, 5.14, 6, 8)
+
+**2026-10-04 (balance sheet):**
+- The user asked for a balance sheet and to track where all cash comes from and goes. Built: Statistics → Balance (what the company owns and owes, company value, starting capital, profit kept), a Cash check and a 30-minute Money log on the Cash flow tab; developer cash changes are now counted too. Buildings at price paid, starter buildings at list price (user's choices). Save version 8 (5.19)
+
+**2026-10-04 (building upgrades to Level 3):**
+- The user asked for building upgrades up to Level 3. Their choices: money for now (materials + laborers later), a bigger building each level, the building stops while upgraded, no Construction Office cap. Built: Upgrade section in the building window; farms, mills, bakeries and shops close for 10 / 30 min (work in progress waits), homes and warehouses stay in use; more workers mean faster work at the same wages per batch (5.15)
+
+**2026-10-04 (babies don't need a house):**
+- The user: "having a house shouldn't be a basis to having kids". Now all adults have babies, and every family (household), in a house or a hut, has 2 child places. Homelessness still slows births, but only through happiness (the homeless penalty) (5.6, 5.18)
+
+**2026-10-04 (every Supermarket sells on its own):**
+- Playtest: a second Supermarket couldn't sell flour or bread ("already on a shelf") because a product could be on only one shelf in the whole village. Now each store sells on its own (one shelf per product per store) and stores selling the same product share the village's shoppers for it (2 stores: half as fast each). The stock window shows "shared with N other stores" (5.16)
+
+**2026-10-04 (faster population, on trial):**
+- Playtest: the village grew too slowly. Migrant workers now arrive in **groups of up to 5** every 2 minutes (`move_in_group_size`; fewer when fewer jobs are open), unhappy people leave in **groups of 5** (`happiness.leave_group_size`) and faster (**2%** an hour at 20–49%, **5%** below 20%), births are **10x** (`birth_rate_per_hour` 0.01 → 0.1) and children grow up in **6 hours** instead of 24. A toast shows each group arriving, babies born, children growing up and (in red) people leaving. Statistics → People says how many the next group brings (5.6)
+
+**2026-10-04 (construction materials + labor, on trial):**
+- The user asked for real construction requirements: Bricks, Cement, Steel, Construction materials and labor, fixed per level and doubling each level, for building and for every upgrade. Their choices: materials auto-bought from an in-game supplier at a market price that changes every hour (±20%, so costs show as "≈"); labor = a crew of 8 at Level 1 doubling per level (8/16/32/64), paid once at $15/h; amounts per building; times 1 h to build, then 1 h / 2 h / 3 h to Levels 2 / 3 / 4; Level 4 added with the same pattern; "Robotic workers: coming soon" shown in the Upgrade section. Starting cash $12,000 (5.15)
+
+**2026-10-04 (homeless penalty):**
+- Every household in a Makeshift Hut takes 2 points off happiness (at most 30), on top of the Housing need, shown as its own line. On the playtest save: 82% → 70% once 12 migrants live in 6 huts, and 46% (people start leaving) when the shelves then run empty (5.6)
+
+**2026-10-04 (migrant workers):**
+- Second playtest: job seekers filled the old save from 6 to 36 adults, then stopped because the 3 Public Housing blocks were full (12 jobs open, the Supermarket empty, so no food). Job seekers became **migrant workers who don't need a free home** (`move_in_needs_home` false): they live in Makeshift Huts until homes are built, lowering the Housing need. Measured on that save: the 12 jobs filled in 20 minutes with 6 huts, happiness 67% → 82% (the Supermarket got workers) (5.6)
+- Playtest: an old save from before the founders had 6 adults and three farms without workers; births alone (about one baby every 11 hours for 6 adults, then 24 hours to grow up) were too slow to be fun. Newcomers are back as **job seekers**: one adult every 2 minutes, only for open jobs nobody here can take, only with room in a real home, only at 50% happiness or more (`move_in_only_for_jobs`, `population_growth_seconds` 120, `move_in` per happiness band). Statistics → People shows when the next one comes or why none is coming (5.6)
 
 **2026-10-03 (village growth bounded; old saves keep free homes):**
 - A review found the village could outgrow its homes forever (a contented village: ~540 people and ~210 huts by day 30). Fixed with the user's design: a **Housing need** in happiness (share of households with a home), **people leave the island** when happiness is low (1% an hour at 20–49%, 3% below 20%; the homeless first), births **halved to 1%** of housed adults an hour; homeless adults have no babies (5.6)

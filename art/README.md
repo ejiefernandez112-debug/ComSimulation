@@ -25,5 +25,6 @@ photographs the finished models into the 2D sprites the game shows (plan.md §4)
 | Building | Model | Footprint |
 |---|---|---|
 | Wheat Farm | ✅ `wheat_farm.py` | designed 2×2 (shown on 1 tile until 2×2 footprints exist) |
+| Wind Turbine, Electric Substation, Solar Power Plant, Nuclear Power Plant | ✅ `wind_turbine.py`, `electric_substation.py`, `solar_power_plant.py`, `nuclear_power_plant.py` | 1×1 |
 | Flour Mill, Bakery, Small House, Construction Office | still Kenney stand-ins | — |
 | Trees, rocks | not started | — |

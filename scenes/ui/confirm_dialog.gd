@@ -7,7 +7,10 @@ var _on_yes := Callable()
 
 
 ## money: coins given back; goods: {resource: qty} given back. Either can be empty/0.
-func ask(title_text: String, message: String, money: int, goods: Dictionary, yes_text: String, on_yes: Callable) -> void:
+## no_text / yes_variation: the "no" button's words and the "yes" button's colour (red for
+## things that can't be undone, green for a go-ahead like starting a batch).
+func ask(title_text: String, message: String, money: int, goods: Dictionary, yes_text: String, on_yes: Callable,
+		no_text := "Keep it", yes_variation := "RedButton") -> void:
 	_on_yes = on_yes
 	clear_content()
 	var text := Label.new()
@@ -39,12 +42,12 @@ func ask(title_text: String, message: String, money: int, goods: Dictionary, yes
 	content.add_child(buttons)
 	var no := Button.new()
 	no.theme_type_variation = "GreyButton"
-	no.text = "Keep it"
+	no.text = no_text
 	no.custom_minimum_size = Vector2(170, 58)
 	no.pressed.connect(close)
 	buttons.add_child(no)
 	var yes := Button.new()
-	yes.theme_type_variation = "RedButton"
+	yes.theme_type_variation = yes_variation
 	yes.text = yes_text
 	yes.custom_minimum_size = Vector2(190, 58)
 	yes.pressed.connect(_yes)

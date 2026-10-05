@@ -6,12 +6,18 @@ extends Control
 ## Build (or tapping the same card again) starts Placement Mode. On a computer, pointing at a
 ## card previews its details too. Wide screens get a window in the middle; tall (phone) screens
 ## a sheet along the bottom.
+## The Roads tab holds one "Road" card: it starts Road Mode (plan.md §5.20), where the placing bar
+## gets a switch between laying and removing road.
 ## Costs come from GameData; affordability from Economy. This panel decides nothing itself.
 
 signal placement_requested(type_id: String)
 signal placement_cancelled
-## Placement Mode: ✓ was tapped (put the building where the ghost is).
+## Placement Mode: ✓ was tapped (put the building where the ghost is, or build the drawn road).
 signal placement_confirmed
+## The Road card was chosen: start Road Mode.
+signal road_requested
+## Road Mode: the switch between laying road (false) and removing it (true) was flipped.
+signal road_remove_toggled(removing: bool)
 
 const BuildingView = preload("res://scenes/village/building_view.gd")
 const MAX_SIZE := Vector2(900, 640)  # the window on wide screens (smaller if the screen is)
@@ -20,6 +26,7 @@ const HUD_WIDTH := 250.0  # the money / population / warehouse bars down the top
 const TAB_SIZE := Vector2(72, 66)
 const CARD_SIZE := Vector2(128, 144)
 const SELECTED := Color("ffc93c")
+const ROAD := "road"  # the Road card's id in the Roads tab (roads aren't buildings)
 ## Locked buildings' pictures are drawn in grey.
 const GREY_SHADER := "shader_type canvas_item;
 void fragment() {
@@ -42,6 +49,8 @@ var _selected := ""  # the chosen building: Build places this one
 var _shown := ""  # the building in the details strip (the selected one, or the one pointed at)
 var _grey: ShaderMaterial
 var _confirm: RoundButton  # the ✓ in the placing bar
+var _road_switch: RoundButton  # Road Mode: lay road (blue) or remove it (red)
+var _removing := false
 var _placing_text := ""  # the placing bar's hint while the ghost is on a free tile
 
 # The details strip along the bottom.
@@ -50,6 +59,7 @@ var _cost: Label
 var _cost_note: Label
 var _about: Label
 var _makes: HBoxContainer
+var _needs: Label  # what building it needs (materials, crew, time) and when prices change
 var _build: Button
 
 
@@ -95,19 +105,29 @@ func show_hint(text: String) -> void:
 	hint.text = text
 
 
-## Shows the ✗ / hint / ✓ bar. Moving a building uses it too.
-func show_placing(text: String) -> void:
+## Shows the ✗ / hint / ✓ bar. Moving a building uses it too; Road Mode adds its lay / remove switch.
+func show_placing(text: String, roads := false) -> void:
 	_window.hide()
 	_placing_text = text
+	_road_switch.visible = roads
+	_set_removing(false)
 	placing_bar.show()
 	show_hint(text)
 
 
-## The ghost moved: on a free tile ✓ works and the hint says what to do; on a blocked one ✓ greys
-## out and the hint says why (check = {"ok", "error"}).
+## The ghost (or the drawn road) moved: when it can go there ✓ works and the hint says what to do
+## (or the check's own "hint"); otherwise ✓ greys out and the hint says why
+## (check = {"ok", "error", "hint"}).
 func show_ghost_state(check: Dictionary) -> void:
 	_confirm.set_disabled(not check.ok)
-	show_hint(_placing_text if check.ok else check.error)
+	show_hint(str(check.get("hint", _placing_text)) if check.ok else check.error)
+
+
+func _set_removing(on: bool) -> void:
+	_removing = on
+	_road_switch.set_color("red" if on else "blue")
+	_road_switch.set_icon("demolish" if on else "road")
+	_road_switch.button.tooltip_text = "Removing road: tap to lay road instead" if on else "Laying road: tap to remove road instead"
 
 
 ## ✗ (cancel) on the left of the placing bar's hint, ✓ (place) on the right.
@@ -117,6 +137,13 @@ func _make_placing_buttons() -> void:
 	cancel.pressed.connect(cancel_placement)
 	row.add_child(cancel)
 	row.move_child(cancel, 0)
+	_road_switch = RoundButton.make("blue", "road", "", 64)
+	_road_switch.pressed.connect(func():
+		_set_removing(not _removing)
+		road_remove_toggled.emit(_removing))
+	_road_switch.hide()
+	row.add_child(_road_switch)
+	row.move_child(_road_switch, 1)
 	_confirm = RoundButton.make("green", "check", "", 64)
 	_confirm.pressed.connect(placement_confirmed.emit)
 	row.add_child(_confirm)
@@ -243,6 +270,10 @@ func _make_details() -> Control:
 	_makes = HBoxContainer.new()
 	_makes.add_theme_constant_override("separation", 6)
 	text.add_child(_makes)
+	_needs = _body("")
+	_needs.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_needs.add_theme_font_size_override("font_size", 16)
+	text.add_child(_needs)
 	_build = Button.new()
 	_build.theme_type_variation = "YellowButton"
 	_build.text = "Build"
@@ -259,7 +290,7 @@ func _make_details() -> Control:
 ## One card: the building's picture with its name underneath. A badge in the corner shows a lock
 ## (not available) or a coin (can't afford it yet); a gold outline marks the chosen card.
 func _add_card(type_id: String) -> void:
-	var def: Dictionary = GameData.buildings[type_id]
+	var def := _def(type_id)
 	var card := Button.new()
 	card.theme_type_variation = "CardButton"
 	card.custom_minimum_size = CARD_SIZE
@@ -274,8 +305,8 @@ func _add_card(type_id: String) -> void:
 	column.add_theme_constant_override("separation", 2)
 	column.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	card.add_child(column)
-	var art := BuildingView.picture(type_id)
-	var picture := _icon("build", 0)
+	var art := BuildingView.picture(type_id) if type_id != ROAD else {}
+	var picture := _icon("build" if type_id != ROAD else "road", 0)
 	if not art.is_empty():
 		picture.texture = art.texture
 	picture.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -316,9 +347,12 @@ func _add_card(type_id: String) -> void:
 
 # --- Behaviour -------------------------------------------------------------------
 
-## Buildable-or-not buildings listed under this tab, in buildings.json order.
+## Buildable-or-not buildings listed under this tab, in buildings.json order. The Roads tab lists
+## the Road card (when the game has roads).
 func _types_in(tab_id: String) -> Array[String]:
 	var types: Array[String] = []
+	if tab_id == "roads" and GameData.config.has("roads"):
+		types.append(ROAD)
 	for type_id in GameData.buildings:
 		if GameData.buildings[type_id].get("menu_tab", "") == tab_id:
 			types.append(type_id)
@@ -343,7 +377,7 @@ func _show_tab(tab_id: String) -> void:
 	if not types.has(_selected):
 		_selected = types[0]
 		for type_id in types:
-			if GameData.buildings[type_id].get("buildable", false):
+			if _def(type_id).get("buildable", false):
 				_selected = type_id
 				break
 	_select(_selected)
@@ -367,25 +401,26 @@ func _show_details(type_id: String) -> void:
 	if type_id == "":
 		return
 	_shown = type_id
-	var def: Dictionary = GameData.buildings[type_id]
+	var def := _def(type_id)
 	_name.text = def.name
-	_cost.text = UITheme.money(Economy.build_cost(_shown))
 	_about.text = def.get("description", "")
 	for child in _makes.get_children():
 		_makes.remove_child(child)
 		child.queue_free()
-	var r := BuildingInfo.recipe(type_id)
+	var r := BuildingInfo.recipe(type_id) if type_id != ROAD else {}
 	match def.category:
 		"extractor":
 			_makes.add_child(_body("Grows"))
 			_add_amounts(r.outputs)
-			_makes.add_child(_body("every %s" % UITheme.duration(float(r.duration))))
+			_makes.add_child(_body("an hour"))
 		"processor":
 			_add_amounts(r.inputs)
 			_makes.add_child(_icon("arrow", 26))
 			_add_amounts(r.outputs)
-			_makes.add_child(_icon("clock", 24))
-			_makes.add_child(_body(UITheme.duration(float(r.duration))))
+			_makes.add_child(_body("an hour"))
+			if Economy.power_on() and float(def.get("power_mw", 0.0)) > 0.0:
+				_makes.add_child(_icon("power", 24))
+				_makes.add_child(_body("needs %s" % BuildingInfo.mw(float(def.power_mw))))
 		"residential":
 			# "6 households · for Broke, Poor · free · 0.3 MW when lived in" (plan.md §5.18)
 			_makes.add_child(_icon("population", 26))
@@ -405,17 +440,38 @@ func _show_details(type_id: String) -> void:
 		"storage":
 			_makes.add_child(_icon("warehouse", 26))
 			_makes.add_child(_body("Room for %s goods (%d workers)" % [UITheme.number(int(def.get("capacity", 0))), int(def.get("max_workers", 0))]))
+		"construction":
+			_makes.add_child(_icon("build", 26))
+			_makes.add_child(_body("%d construction workers: building anything needs 1, an upgrade 1 per level. They're busy until the work is done" % int(def.get("max_workers", 0))))
+		"utility":
+			_makes.add_child(_icon("water", 26))
+			_makes.add_child(_body("Cleans %s m³ of water an hour for your buildings (%d workers)" % [UITheme.number(int(def.get("water_supply", 0))), int(def.get("max_workers", 0))]))
+		"power":
+			# "5 MW · no workers · reaches 3 tiles" (plan.md §5.5)
+			_makes.add_child(_icon("power", 26))
+			var parts: Array[String] = []
+			if float(def.get("power_supply", 0.0)) > 0.0:
+				parts.append("Makes %s" % BuildingInfo.mw(float(def.power_supply)))
+				var workers := int(def.get("max_workers", 0))
+				parts.append("no workers" if workers <= 0 else "%d %s workers" % [workers, str(GameData.config.get("worker_types", {}).get(def.get("worker_type", ""), {}).get("name", ""))])
+			else:
+				parts.append("Makes no power: carries it")
+			parts.append("reaches %s tiles" % str(def.get("power_radius", 0)))
+			_makes.add_child(_body(" · ".join(parts)))
+		"road":
+			_makes.add_child(_icon("road", 26))
+			_makes.add_child(_body("%s a tile · ready at once · removing is free" % UITheme.money(Economy.road_price())))
 		"retail":
 			_makes.add_child(_body("Sells"))
 			for res in Economy.shop_products():
 				_makes.add_child(_icon(res, 26))
 			_makes.add_child(_body("on %d shelves (%d workers)" % [int(def.get("shelves", 0)), int(def.get("max_workers", 0))]))
-	if def.has("storage_cap"):
+	if def.get("category", "") in ["extractor", "processor"]:
 		var spacer := Control.new()
 		spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		_makes.add_child(spacer)
-		_makes.add_child(_icon("warehouse", 24))
-		_makes.add_child(_body("Holds %s" % UITheme.number(int(def.storage_cap))))
+		_makes.add_child(_icon("clock", 24))
+		_makes.add_child(_body("Batches of 1-%d h" % Economy.batch_hours_limit()))
 	_refresh()
 
 
@@ -426,7 +482,7 @@ func _refresh() -> void:
 	for type_id in _cards:
 		var badge: TextureRect = _cards[type_id].badge
 		badge.visible = true
-		if not GameData.buildings[type_id].get("buildable", false):
+		if not _def(type_id).get("buildable", false):
 			badge.texture = UITheme.icon("lock")
 		elif _shortfall(type_id) > 0:
 			badge.texture = UITheme.icon("cash")
@@ -434,24 +490,46 @@ func _refresh() -> void:
 			badge.visible = false
 	if _shown == "":
 		return
-	var locked: bool = not GameData.buildings[_shown].get("buildable", false)
+	var locked: bool = not _def(_shown).get("buildable", false)
+	if _shown == ROAD:
+		_cost.text = UITheme.money(Economy.road_price())
+		_needs.visible = false
+	else:
+		# Materials are bought at today's market price, so the cost is "about" and moves every hour.
+		var quote := Economy.build_quote(_shown)
+		_cost.text = "≈ " + UITheme.money(int(quote.cost))
+		_needs.visible = not locked and not quote.lines.is_empty()
+		_needs.text = "Needs %s. Material prices change in %s." % [BuildingInfo.construction_needs(quote), UITheme.duration(Economy.price_change_in())]
 	var short := _shortfall(_shown)
 	_cost.add_theme_color_override("font_color", UITheme.BAD if short > 0 and not locked else UITheme.TEXT)
-	_cost_note.text = "Not available yet" if locked else ("Need %s more" % UITheme.money(short) if short > 0 else "")
+	_cost_note.text = str(_def(_shown).get("coming_soon", "Not available yet")) if locked else ("Need %s more" % UITheme.money(short) if short > 0 else "")
 	_build.disabled = not _can_place(_shown)
 
 
 func _can_place(type_id: String) -> bool:
-	return GameData.buildings[type_id].get("buildable", false) and _shortfall(type_id) <= 0
+	return _def(type_id).get("buildable", false) and _shortfall(type_id) <= 0
 
 
-## How much more money the player needs to build this (0 = can afford it).
+## How much more money the player needs to build this (0 = can afford it; for road: one tile).
 func _shortfall(type_id: String) -> int:
-	return maxi(Economy.build_cost(type_id) - Economy.currency(), 0)
+	var cost := Economy.road_price() if type_id == ROAD else Economy.build_cost(type_id)
+	return maxi(cost - Economy.currency(), 0)
+
+
+## A building's entry in buildings.json, or the Road card's made-up one.
+func _def(type_id: String) -> Dictionary:
+	if type_id == ROAD:
+		return {"name": "Road", "category": "road", "buildable": true,
+			"description": "Workers need a way in: a building with workers only works with a road beside it that leads to City Hall. Drag across the map to lay road; corners and crossroads appear by themselves."}
+	return GameData.buildings[type_id]
 
 
 func _choose(type_id: String) -> void:
 	if not _can_place(type_id):
+		return
+	if type_id == ROAD:
+		show_placing("Drag from a road to lay road, then tap the green tick", true)
+		road_requested.emit()
 		return
 	show_placing("Placing %s: drag it to a free spot, then tap the green tick" % GameData.buildings[type_id].name)
 	placement_requested.emit(type_id)

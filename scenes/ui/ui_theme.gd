@@ -183,6 +183,21 @@ static func duration(seconds: float) -> String:
 	return "%ds" % s
 
 
+## A moment (unix seconds) as the player's local time of day: "6:05 PM" when it's today
+## (`now`'s day), else with the weekday, "Tue 6:05 PM". INF = "never".
+static func clock(unix: float, now: float) -> String:
+	if is_inf(unix):
+		return "never"
+	var offset := TimeService.utc_offset_seconds()
+	var when := Time.get_datetime_dict_from_unix_time(int(unix + offset))
+	var today := Time.get_datetime_dict_from_unix_time(int(now + offset))
+	var hour := int(when.hour) % 12
+	var text := "%d:%02d %s" % [12 if hour == 0 else hour, int(when.minute), "AM" if int(when.hour) < 12 else "PM"]
+	if when.year == today.year and when.month == today.month and when.day == today.day:
+		return text
+	return "%s %s" % [["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][int(when.weekday)], text]
+
+
 static func _button(t: Theme, type: String, color: String) -> void:
 	var normal := skin("button_" + color, 16, 20, 16, 16)
 	normal.content_margin_left = 18

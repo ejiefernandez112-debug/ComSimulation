@@ -9,12 +9,26 @@
 			],
 			"model": "building-b.glb"
 		},
-		"construction_office": {
+		"city_hall": {
 			"anchor": [
 				58.0,
 				184.0
 			],
 			"model": "building-m.glb"
+		},
+		"construction_office": {
+			"anchor": [
+				53.0,
+				104.0
+			],
+			"model": "building-d.glb"
+		},
+		"electric_substation": {
+			"anchor": [
+				58.0,
+				78.0
+			],
+			"model": "electric_substation.glb"
 		},
 		"flour_mill": {
 			"anchor": [
@@ -30,6 +44,13 @@
 			],
 			"model": "detail-awning.glb"
 		},
+		"nuclear_power_plant": {
+			"anchor": [
+				58.0,
+				116.0
+			],
+			"model": "nuclear_power_plant.glb"
+		},
 		"public_housing": {
 			"anchor": [
 				46.0,
@@ -44,6 +65,13 @@
 			],
 			"model": "building-c.glb"
 		},
+		"solar_power_plant": {
+			"anchor": [
+				59.0,
+				44.0
+			],
+			"model": "solar_power_plant.glb"
+		},
 		"villa": {
 			"anchor": [
 				54.0,
@@ -57,6 +85,13 @@
 				55.0
 			],
 			"model": "wheat_farm.glb"
+		},
+		"wind_turbine": {
+			"anchor": [
+				59.0,
+				203.0
+			],
+			"model": "wind_turbine.glb"
 		}
 	}
 }

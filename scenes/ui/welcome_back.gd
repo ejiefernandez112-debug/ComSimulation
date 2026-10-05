@@ -46,15 +46,17 @@ func show_if_away() -> bool:
 		_row("Rent collected").add_child(_amount("cash", "+" + UITheme.money(int(report.rent))))
 	if roundi(int(report.get("water", 0)) / 100.0) > 0:
 		_row("Water bills").add_child(_amount("water", "-" + UITheme.money(int(report.water))))
+	if roundi(int(report.get("power", 0)) / 100.0) > 0:
+		_row("Power bills").add_child(_amount("power", "-" + UITheme.money(int(report.power))))
 	_row("Cash now").add_child(_amount("cash", UITheme.money(Economy.currency())))
 
 	var counts: Dictionary = Economy.production_rates().buildings
-	var full := int(counts.get("full", 0))
-	if full > 0:
-		_text("%d building%s full and stopped. Collect to restart." % [full, " is" if full == 1 else "s are"], true)
+	var done := int(counts.get("done", 0))
+	if done > 0:
+		_text("%d batch%s finished. Collect the goods and start a new one." % [done, "" if done == 1 else "es"], true)
 	var idle := int(counts.get("idle", 0))
 	if idle > 0:
-		_text("%d building%s out of jobs. Queue more to put the workers back to work." % [idle, " is" if idle == 1 else "s are"], true)
+		_text("%d building%s idle. Start a batch to put the workers back to work." % [idle, " is" if idle == 1 else "s are"], true)
 	if Economy.currency() < 0:
 		_text("You are in debt: sell goods to pay it back before building again.", true)
 

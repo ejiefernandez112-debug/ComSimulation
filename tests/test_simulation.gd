@@ -61,26 +61,28 @@ func _data() -> Dictionary:
 			"store": {"category": "storage", "build_cost": 300, "buildable": true, "capacity": 1000},
 			# A warehouse with workers: 4 of 4 working = 1000 room, 2 of 4 = 500.
 			"crew_store": {"category": "storage", "build_cost": 0, "buildable": true, "capacity": 1000, "max_workers": 4, "fixed_workers": true, "staffed_first": true, "fixed_wage": true},
-			"farm": {"category": "extractor", "build_cost": 100, "buildable": true, "storage_cap": 100,
+			# A batch "hour" here is the recipe's duration (60 s / 90 s), to keep the tests short.
+			"farm": {"category": "extractor", "build_cost": 100, "buildable": true,
 				"recipes": [{"id": "grow", "inputs": {}, "outputs": {"wheat": 10}, "duration": 60}]},
-			"mill": {"category": "processor", "build_cost": 200, "buildable": true, "storage_cap": 16, "queue_size": 4,
+			"mill": {"category": "processor", "build_cost": 200, "buildable": true,
 				"recipes": [{"id": "mill", "inputs": {"wheat": 10}, "outputs": {"flour": 8}, "duration": 90}]},
 			# Same as farm / mill, but they take time to build (the ones above are instant, to keep
 			# the other tests simple). The cabin is a home that takes a long time to build.
-			"slow_farm": {"category": "extractor", "build_cost": 100, "buildable": true, "build_time": 5, "storage_cap": 100,
+			"slow_farm": {"category": "extractor", "build_cost": 100, "buildable": true, "build_time": 5,
 				"recipes": [{"id": "grow", "inputs": {}, "outputs": {"wheat": 10}, "duration": 60}]},
-			"slow_mill": {"category": "processor", "build_cost": 200, "buildable": true, "build_time": 5, "storage_cap": 16, "queue_size": 4,
+			"slow_mill": {"category": "processor", "build_cost": 200, "buildable": true, "build_time": 5,
 				"recipes": [{"id": "mill", "inputs": {"wheat": 10}, "outputs": {"flour": 8}, "duration": 90}]},
 			"cabin": {"category": "residential", "build_cost": 0, "buildable": true, "build_time": 200, "households": 3},
 			# Buildings that need workers (2 and 3 jobs). They slow down when there aren't enough people.
-			"crew_farm": {"category": "extractor", "build_cost": 0, "buildable": true, "max_workers": 2, "storage_cap": 1000,
+			"crew_farm": {"category": "extractor", "build_cost": 0, "buildable": true, "max_workers": 2,
 				"recipes": [{"id": "grow", "inputs": {}, "outputs": {"wheat": 10}, "duration": 60}]},
-			"crew_mill": {"category": "processor", "build_cost": 0, "buildable": true, "max_workers": 3, "storage_cap": 100, "queue_size": 8,
+			"crew_mill": {"category": "processor", "build_cost": 0, "buildable": true, "max_workers": 3,
 				"recipes": [{"id": "mill", "inputs": {"wheat": 10}, "outputs": {"flour": 8}, "duration": 90}]},
 		},
 		"config": {"starting_cash": 500, "population_growth_seconds": 10,
 			"grid_size": [10, 10],
-			"cancel_refund_in_progress": 0.5, "cancel_refund_waiting": 1.0, "demolish_refund": 0.5,
+			"cancel_refund_in_progress": 0.5, "demolish_refund": 0.5,
+			"batch": {"max_hours": 1000, "default_hours": 10},  # long batches, for the long tests
 			"starting_buildings": [{"type": "office", "position": [0, 0]}, {"type": "house", "position": [1, 0]},
 				{"type": "store", "position": [2, 0]}]},
 	}
@@ -91,6 +93,16 @@ func _check(condition: bool, label: String) -> void:
 	if not condition:
 		_failures += 1
 		print("FAIL: ", label)
+
+
+## Starts a batch of `hours` of the building's first recipe (bonus `bonus`). Returns the result.
+func _batch(state: Dictionary, data: Dictionary, b: Dictionary, hours: int, bonus := "none", now := T0) -> Dictionary:
+	return Sim.start_batch(state, data, b.id, data.buildings[b.type].recipes[0].id, hours, bonus, now)
+
+
+## How many of `res` the building has made and not yet collected.
+func _ready(b: Dictionary, res: String) -> int:
+	return int(Sim.ready_units(b).get(res, 0))
 
 
 ## New game + a built building of `type_id` at cell (5,5). Returns [state, data, building].
@@ -130,109 +142,122 @@ func test_can_build_matches_build() -> void:
 	var data := _data()
 	var state := Sim.new_game(data, T0)
 	var before: int = state.buildings.size()
-	_check(Sim.can_build(state, data, "farm", Vector2i(3, 3)).ok, "can_build says yes on a free spot")
+	_check(Sim.can_build(state, data, "farm", Vector2i(3, 3), T0).ok, "can_build says yes on a free spot")
 	_check(state.buildings.size() == before and state.profile.currency == 50000, "can_build changes nothing")
 	Sim.build(state, data, "farm", Vector2i(3, 3), T0)
-	var taken: Dictionary = Sim.can_build(state, data, "farm", Vector2i(3, 3))
+	var taken: Dictionary = Sim.can_build(state, data, "farm", Vector2i(3, 3), T0)
 	_check(not taken.ok and taken.error == "That spot is taken.", "can_build explains why not")
-	_check(not Sim.can_build(state, data, "farm", Vector2i(-1, 0)).ok, "can_build rejects outside the land")
+	_check(not Sim.can_build(state, data, "farm", Vector2i(-1, 0), T0).ok, "can_build rejects outside the land")
 
 
-func test_extractor_produces_on_its_own() -> void:
+## A batch makes its share of the units every finished hour (in the test data an "hour" is the
+## recipe's 60 s), and they wait in the building until collected (plan.md §5.1).
+func test_batch_makes_hourly_portions() -> void:
 	var s: Array = _setup("farm")
 	var state: Dictionary = s[0]
 	var data: Dictionary = s[1]
 	var farm: Dictionary = s[2]
-	Sim.settle(state, data, T0 + 59)
-	_check(farm.storage.is_empty(), "nothing before the first cycle ends")
-	Sim.settle(state, data, T0 + 60)
-	_check(farm.storage.get("wheat", 0) == 10, "10 wheat after 60s")
-	Sim.settle(state, data, T0 + 125)
-	_check(farm.storage.get("wheat", 0) == 20, "20 wheat after 125s (partial cycle kept)")
-	Sim.settle(state, data, T0 + 180)
-	_check(farm.storage.get("wheat", 0) == 30, "30 wheat after 180s")
-
-
-func test_extractor_stops_when_full_and_restarts_after_collect() -> void:
-	var s: Array = _setup("farm")
-	var state: Dictionary = s[0]
-	var data: Dictionary = s[1]
-	var farm: Dictionary = s[2]
+	Sim.settle(state, data, T0 + 500)
+	_check(Sim.ready_units(farm).is_empty() and Sim.is_idle(data, farm), "a farm without a batch makes nothing")
+	var started := _batch(state, data, farm, 3, "none", T0 + 500)
+	_check(started.ok and int(started.units.wheat) == 30, "a 3-hour batch of 10 an hour: 30 wheat")
+	Sim.settle(state, data, T0 + 559)
+	_check(Sim.ready_units(farm).is_empty(), "nothing before the first hour ends")
+	Sim.settle(state, data, T0 + 560)
+	_check(_ready(farm, "wheat") == 10, "10 wheat after the first hour")
+	Sim.settle(state, data, T0 + 625)
+	_check(_ready(farm, "wheat") == 20, "20 after two (part of the third kept)")
 	Sim.settle(state, data, T0 + 5000)
-	_check(farm.storage.get("wheat", 0) == 100, "stops at storage cap 100")
-	var result := Sim.collect(state, data, farm.id, T0 + 6000)
-	_check(result.ok and result.moved.wheat == 100, "collect moves all 100 wheat")
-	_check(state.inventory.get("wheat", 0) == 100, "wheat is in the warehouse")
-	Sim.settle(state, data, T0 + 6059)
-	_check(farm.storage.is_empty(), "no free wheat for the time spent full")
-	Sim.settle(state, data, T0 + 6060)
-	_check(farm.storage.get("wheat", 0) == 10, "production restarts from the collect time")
+	_check(_ready(farm, "wheat") == 30 and not Sim.batch_running(farm) and Sim.is_idle(data, farm), "30 once all 3 hours are done, then it stops")
+	var result := Sim.collect(state, data, farm.id, T0 + 5000)
+	_check(result.ok and int(result.moved.wheat) == 30 and int(state.inventory.wheat) == 30, "collect moves them into the warehouse")
+	_check(not Sim.has_batch(farm), "everything made and collected: the batch is over")
+	_check(not Sim.collect(state, data, farm.id, T0 + 5000).ok, "nothing left to collect")
+
+
+## Collecting part-way takes the hours made so far; the batch carries on.
+func test_collect_part_way() -> void:
+	var s: Array = _setup("farm")
+	var state: Dictionary = s[0]
+	var data: Dictionary = s[1]
+	var farm: Dictionary = s[2]
+	_batch(state, data, farm, 4)
+	Sim.settle(state, data, T0 + 130)
+	var result := Sim.collect(state, data, farm.id, T0 + 130)
+	_check(result.ok and int(result.moved.wheat) == 20 and Sim.batch_running(farm), "2 hours collected; the batch carries on")
+	Sim.settle(state, data, T0 + 240)
+	_check(_ready(farm, "wheat") == 20, "the next 2 hours wait to be collected")
+	Sim.collect(state, data, farm.id, T0 + 240)
+	_check(int(state.inventory.wheat) == 40 and not Sim.has_batch(farm), "all 40 collected: the batch is over")
 
 
 func test_long_absence_is_instant() -> void:
 	var s: Array = _setup("farm")
+	_batch(s[0], s[1], s[2], 1000)
 	var started := Time.get_ticks_msec()
-	Sim.settle(s[0], s[1], T0 + 365.0 * 24 * 3600)  # one year away
-	_check(s[2].storage.get("wheat", 0) == 100, "a year away still caps at storage")
+	var report := Sim.settle(s[0], s[1], T0 + 365.0 * 24 * 3600)  # one year away
+	_check(_ready(s[2], "wheat") == 10000 and int(report.get("wheat", 0)) == 10000, "a year away: the whole batch is made, and no more")
 	_check(Time.get_ticks_msec() - started < 50, "catch-up is one calculation, not a replay")
 
 
 func test_clock_moved_backwards() -> void:
 	var s: Array = _setup("farm")
 	var state: Dictionary = s[0]
+	_batch(state, s[1], s[2], 5)
 	Sim.settle(state, s[1], T0 - 5000)
-	_check(s[2].storage.is_empty(), "no negative or bonus production")
+	_check(Sim.ready_units(s[2]).is_empty(), "no negative or bonus production")
 	_check(state.population.current == 0, "population doesn't change")
-	Sim.settle(state, s[1], T0 + 60)
-	_check(s[2].storage.get("wheat", 0) == 10, "resumes normally once the clock is right")
+	Sim.settle(state, s[1], T0 + 130)
+	_check(_ready(s[2], "wheat") == 20, "resumes normally once the clock is right")
+	Sim.settle(state, s[1], T0 + 10)
+	_check(_ready(s[2], "wheat") == 20, "a clock set back never undoes finished hours")
+	Sim.settle(state, s[1], T0 + 180)
+	_check(_ready(s[2], "wheat") == 30, "and it carries on from there")
 
 
-func test_processor_queue() -> void:
+## A Mill's batch takes all its ingredients when it starts; one batch at a time.
+func test_processor_batch() -> void:
 	var s: Array = _setup("mill")
 	var state: Dictionary = s[0]
 	var data: Dictionary = s[1]
 	var mill: Dictionary = s[2]
-	_check(not Sim.enqueue(state, data, mill.id, "mill", T0).ok, "can't queue without wheat")
-	state.inventory["wheat"] = 40
-	for i in 4:
-		_check(Sim.enqueue(state, data, mill.id, "mill", T0).ok, "queue job %d" % (i + 1))
-	_check(not state.inventory.has("wheat"), "inputs taken when queued")
-	state.inventory["wheat"] = 10
-	_check(not Sim.enqueue(state, data, mill.id, "mill", T0).ok, "queue size limit")
+	var none := _batch(state, data, mill, 4)
+	_check(not none.ok and none.error == "Not enough Wheat for 4 hours.", "can't start without the wheat, and it says why")
+	state.inventory["wheat"] = 45
+	_check(_batch(state, data, mill, 4).ok and int(state.inventory.wheat) == 5, "a 4-hour batch takes 4 x 10 wheat at the start")
+	_check(_batch(state, data, mill, 1).error == "It's already making a batch.", "one batch at a time")
 	Sim.settle(state, data, T0 + 89)
-	_check(mill.storage.is_empty(), "first job not done at 89s")
+	_check(Sim.ready_units(mill).is_empty(), "first hour not done at 89 s")
 	Sim.settle(state, data, T0 + 180)
-	_check(mill.storage.get("flour", 0) == 16, "two jobs done at 180s")
-	# Storage cap is 16: job 3 finishes at 270s but must wait for space.
+	_check(_ready(mill, "flour") == 16, "two hours done at 180 s: 16 flour")
 	Sim.settle(state, data, T0 + 1000)
-	_check(mill.storage.get("flour", 0) == 16 and mill.blocked, "job 3 waits while storage is full")
-	var result := Sim.collect(state, data, mill.id, T0 + 1000)
-	_check(result.moved.flour == 16, "collect moves the flour")
-	_check(mill.storage.get("flour", 0) == 8, "waiting job 3 lands once there's room")
-	# Job 4 only starts now (t=1000), not back when job 3 originally finished.
-	Sim.settle(state, data, T0 + 1089)
-	_check(mill.storage.get("flour", 0) == 8, "job 4 not done at 1089s")
-	Sim.settle(state, data, T0 + 1090)
-	_check(mill.storage.get("flour", 0) == 16 and mill.queue.is_empty(), "job 4 done at 1090s")
+	_check(_ready(mill, "flour") == 32 and Sim.is_idle(data, mill), "all 4 hours: 32 flour, then idle")
+	_check(_batch(state, data, mill, 1, "none", T0 + 1000).error == "Collect what it made first.", "a new batch waits until this one is collected")
+	Sim.collect(state, data, mill.id, T0 + 1000)
+	_check(int(state.inventory.flour) == 32, "collected")
+	_check(_batch(state, data, mill, 0, "none", T0 + 1000).error == "Pick between 1 and 1000 hours.", "the length is checked")
+	state.inventory["wheat"] = 10
+	_check(_batch(state, data, mill, 1, "none", T0 + 1000).ok, "then the next batch can start")
 
 
-func test_can_enqueue_matches_enqueue() -> void:
+func test_can_start_batch_matches_start_batch() -> void:
 	var s: Array = _setup("mill")
 	var state: Dictionary = s[0]
 	var data: Dictionary = s[1]
 	var mill: Dictionary = s[2]
-	var no_wheat: Dictionary = Sim.can_enqueue(state, data, mill.id, "mill", T0)
-	_check(not no_wheat.ok and no_wheat.error == "Not enough Wheat.", "can_enqueue explains missing inputs")
-	state.inventory["wheat"] = 10
-	_check(Sim.can_enqueue(state, data, mill.id, "mill", T0).ok, "can_enqueue says yes with enough wheat")
-	_check(state.inventory.wheat == 10 and mill.queue.is_empty(), "can_enqueue changes nothing")
-	var farm_id: String = Sim.build(state, data, "farm", Vector2i(6, 6), T0).building_id
-	_check(not Sim.can_enqueue(state, data, farm_id, "grow", T0).ok, "extractors don't take orders")
-	state.inventory["wheat"] = 40
-	for i in 4:
-		Sim.enqueue(state, data, mill.id, "mill", T0)
-	state.inventory["wheat"] = 10
-	_check(not Sim.can_enqueue(state, data, mill.id, "mill", T0).ok, "can_enqueue sees a full queue")
+	state.inventory["wheat"] = 30
+	var check := Sim.can_start_batch(state, data, mill.id, "mill", 3, "none", T0)
+	_check(check.ok and int(check.units.flour) == 24, "can_start_batch says yes, with the quote")
+	_check(int(state.inventory.wheat) == 30 and not Sim.has_batch(mill), "and changes nothing")
+	_check(not Sim.can_start_batch(state, data, mill.id, "mill", 4, "none", T0).ok, "4 hours need 40 wheat")
+	_check(not Sim.can_start_batch(state, data, mill.id, "bake", 1, "none", T0).ok, "unknown recipe")
+	_check(not Sim.can_start_batch(state, data, mill.id, "mill", 1, "huge", T0).ok, "unknown bonus")
+	_check(not Sim.can_start_batch(state, data, state.buildings[1].id, "mill", 1, "none", T0).ok, "a house makes nothing")
+	_check(Sim.batch_max_hours(state, data, mill.id, "mill", "none") == 3, "the longest batch the wheat allows: 3 hours")
+	data.config.batch.max_hours = 2
+	_check(Sim.batch_max_hours(state, data, mill.id, "mill", "none") == 2, "never longer than batch.max_hours")
+	state.inventory.erase("wheat")
+	_check(Sim.batch_max_hours(state, data, mill.id, "mill", "none") == 0, "no wheat: no batch")
 
 
 func test_idle_processor_starts_fresh() -> void:
@@ -240,23 +265,54 @@ func test_idle_processor_starts_fresh() -> void:
 	var state: Dictionary = s[0]
 	var mill: Dictionary = s[2]
 	state.inventory["wheat"] = 10
-	Sim.enqueue(state, s[1], mill.id, "mill", T0 + 500)  # idle for 500s first
+	_batch(state, s[1], mill, 1, "none", T0 + 500)  # idle for 500 s first
 	Sim.settle(state, s[1], T0 + 589)
-	_check(mill.storage.is_empty(), "idle time doesn't count toward a new job")
+	_check(Sim.ready_units(mill).is_empty(), "idle time doesn't count toward a new batch")
 	Sim.settle(state, s[1], T0 + 590)
-	_check(mill.storage.get("flour", 0) == 8, "job takes its full 90s from when queued")
+	_check(_ready(mill, "flour") == 8, "it takes its full 90 s from when it started")
 
 
 func test_warehouse_cap() -> void:
 	var s: Array = _setup("farm")
 	var state: Dictionary = s[0]
 	var farm: Dictionary = s[2]
+	_batch(state, s[1], farm, 10)
 	state.inventory["flour"] = 960  # cap is 1000, so only 40 more fit
 	Sim.settle(state, s[1], T0 + 5000)
 	var result := Sim.collect(state, s[1], farm.id, T0 + 5000)
 	_check(result.moved.wheat == 40, "only what fits is moved")
-	_check(farm.storage.wheat == 60, "the rest stays in the building")
-	_check(not Sim.collect(state, s[1], farm.id, T0 + 5000).ok, "full warehouse refuses more")
+	_check(_ready(farm, "wheat") == 60 and Sim.has_batch(farm), "the rest waits in the building")
+	_check(Sim.collect(state, s[1], farm.id, T0 + 5000).error == "The warehouse is full.", "a full warehouse refuses more")
+	state.inventory.erase("flour")
+	_check(Sim.collect(state, s[1], farm.id, T0 + 5000).ok and int(state.inventory.wheat) == 100 and not Sim.has_batch(farm), "with room again, the rest comes and the batch is over")
+
+
+func test_collect_group_takes_every_building_of_that_type() -> void:
+	var s: Array = _setup("farm")
+	var state: Dictionary = s[0]
+	var data: Dictionary = s[1]
+	var farm_a: Dictionary = s[2]
+	var farm_b := Sim.find_building(state, Sim.build(state, data, "farm", Vector2i(6, 6), T0).building_id)
+	var mill := Sim.find_building(state, Sim.build(state, data, "mill", Vector2i(7, 7), T0).building_id)
+	_check(not Sim.collect_group(state, data, farm_a.id, T0).ok, "nothing waiting: nothing to collect")
+	state.inventory["wheat"] = 10
+	_batch(state, data, farm_a, 3)
+	_batch(state, data, farm_b, 2)
+	_batch(state, data, mill, 1)
+	Sim.settle(state, data, T0 + 180)
+	var result := Sim.collect_group(state, data, farm_a.id, T0 + 180)
+	_check(result.ok and int(result.moved.wheat) == 50, "one tap collects both farms' wheat")
+	_check(result.by_building.has(farm_a.id) and result.by_building.has(farm_b.id), "both farms are listed")
+	_check(not Sim.has_batch(farm_b) and _ready(mill, "flour") == 8, "the other farm is emptied; the mill isn't touched")
+	_check(not result.left_over, "everything fitted")
+	# Warehouse nearly full: the tapped farm goes first, the other keeps the rest.
+	_batch(state, data, farm_a, 3, "none", T0 + 180)
+	_batch(state, data, farm_b, 3, "none", T0 + 180)
+	Sim.settle(state, data, T0 + 400)
+	state.inventory = {"flour": 960}  # cap is 1000, so 40 fit
+	result = Sim.collect_group(state, data, farm_b.id, T0 + 400)
+	_check(int(result.moved.wheat) == 40 and not Sim.has_batch(farm_b), "the tapped farm is emptied first")
+	_check(_ready(farm_a, "wheat") == 20 and result.left_over, "the rest waits in the other farm")
 
 
 func test_sell() -> void:
@@ -270,41 +326,46 @@ func test_sell() -> void:
 	_check(state.profile.currency == 50600 and not state.inventory.has("wheat"), "money in, wheat out")
 
 
-func test_cancel_job() -> void:
+## Cancelling a running batch keeps the hours already made and gives back half of the
+## ingredients (and wages) of the hours not made yet.
+func test_cancel_batch() -> void:
 	var s: Array = _setup("mill")
 	var state: Dictionary = s[0]
 	var data: Dictionary = s[1]
 	var mill: Dictionary = s[2]
-	state.inventory["wheat"] = 30
-	for i in 3:
-		Sim.enqueue(state, data, mill.id, "mill", T0)
-	_check(not Sim.cancel_job(state, data, mill.id, 5, T0).ok, "can't cancel an empty slot")
-	var preview: Dictionary = Sim.can_cancel_job(state, data, mill.id, 2)
-	_check(preview.ok and preview.refund.wheat == 10 and mill.queue.size() == 3, "preview shows refund, changes nothing")
-	var waiting := Sim.cancel_job(state, data, mill.id, 2, T0 + 30)
-	_check(waiting.ok and state.inventory.get("wheat", 0) == 10, "waiting job refunds all its wheat")
-	var active := Sim.cancel_job(state, data, mill.id, 0, T0 + 30)
-	_check(active.ok and active.in_progress and state.inventory.wheat == 15, "job in progress refunds half")
-	_check(mill.queue.size() == 1, "one job left")
-	Sim.settle(state, data, T0 + 119)
-	_check(mill.storage.is_empty(), "next job starts fresh from the cancel (not done at 119s)")
-	Sim.settle(state, data, T0 + 120)
-	_check(mill.storage.get("flour", 0) == 8, "next job done 90s after the cancel")
-
-
-func test_cancel_finished_or_full() -> void:
-	var s: Array = _setup("mill")
-	var state: Dictionary = s[0]
-	var data: Dictionary = s[1]
-	var mill: Dictionary = s[2]
+	_check(not Sim.cancel_batch(state, data, mill.id, T0).ok, "nothing to cancel")
 	state.inventory["wheat"] = 40
-	for i in 4:
-		Sim.enqueue(state, data, mill.id, "mill", T0)
-	Sim.settle(state, data, T0 + 1000)  # 2 jobs fill storage, job 3 finished but waiting
-	_check(not Sim.cancel_job(state, data, mill.id, 0, T0 + 1000).ok, "a finished batch can't be cancelled")
+	_batch(state, data, mill, 4)
+	Sim.settle(state, data, T0 + 100)  # 1 hour made, the 2nd under way
+	var preview := Sim.can_cancel_batch(state, data, mill.id)
+	_check(preview.ok and int(preview.hours_left) == 3 and int(preview.refund.wheat) == 15, "preview: half of the 30 wheat of the 3 hours not made")
+	_check(Sim.batch_running(mill) and not state.inventory.has("wheat"), "and it changes nothing")
+	var result := Sim.cancel_batch(state, data, mill.id, T0 + 100)
+	_check(result.ok and int(state.inventory.wheat) == 15, "15 wheat back")
+	_check(not Sim.batch_running(mill) and _ready(mill, "flour") == 8, "the hour already made stays, to collect")
+	_check(not Sim.cancel_batch(state, data, mill.id, T0 + 100).ok, "a finished batch can't be cancelled")
+	Sim.collect(state, data, mill.id, T0 + 100)
+	_check(not Sim.has_batch(mill) and int(state.inventory.flour) == 8, "collected: the mill is free again")
+	_batch(state, data, mill, 1, "none", T0 + 100)
+	Sim.settle(state, data, T0 + 120)
+	_check(Sim.cancel_batch(state, data, mill.id, T0 + 120).ok and not Sim.has_batch(mill), "cancelled before its first hour: nothing is left of it")
+
+
+func test_cancel_finished_or_no_room() -> void:
+	var s: Array = _setup("mill")
+	var state: Dictionary = s[0]
+	var data: Dictionary = s[1]
+	var mill: Dictionary = s[2]
+	state.inventory["wheat"] = 20
+	_batch(state, data, mill, 2)
+	Sim.settle(state, data, T0 + 1000)
+	_check(not Sim.cancel_batch(state, data, mill.id, T0 + 1000).ok, "a finished batch can't be cancelled")
+	Sim.collect(state, data, mill.id, T0 + 1000)
+	state.inventory["wheat"] = 10
+	_batch(state, data, mill, 1, "none", T0 + 1000)
 	state.inventory["flour"] = 1000  # warehouse full
-	var full: Dictionary = Sim.cancel_job(state, data, mill.id, 1, T0 + 1000)
-	_check(not full.ok and mill.queue.size() == 2, "no cancel when the refund won't fit")
+	var full: Dictionary = Sim.cancel_batch(state, data, mill.id, T0 + 1000)
+	_check(not full.ok and Sim.batch_running(mill), "no cancel when the refund won't fit")
 
 
 func test_demolish() -> void:
@@ -313,15 +374,17 @@ func test_demolish() -> void:
 	var data: Dictionary = s[1]
 	var mill: Dictionary = s[2]
 	state.inventory["wheat"] = 20
-	Sim.enqueue(state, data, mill.id, "mill", T0)
-	Sim.enqueue(state, data, mill.id, "mill", T0)
-	Sim.settle(state, data, T0 + 90)  # job 1 done (8 flour inside), job 2 just started
+	_batch(state, data, mill, 2)
+	Sim.settle(state, data, T0 + 90)  # hour 1 made (8 flour waiting), hour 2 under way
+	_check(Sim.demolish(state, data, mill.id, T0 + 90).error == Sim.BATCH_BUSY, "not while it has a batch")
+	Sim.cancel_batch(state, data, mill.id, T0 + 90)
+	Sim.collect(state, data, mill.id, T0 + 90)
 	var cash: int = state.profile.currency
 	var result := Sim.demolish(state, data, mill.id, T0 + 90)
 	_check(result.ok and Sim.find_building(state, mill.id).is_empty(), "mill is gone")
 	_check(state.profile.currency == cash + 10000, "half the 200 build cost back")
-	_check(state.inventory.get("flour", 0) == 8 and state.inventory.get("wheat", 0) == 5, "goods inside + half of the job in progress")
-	_check(Sim.can_build(state, data, "farm", Vector2i(5, 5)).ok, "the spot is free again")
+	_check(state.inventory.get("flour", 0) == 8 and state.inventory.get("wheat", 0) == 5, "its flour and half the unused wheat came back first")
+	_check(Sim.can_build(state, data, "farm", Vector2i(5, 5), T0).ok, "the spot is free again")
 	_check(not Sim.demolish(state, data, "b1", T0).ok, "starter buildings can't be demolished")
 
 
@@ -330,33 +393,17 @@ func test_move() -> void:
 	var state: Dictionary = s[0]
 	var data: Dictionary = s[1]
 	var farm: Dictionary = s[2]
-	_check(not Sim.move(state, farm.id, Vector2i(0, 0)).ok, "can't move onto another building")
-	_check(not Sim.move(state, farm.id, Vector2i(10, 3)).ok, "can't move outside the land")
-	_check(Sim.can_move(state, farm.id, Vector2i(5, 5)).ok, "dropping it back on its own tile is fine")
-	Sim.settle(state, data, T0 + 30)  # half way through a cycle
-	_check(Sim.move(state, farm.id, Vector2i(7, 2)).ok, "can move to a free tile")
+	_check(not Sim.move(state, data, farm.id, Vector2i(0, 0), T0).ok, "can't move onto another building")
+	_check(not Sim.move(state, data, farm.id, Vector2i(10, 3), T0).ok, "can't move outside the land")
+	_check(Sim.can_move(state, data, farm.id, Vector2i(5, 5)).ok, "dropping it back on its own tile is fine")
+	_batch(state, data, farm, 2)
+	Sim.settle(state, data, T0 + 30)  # half way through an hour
+	_check(Sim.move(state, data, farm.id, Vector2i(7, 2), T0 + 30).ok, "can move to a free tile")
 	_check(Sim.building_at(state, Vector2i(7, 2)).id == farm.id, "farm is on its new tile")
-	_check(Sim.can_build(state, data, "farm", Vector2i(5, 5)).ok, "old tile is free again")
+	_check(Sim.can_build(state, data, "farm", Vector2i(5, 5), T0).ok, "old tile is free again")
 	Sim.settle(state, data, T0 + 60)
-	_check(farm.storage.get("wheat", 0) == 10, "production carries on through a move")
-	_check(Sim.move(state, "b1", Vector2i(8, 8)).ok, "starter buildings can move too")
-
-
-func test_fill_queue() -> void:
-	var s: Array = _setup("mill")
-	var state: Dictionary = s[0]
-	var data: Dictionary = s[1]
-	var mill: Dictionary = s[2]
-	_check(Sim.batches_possible(state, data, mill.id, "mill", T0) == 0, "no wheat: 0 batches")
-	_check(not Sim.fill_queue(state, data, mill.id, "mill", T0).ok, "fill refuses with nothing to add")
-	state.inventory["wheat"] = 25
-	_check(Sim.batches_possible(state, data, mill.id, "mill", T0) == 2, "25 wheat = 2 batches of 10")
-	var result := Sim.fill_queue(state, data, mill.id, "mill", T0)
-	_check(result.ok and result.added == 2 and result.used.wheat == 20, "fills 2, uses 20 wheat")
-	_check(mill.queue.size() == 2 and state.inventory.wheat == 5, "queue has 2, 5 wheat left over")
-	state.inventory["wheat"] = 100
-	_check(Sim.fill_queue(state, data, mill.id, "mill", T0).added == 2, "stops at the queue size (4)")
-	_check(state.inventory.wheat == 80, "only used what fitted")
+	_check(_ready(farm, "wheat") == 10, "production carries on through a move")
+	_check(Sim.move(state, data, "b1", Vector2i(8, 8), T0 + 60).ok, "starter buildings can move too")
 
 
 func test_population_growth() -> void:
@@ -394,16 +441,18 @@ func test_construction_time() -> void:
 	var farm := Sim.find_building(state, Sim.build(state, data, "slow_farm", Vector2i(3, 3), T0).building_id)
 	_check(not Sim.is_built(farm, T0 + 4), "still under construction after 4s")
 	_check(is_equal_approx(Sim.construction_progress(farm, data, T0 + 2.5), 0.5), "construction progress halfway at 2.5s")
+	var early := _batch(state, data, farm, 1, "none", T0 + 1)
+	_check(not early.ok and early.error == "Still under construction.", "no batch while it's being built")
+	_check(_batch(state, data, farm, 1, "none", T0 + 5).ok, "a batch can start once it's built")
 	Sim.settle(state, data, T0 + 64)
-	_check(farm.storage.is_empty(), "nothing grows while being built (first cycle starts when built)")
+	_check(Sim.ready_units(farm).is_empty(), "its first hour isn't done yet")
 	Sim.settle(state, data, T0 + 65)
-	_check(Sim.is_built(farm, T0 + 5) and int(farm.storage.get("wheat", 0)) == 10, "first batch 60s after construction ends")
+	_check(_ready(farm, "wheat") == 10, "first hour done 60s after it started")
 	state.inventory["wheat"] = 50
 	var mill := Sim.find_building(state, Sim.build(state, data, "slow_mill", Vector2i(4, 4), T0 + 100).building_id)
-	var early: Dictionary = Sim.enqueue(state, data, mill.id, "mill", T0 + 101)
-	_check(not early.ok and early.error == "Still under construction.", "can't queue jobs during construction")
-	_check(int(state.inventory.wheat) == 50, "a refused job takes no ingredients")
-	_check(Sim.enqueue(state, data, mill.id, "mill", T0 + 105).ok, "jobs can be queued once built")
+	var refused := _batch(state, data, mill, 1, "none", T0 + 101)
+	_check(not refused.ok and int(state.inventory.wheat) == 50, "a refused batch takes no ingredients")
+	_check(_batch(state, data, mill, 1, "none", T0 + 105).ok, "the mill takes a batch once built")
 
 
 func test_home_under_construction() -> void:
@@ -424,6 +473,7 @@ func test_statistics_counters() -> void:
 	var data: Dictionary = s[1]
 	var farm: Dictionary = s[2]
 	_check(Sim.stats(state).spending.construction == 10000, "construction spending counted")
+	_batch(state, data, farm, 2)
 	Sim.settle(state, data, T0 + 120)
 	_check(int(Sim.stats(state).made.get("wheat", 0)) == 20, "production counted when it happens")
 	Sim.collect(state, data, farm.id, T0 + 125)
@@ -444,18 +494,18 @@ func test_production_rates() -> void:
 	var farm := Sim.find_building(state, Sim.build(state, data, "farm", Vector2i(3, 3), T0).building_id)
 	var mill := Sim.find_building(state, Sim.build(state, data, "mill", Vector2i(4, 4), T0).building_id)
 	Sim.build(state, data, "slow_farm", Vector2i(5, 5), T0)
+	_batch(state, data, farm, 10)
 	var rates := Sim.production_rates(state, data, T0 + 1)
 	_check(is_equal_approx(float(rates.made.get("wheat", 0)), 10.0), "farm makes 10 wheat/min (the slow farm is still being built)")
 	_check(rates.buildings.working == 1 and rates.buildings.idle == 1 and rates.buildings.building == 1, "counts working / idle / being built")
 	state.inventory["wheat"] = 10
-	Sim.enqueue(state, data, mill.id, "mill", T0 + 1)
+	_batch(state, data, mill, 1, "none", T0 + 1)
 	rates = Sim.production_rates(state, data, T0 + 2)
 	_check(is_equal_approx(float(rates.used.wheat), 10.0 * 60.0 / 90.0), "mill uses wheat per minute while working")
 	_check(is_equal_approx(float(rates.made.flour), 8.0 * 60.0 / 90.0), "mill makes flour per minute while working")
-	Sim.settle(state, data, T0 + 700)  # both farms fill their storage (100) within 10 minutes
+	Sim.settle(state, data, T0 + 700)  # the farm's 10 hours and the mill's 1 are done
 	rates = Sim.production_rates(state, data, T0 + 700)
-	_check(rates.buildings.full == 2 and not rates.made.has("wheat"), "full farms make nothing")
-	_check(farm.storage.wheat == 100, "farm really is full")
+	_check(rates.buildings.done == 2 and not rates.made.has("wheat"), "finished batches make nothing more (waiting to be collected)")
 
 
 func test_employment() -> void:
@@ -463,9 +513,9 @@ func test_employment() -> void:
 	var state := Sim.new_game(data, T0)
 	Sim.build(state, data, "crew_farm", Vector2i(3, 3), T0)  # 2 jobs
 	var mill_id: String = Sim.build(state, data, "crew_mill", Vector2i(4, 4), T0).building_id  # 3 jobs
-	_check(Sim.employment(state, data, T0).jobs == 5, "a mill with nothing queued still offers its posts (its workers wait, unpaid)")
+	_check(Sim.employment(state, data, T0).jobs == 5, "a mill with no batch still offers its posts (its workers wait)")
 	state.inventory["wheat"] = 20
-	Sim.fill_queue(state, data, mill_id, "mill", T0)  # 2 batches: busy for the whole test
+	Sim.start_batch(state, data, mill_id, "mill", 2, "none", T0)  # busy for the whole test
 	var e := Sim.employment(state, data, T0)
 	_check(e.jobs == 5 and e.employed == 0 and e.open_jobs == 5, "no people yet: all jobs open")
 	Sim.settle(state, data, T0 + 30)  # 3 people
@@ -482,68 +532,75 @@ func test_short_staffed_buildings_slow_down() -> void:
 	var state := Sim.new_game(data, T0)
 	state.population.current = 1
 	var farm := Sim.find_building(state, Sim.build(state, data, "crew_farm", Vector2i(3, 3), T0).building_id)
+	_batch(state, data, farm, 10)
 	_check(is_equal_approx(Sim.staffing(state, data, T0), 0.5), "1 person for 2 jobs: half speed")
 	Sim.settle(state, data, T0 + 119)
-	_check(farm.storage.is_empty(), "at half speed a 60s batch isn't done after 119s")
+	_check(Sim.ready_units(farm).is_empty(), "at half speed a 60s hour isn't done after 119s")
 	Sim.settle(state, data, T0 + 120)
-	_check(int(farm.storage.get("wheat", 0)) == 10, "at half speed a 60s batch takes 120s")
+	_check(_ready(farm, "wheat") == 10, "at half speed a 60s hour takes 120s")
 	_check(is_equal_approx(float(Sim.production_rates(state, data, T0 + 120).made.wheat), 5.0), "rates show the slower speed")
 	Sim.settle(state, data, T0 + 150)
-	_check(is_equal_approx(Sim.job_progress(state, farm, data, T0 + 150), 0.25), "progress bar moves at half speed")
+	_check(is_equal_approx(Sim.job_progress(state, farm, data, T0 + 150), 75.0 / 600.0), "progress bar moves at half speed")
+	_check(is_equal_approx(Sim.batch_finishes_at(state, data, farm, T0 + 150), T0 + 150 + 525.0 * 2), "the finish time counts the speed")
 	state.population.current = 2  # fully staffed from T0 + 150
 	Sim.settle(state, data, T0 + 195)
-	_check(int(farm.storage.get("wheat", 0)) == 20, "full speed again once staffed (15s + 45s of work)")
+	_check(_ready(farm, "wheat") == 20, "full speed again once staffed (15s + 45s of work)")
 
 	var empty := Sim.new_game(data, T0)
 	var idle := Sim.find_building(empty, Sim.build(empty, data, "crew_farm", Vector2i(3, 3), T0).building_id)
+	_batch(empty, data, idle, 10)
 	Sim.settle(empty, data, T0 + 600)
-	_check(idle.storage.is_empty(), "nobody to work: nothing is made")
+	_check(Sim.ready_units(idle).is_empty() and is_inf(Sim.batch_finishes_at(empty, data, idle, T0 + 600)), "nobody to work: nothing is made, no finish time")
 	empty.population.current = 2
 	Sim.settle(empty, data, T0 + 659)
-	_check(idle.storage.is_empty(), "work starts from scratch when people arrive (not 10 minutes ahead)")
+	_check(Sim.ready_units(idle).is_empty(), "work starts from scratch when people arrive (not 10 minutes ahead)")
 	Sim.settle(empty, data, T0 + 660)
-	_check(int(idle.storage.get("wheat", 0)) == 10, "first batch 60s after people arrive")
+	_check(_ready(idle, "wheat") == 10, "first hour 60s after people arrive")
 
 
 ## Being away for a long time must give exactly the same result as playing the whole time,
 ## even while people move in, a home finishes and the staffing keeps changing.
 func test_away_matches_playing() -> void:
 	var data := _data()
+	data.config["wage_bonuses"] = {"none": 0.0, "small": 0.2}
+	data.config["bonus_output"] = {"none": 0.0, "small": 0.15}
 	var played := Sim.new_game(data, T0)
 	var away := Sim.new_game(data, T0)
 	for state in [played, away]:
 		for x in 4:
-			Sim.build(state, data, "crew_farm", Vector2i(x, 5), T0)  # 4 x 2 jobs
+			var farm_id: String = Sim.build(state, data, "crew_farm", Vector2i(x, 5), T0).building_id  # 4 x 2 jobs
+			Sim.start_batch(state, data, farm_id, "grow", 30 + 3 * x, "small" if x % 2 == 0 else "none", T0)
 		var mill_id: String = Sim.build(state, data, "crew_mill", Vector2i(6, 6), T0).building_id  # 3 jobs: 11 in all
 		Sim.build(state, data, "cabin", Vector2i(8, 8), T0)  # room for 16 adults from T0 + 200
 		state.inventory["wheat"] = 80
-		Sim.fill_queue(state, data, mill_id, "mill", T0)
+		Sim.start_batch(state, data, mill_id, "mill", 8, "none", T0)
 	var t := T0
 	while t < T0 + 3000:
 		t += 7.0
 		Sim.settle(played, data, t)
 	Sim.settle(away, data, t)
-	var same: bool = played.population.current == away.population.current
+	var diff := "" if played.population.current == away.population.current else "population"
 	for i in played.buildings.size():
-		same = same and played.buildings[i].storage == away.buildings[i].storage
-		same = same and played.buildings[i].queue.size() == away.buildings[i].queue.size()
-	_check(same, "one long absence = playing in 7-second steps (population, storage, queues)")
+		if diff == "":
+			diff = _difference(played.buildings[i], away.buildings[i], "buildings[%d]" % i)
+	_check(diff == "", "one long absence = playing in 7-second steps (population, batches, hired workers; first difference: %s)" % diff)
 	_check(int(away.population.current) == 16 and Sim.staffing(away, data, t) == 1.0, "the cabin let enough people in to fill every job (16 people, 11 jobs)")
 	var made := 0
 	for b in away.buildings:
-		made += int(b.storage.get("wheat", 0))
+		made += _ready(b, "wheat")
 	_check(made > 0 and made < 4 * 10 * 3000 / 60, "short-staffed early on, so less wheat than 4 full-speed farms")
 
 
-## A test town with one 8-worker farm, enough people, and wages of 36/hour per worker
-## (so 8 workers cost 288/hour = 0.08 per second). Returns [state, data, farm].
+## A test town with one 8-worker farm, enough people, and wages of 36/hour per worker. A batch
+## "hour" is 60 s in the test data, so an hour of the farm costs 8 x $36 / 60 = $4.80.
+## Returns [state, data, farm].
 func _wage_town() -> Array:
 	var data := _data()
 	data.config["population_growth_seconds"] = 0  # people only change when the test says so
 	data.config["staffing_levels"] = {"low": 0.5, "medium": 0.75, "high": 1.0}
 	data.config["worker_types"] = {"low_skilled": {"name": "Low-skilled", "wage_per_hour": 36}}
 	data.buildings["big_farm"] = {"category": "extractor", "build_cost": 0, "buildable": true,
-		"max_workers": 8, "worker_type": "low_skilled", "storage_cap": 1000,
+		"max_workers": 8, "worker_type": "low_skilled",
 		"recipes": [{"id": "grow", "inputs": {}, "outputs": {"wheat": 10}, "duration": 60}]}
 	var state := Sim.new_game(data, T0)
 	state.population.current = 10
@@ -556,13 +613,14 @@ func test_staffing_levels() -> void:
 	var state: Dictionary = s[0]
 	var data: Dictionary = s[1]
 	var farm: Dictionary = s[2]
+	_batch(state, data, farm, 10)
 	_check(Sim.workers_wanted(data, farm) == 8 and is_equal_approx(Sim.building_speed(state, data, farm, T0), 1.0), "new buildings start at High: 8 of 8 workers, full speed")
 	_check(Sim.set_staffing(state, data, farm.id, "low", T0).ok, "staffing can be changed")
 	_check(Sim.workers_wanted(data, farm) == 4 and is_equal_approx(Sim.building_speed(state, data, farm, T0), 0.5), "Low: 4 workers, half speed")
 	Sim.settle(state, data, T0 + 119)
-	_check(farm.storage.is_empty(), "at Low a 60s batch isn't done after 119s")
+	_check(Sim.ready_units(farm).is_empty(), "at Low a 60s hour isn't done after 119s")
 	Sim.settle(state, data, T0 + 120)
-	_check(int(farm.storage.get("wheat", 0)) == 10, "at Low a 60s batch takes 120s")
+	_check(_ready(farm, "wheat") == 10, "at Low a 60s hour takes 120s")
 	Sim.set_staffing(state, data, farm.id, "medium", T0 + 120)
 	_check(Sim.workers_wanted(data, farm) == 6 and is_equal_approx(Sim.building_speed(state, data, farm, T0 + 120), 0.75), "Medium: 6 workers, 75% speed")
 	_check(Sim.employment(state, data, T0 + 120).jobs == 6, "jobs follow the staffing level")
@@ -573,40 +631,45 @@ func test_staffing_levels() -> void:
 	_check(not Sim.set_staffing(state, data, state.buildings[1].id, "low", T0).ok, "a house has no workers to set")
 
 
+## A batch pays all its wages when it starts (plan.md §5.6): the full crew for every hour, whatever
+## the staffing; fewer workers just take longer. Other buildings (warehouses) pay as they go.
 func test_wages_and_debt() -> void:
 	var s := _wage_town()
 	var state: Dictionary = s[0]
 	var data: Dictionary = s[1]
 	var farm: Dictionary = s[2]
 	state.profile.currency = 5000  # $50 (money is in cents)
-	var report := Sim.settle(state, data, T0 + 1000)  # 8 workers x $36/h for 1000 s = $80
-	_check(state.profile.currency == -3000, "wages are paid over time and cash can go below 0 (debt)")
-	_check(int(report.get("wages", 0)) == 8000 and int(Sim.stats(state).spending.wages) == 8000, "wages show in the report and the statistics")
-	_check(not Sim.build(state, data, "farm", Vector2i(5, 5), T0 + 1000).ok, "can't build while in debt")
-	Sim.set_staffing(state, data, farm.id, "low", T0 + 1000)
-	Sim.settle(state, data, T0 + 2000)  # 4 workers x $36/h for 1000 s = $40
-	_check(state.profile.currency == -7000, "Low staffing halves the wages")
-	state.population.current = 0
-	Sim.settle(state, data, T0 + 3000)
-	_check(state.profile.currency == -7000, "nobody working, no wages")
+	var quote := Sim.can_start_batch(state, data, farm.id, "grow", 10, "none", T0)
+	_check(quote.ok and int(quote.wages) == 4800, "10 hours of 8 workers at $36/h (an hour is 60 s here): $48")
+	_check(Sim.batch_max_hours(state, data, farm.id, "grow", "none") == 10, "the cash covers at most 10 hours")
+	_check(Sim.can_start_batch(state, data, farm.id, "grow", 11, "none", T0).error == "Not enough money for the wages.", "11 hours need more cash than there is")
+	_batch(state, data, farm, 10)
+	_check(state.profile.currency == 200 and int(Sim.stats(state).spending.wages) == 4800, "paid at once, counted as wages")
+	Sim.set_staffing(state, data, farm.id, "low", T0)
+	var report := Sim.settle(state, data, T0 + 1300)  # half speed: the 10 hours take 1200 s
+	_check(state.profile.currency == 200 and not report.has("wages"), "nothing more is paid while it works, at any staffing")
+	_check(_ready(farm, "wheat") == 100 and not Sim.batch_running(farm), "Low staffing: the batch took twice as long, for the same wages")
 
 	var t := _wage_town()
-	var steps: Dictionary = t[0]
+	var town: Dictionary = t[0]
+	town.population.current = 14
+	Sim.build(town, data, "crew_store", Vector2i(6, 6), T0)  # 4 workers, paid as they go
+	Sim.settle(town, data, T0)
+	town.profile.currency = 1000  # $10
+	Sim.settle(town, data, T0 + 1000)  # 4 x $36/h for 1000 s = $40
+	_check(town.profile.currency == -3000, "a warehouse's wages are paid over time, and cash can go below 0 (debt)")
+	_check(not Sim.build(town, data, "farm", Vector2i(5, 5), T0 + 1000).ok, "can't build while in debt")
+	_check(Sim.batch_max_hours(town, data, t[2].id, "grow", "none") == 0, "nor start a batch")
+
+	var u := _wage_town()
+	var steps: Dictionary = u[0]
+	steps.population.current = 14
+	Sim.build(steps, data, "crew_store", Vector2i(6, 6), T0)
 	var at := T0
 	while at < T0 + 1000:
 		at = minf(at + 0.7, T0 + 1000)  # the last step ends exactly at 1000 s
 		Sim.settle(steps, data, at)
-	_check(int(Sim.stats(steps).spending.wages) == 8000, "wages in many tiny steps add up to the same $80 (parts of a cent carried over)")
-
-	var u := _wage_town()
-	var building: Dictionary = u[0]
-	building.profile.currency = 10000
-	Sim.build(building, data, "slow_farm", Vector2i(6, 6), T0)  # no workers needed
-	data.buildings.slow_farm["max_workers"] = 8
-	Sim.find_building(building, building.buildings[-1].id)["built_at"] = T0 + 10_000.0
-	Sim.set_staffing(building, data, u[2].id, "low", T0)  # the big farm: 4 workers
-	Sim.settle(building, data, T0 + 1000)
-	_check(int(Sim.stats(building).spending.wages) == 4000, "a building under construction pays no wages")
+	_check(int(Sim.stats(steps).spending.wages) == 4000, "wages in many tiny steps add up to the same $40 (parts of a cent carried over)")
 
 
 func test_sales_tax_brackets() -> void:
@@ -630,93 +693,38 @@ func test_sales_tax_brackets() -> void:
 	_check(Sim.sales_tax(state, data, 333, T0 + 30) == 50, "tax is rounded to the cent (15% of $3.33 = $0.4995 -> $0.50)")
 
 
-## A town whose 8-worker farm fills its storage (100) after 600 s at full speed.
-func _filling_town() -> Array:
+## A Farm, Mill or Bakery's workers only work while a batch is being made: idle (no batch, or
+## every hour made) they wait, tied to it, and pay nothing more. Its wages were paid at the start.
+func test_idle_buildings_pay_no_wages() -> void:
 	var s := _wage_town()
-	s[1].buildings.big_farm["storage_cap"] = 100
-	return s
-
-
-func test_halted_buildings_pay_no_wages() -> void:
-	var s := _filling_town()
 	var state: Dictionary = s[0]
 	var data: Dictionary = s[1]
 	var farm: Dictionary = s[2]
-	Sim.settle(state, data, T0 + 3600)  # away an hour; the farm filled up after 10 minutes
-	_check(int(farm.storage.wheat) == 100 and Sim.is_halted(data, farm), "full storage halts the farm")
-	_check(int(Sim.stats(state).spending.wages) == 4800, "wages stopped the moment it filled (600 s x 8 x $36/h = $48), not after the hour")
-	_check(Sim.workers_working(state, data, farm, T0 + 3600) == 0.0 and Sim.hired(farm) == 8, "a halted building's workers stop working but stay tied to it")
-	Sim.collect(state, data, farm.id, T0 + 3600)
-	Sim.settle(state, data, T0 + 3660)
-	_check(int(farm.storage.get("wheat", 0)) == 10 and not Sim.is_halted(data, farm), "collecting restarts it")
-
-	var t := _filling_town()
-	var steps: Dictionary = t[0]
-	var at := T0
-	while at < T0 + 3600:
-		at = minf(at + 7.0, T0 + 3600)
-		Sim.settle(steps, t[1], at)
-	_check(int(Sim.stats(steps).spending.wages) == 4800, "same wages when playing in 7-second steps")
-
-	var mill := {"type": "x", "blocked": true}
-	data.buildings["x"] = {"category": "processor", "max_workers": 8}
-	_check(Sim.is_halted(data, mill), "a mill with a finished batch and no room is halted too")
+	_check(Sim.is_idle(data, farm) and Sim.workers_working(state, data, farm, T0) == 0.0 and Sim.hired(farm) == 8, "no batch: idle, its 8 workers wait (tied to it)")
+	Sim.settle(state, data, T0 + 600)
+	_check(int(Sim.stats(state).spending.wages) == 0, "an idle building pays nothing")
+	_batch(state, data, farm, 5, "none", T0 + 600)
+	_check(Sim.workers_working(state, data, farm, T0 + 600) == 8.0, "a batch brings the workers in")
+	Sim.settle(state, data, T0 + 3600)
+	_check(Sim.is_idle(data, farm) and Sim.workers_working(state, data, farm, T0 + 3600) == 0.0, "its last hour was done at +900: idle again")
+	_check(int(Sim.stats(state).spending.wages) == 2400, "only the batch's wages, paid when it started (5 x 8 x $36 / 60)")
 
 
-## A Mill or Bakery with nothing queued pays no wages (plan.md §5.6): workers are only paid while
-## producing. Wages stop the moment the last job is done, even while the player is away.
-func test_idle_buildings_pay_no_wages() -> void:
-	var s := _wage_town()  # $36/hour per worker
-	var state: Dictionary = s[0]
-	var data: Dictionary = s[1]
-	data.buildings["big_mill"] = {"category": "processor", "build_cost": 0, "buildable": true,
-		"max_workers": 8, "worker_type": "low_skilled", "storage_cap": 1000, "queue_size": 8,
-		"recipes": [{"id": "mill", "inputs": {"wheat": 10}, "outputs": {"flour": 8}, "duration": 300}]}
-	state.population.current = 20  # enough for the farm and the mill
-	var mill := Sim.find_building(state, Sim.build(state, data, "big_mill", Vector2i(6, 6), T0).building_id)
-	_check(Sim.is_idle(data, mill) and Sim.workers_working(state, data, mill, T0) == 0.0, "an empty mill is idle: nobody working")
-	Sim.settle(state, data, T0 + 600)  # only the farm works: 8 x $36/h x 600 s = $48
-	_check(int(Sim.stats(state).spending.wages) == 4800, "an idle mill pays no wages")
-	state.inventory["wheat"] = 20
-	Sim.fill_queue(state, data, mill.id, "mill", T0 + 600)  # 2 jobs = 600 s of work
-	_check(Sim.workers_working(state, data, mill, T0 + 600) == 8.0, "queuing a job brings the workers in")
-	Sim.settle(state, data, T0 + 3600)  # away; the mill finished at T0 + 1200
-	# farm 3600 s ($288) + mill 600 s ($48)
-	_check(int(Sim.stats(state).spending.wages) == 28800 + 4800, "wages stopped the moment the last job was done")
-	_check(int(mill.storage.get("flour", 0)) == 16 and Sim.is_idle(data, mill), "both batches made, then idle")
-
-	var t := _wage_town()
-	var steps: Dictionary = t[0]
-	t[1].buildings["big_mill"] = data.buildings.big_mill
-	steps.population.current = 20
-	var mill2: String = Sim.build(steps, t[1], "big_mill", Vector2i(6, 6), T0).building_id
-	steps.inventory["wheat"] = 20
-	Sim.fill_queue(steps, t[1], mill2, "mill", T0 + 600)
-	var at := T0 + 600
-	while at < T0 + 3600:
-		at = minf(at + 7.0, T0 + 3600)
-		Sim.settle(steps, t[1], at)
-	Sim.settle(steps, t[1], T0 + 3600)
-	_check(int(Sim.stats(steps).spending.wages) == 28800 + 4800, "same wages when playing in 7-second steps")
-
-
-func test_halted_building_keeps_workers() -> void:
-	var s := _filling_town()
+## An idle building keeps its workers: they don't move to a building with work.
+func test_idle_building_keeps_workers() -> void:
+	var s := _wage_town()
 	var state: Dictionary = s[0]
 	var data: Dictionary = s[1]
 	var first: Dictionary = s[2]
-	data.buildings["roomy_farm"] = data.buildings.big_farm.duplicate()
-	data.buildings.roomy_farm["storage_cap"] = 10_000
-	var second := Sim.find_building(state, Sim.build(state, data, "roomy_farm", Vector2i(6, 6), T0).building_id)
+	var second := Sim.find_building(state, Sim.build(state, data, "big_farm", Vector2i(6, 6), T0).building_id)
 	_check(Sim.hired(first) == 8 and Sim.hired(second) == 2, "10 people: the first farm hired its 8 when it opened, the second gets the other 2")
 	state.population.current = 8  # 2 people moved away
 	Sim.settle(state, data, T0)
-	_check(Sim.hired(first) == 8 and Sim.hired(second) == 0, "with equal bonuses, the newest building loses its workers first")
-	Sim.settle(state, data, T0 + 700)  # the first farm fills after 600 s
-	_check(Sim.is_halted(data, first), "first farm full")
-	_check(Sim.hired(first) == 8 and Sim.building_speed(state, data, second, T0 + 700) == 0.0, "its workers stay tied to it: the other farm doesn't get them")
-	Sim.suspend(state, data, first.id, T0 + 700)
-	_check(Sim.hired(first) == 0 and is_equal_approx(Sim.building_speed(state, data, second, T0 + 700), 1.0), "suspending frees them: they fill the other farm's open posts")
+	_check(Sim.hired(first) == 8 and Sim.hired(second) == 0, "the newest building loses its workers first")
+	_batch(state, data, second, 10)
+	_check(Sim.hired(first) == 8 and Sim.building_speed(state, data, second, T0) == 0.0, "the idle farm keeps its workers: the one with a batch doesn't get them")
+	Sim.suspend(state, data, first.id, T0)
+	_check(Sim.hired(first) == 0 and is_equal_approx(Sim.building_speed(state, data, second, T0), 1.0), "suspending frees them: they fill the other farm's open posts")
 
 
 func test_dev_cash_tools() -> void:
@@ -742,7 +750,8 @@ func test_real_worker_data() -> void:
 			continue
 		var kind: String = def.get("worker_type", "")
 		_check(types.has(kind) and float(types[kind].get("wage_per_hour", -1)) >= 0, "%s's worker type '%s' exists with a wage" % [type_id, kind])
-		_check(types.get(kind, {}).get("available", false), "%s uses a worker type that can be hired" % type_id)
+		if def.get("buildable", false):  # "coming soon" buildings may wait for schools
+			_check(types.get(kind, {}).get("available", false), "%s uses a worker type that can be hired" % type_id)
 		for level in config.staffing_levels:
 			var wanted: float = most * float(config.staffing_levels[level])
 			_check(is_equal_approx(wanted, roundf(wanted)), "%s at %s staffing is a whole number of workers" % [type_id, level])
@@ -774,27 +783,29 @@ func test_history_and_cash_flow() -> void:
 
 func test_offline_report() -> void:
 	var s: Array = _setup("farm")
+	_batch(s[0], s[1], s[2], 10)
 	var report := Sim.settle(s[0], s[1], T0 + 300)
 	_check(report.get("wheat", 0) == 50, "report lists what was produced while away")
 
 
 ## Saving and loading part-way through changes nothing: the loaded game carries on exactly like
-## one that was never closed (cash, wages, tax, storage, queues, people, statistics).
+## one that was never closed (cash, wages, tax, batches, people, statistics).
 func test_save_round_trip() -> void:
 	var data := _data()
 	data.config["worker_types"] = {"low_skilled": {"name": "Low-skilled", "wage_per_hour": 36}}
 	data.config["sales_tax_brackets"] = [{"from": 0, "rate": 0.0}, {"from": 6, "rate": 0.5}]
 	var kept := Sim.new_game(data, T0)
 	for x in 3:
-		Sim.build(kept, data, "crew_farm", Vector2i(x, 5), T0)
+		var farm_id: String = Sim.build(kept, data, "crew_farm", Vector2i(x, 5), T0).building_id
+		Sim.start_batch(kept, data, farm_id, "grow", 30, "none", T0)
 	var mill_id: String = Sim.build(kept, data, "crew_mill", Vector2i(6, 6), T0).building_id
 	Sim.build(kept, data, "cabin", Vector2i(8, 8), T0)  # finishes after the save
 	kept.inventory["wheat"] = 60
-	Sim.fill_queue(kept, data, mill_id, "mill", T0)
+	Sim.start_batch(kept, data, mill_id, "mill", 6, "none", T0)
 	var saved_at := T0 + 123.456789  # an awkward time, to catch rounding in the file
 	Sim.settle(kept, data, saved_at)
 	Sim.set_staffing(kept, data, mill_id, "low", saved_at)
-	kept.inventory["wheat"] = int(kept.inventory.get("wheat", 0)) + 5  # the mill's queue took the rest
+	kept.inventory["wheat"] = int(kept.inventory.get("wheat", 0)) + 5  # the mill's batch took the rest
 	_check(Sim.sell(kept, data, "wheat", 5, saved_at).ok, "(setup) a sale before saving")
 	var text := SaveFormat.to_text(kept, saved_at)
 	var result := SaveFormat.from_text(text, data)
@@ -896,6 +907,7 @@ func test_warehouse_buildings() -> void:
 	Sim.settle(state, data, T0 + 1003)
 	_check(Sim.warehouse_cap(state, data) == 1000 and int(state.inventory.wheat) == 1400, "less room never throws goods away")
 	var farm := Sim.find_building(state, Sim.build(state, data, "farm", Vector2i(6, 6), T0 + 1003).building_id)
+	_batch(state, data, farm, 1, "none", T0 + 1003)
 	Sim.settle(state, data, T0 + 1063)
 	_check(not Sim.collect(state, data, farm.id, T0 + 1063).ok, "over the room: nothing more comes in")
 
@@ -908,7 +920,8 @@ func test_warehouse_buildings() -> void:
 	_check(Sim.demolish(one, data, one.buildings[2].id, T0).ok and Sim.warehouse_cap(one, data) == 1000, "a warehouse can go when the rest has room")
 
 
-## Suspend = a "soft demolish" that keeps the building: progress lost, goods back, workers home.
+## Suspend = a "soft demolish" that keeps the building: its workers go home. A building with a
+## batch must let it finish (or cancel it) and be collected first.
 func test_suspend_and_resume() -> void:
 	var data := _data()
 	data.config["population_growth_seconds"] = 0
@@ -917,36 +930,19 @@ func test_suspend_and_resume() -> void:
 	state.population.current = 10
 	var mill := Sim.find_building(state, Sim.build(state, data, "crew_mill", Vector2i(5, 5), T0).building_id)
 	state.inventory["wheat"] = 30
-	Sim.fill_queue(state, data, mill.id, "mill", T0)  # 3 jobs of 10 wheat
-	Sim.settle(state, data, T0 + 45)  # half way through the first
+	_batch(state, data, mill, 3)
+	Sim.settle(state, data, T0 + 45)  # half way through the first hour
 	_check(not Sim.can_suspend(state, data, state.buildings[1].id).ok, "a house has nothing to switch off")
+	_check(Sim.can_suspend(state, data, mill.id).error == Sim.BATCH_BUSY, "not while it has a batch")
+	Sim.cancel_batch(state, data, mill.id, T0 + 45)
 	var check := Sim.can_suspend(state, data, mill.id)
-	_check(check.ok and int(check.goods.wheat) == 5 + 20, "preview: half of the batch being made + all of the waiting ones")
+	_check(check.ok and check.goods.is_empty(), "with the batch cancelled it can")
 	var result := Sim.suspend(state, data, mill.id, T0 + 45)
-	_check(result.ok and int(state.inventory.wheat) == 25 and mill.queue.is_empty(), "suspending empties the queue into the warehouse")
-	_check(Sim.is_suspended(mill) and Sim.workers_working(state, data, mill, T0 + 45) == 0.0 and Sim.employment(state, data, T0 + 45).jobs == 0, "its workers go home")
-	var wages_before := int(Sim.stats(state).spending.wages)
-	Sim.settle(state, data, T0 + 5000)
-	_check(int(Sim.stats(state).spending.wages) == wages_before and mill.storage.is_empty(), "suspended: no wages, nothing made")
-	_check(not Sim.can_enqueue(state, data, mill.id, "mill", T0 + 5000).ok, "no jobs while suspended")
+	_check(result.ok and Sim.is_suspended(mill) and Sim.workers_working(state, data, mill, T0 + 45) == 0.0 and Sim.employment(state, data, T0 + 45).jobs == 0, "its workers go home")
+	_check(_batch(state, data, mill, 1, "none", T0 + 5000).error == "It's suspended. Resume it first.", "no batches while suspended")
 	_check(not Sim.suspend(state, data, mill.id, T0 + 5000).ok, "can't suspend twice")
 	_check(Sim.resume(state, data, mill.id, T0 + 5000).ok and not Sim.is_suspended(mill), "resume switches it back on")
-	_check(Sim.enqueue(state, data, mill.id, "mill", T0 + 5000).ok, "and it takes jobs again")
-
-	var farm := Sim.find_building(state, Sim.build(state, data, "crew_farm", Vector2i(6, 6), T0 + 5000).building_id)
-	Sim.settle(state, data, T0 + 5150)  # 2 batches + half of the third
-	Sim.suspend(state, data, farm.id, T0 + 5150)
-	_check(int(state.inventory.wheat) == 15 + 20, "a farm's wheat goes to the warehouse")
-	Sim.resume(state, data, farm.id, T0 + 6000)
-	Sim.settle(state, data, T0 + 6059)
-	_check(farm.storage.is_empty(), "the half-grown field was lost: it starts from the beginning")
-	Sim.settle(state, data, T0 + 6060)
-	_check(int(farm.storage.get("wheat", 0)) == 10, "first batch a full cycle after resuming")
-
-	state.inventory["flour"] = 1000 - Sim.warehouse_total(state) - 4  # room for only 4 more
-	Sim.settle(state, data, T0 + 6120)
-	result = Sim.suspend(state, data, farm.id, T0 + 6120)  # 20 wheat inside
-	_check(int(result.moved.wheat) == 4 and int(farm.storage.wheat) == 16, "what doesn't fit stays inside, to collect later")
+	_check(_batch(state, data, mill, 1, "none", T0 + 5000).ok, "and it takes batches again")
 	_check(not Sim.can_suspend(state, data, state.buildings[2].id).ok, "a warehouse can't be suspended if the goods wouldn't fit elsewhere")
 
 
@@ -991,29 +987,27 @@ func _bonus_data() -> Dictionary:
 	return data
 
 
-## Whole workers, tied to their building, hired by wage bonus (plan.md §5.6).
-func test_hiring_by_bonus() -> void:
+## The wage bonus is chosen per batch (plan.md §5.6): it pays each worker more and makes more
+## units, it's locked in once the batch starts, and it doesn't decide who gets hired.
+func test_bonus_per_batch() -> void:
 	var data := _bonus_data()
+	data.config["bonus_output"] = {"none": 0.0, "small": 0.1, "good": 0.2, "big": 0.3}
 	var state := Sim.new_game(data, T0)
 	var a := Sim.find_building(state, Sim.build(state, data, "crew_farm", Vector2i(3, 3), T0).building_id)
 	var b := Sim.find_building(state, Sim.build(state, data, "crew_farm", Vector2i(4, 4), T0).building_id)
-	_check(Sim.set_bonus(state, data, b.id, "good", T0).ok, "a bonus can be chosen")
+	_check(Sim.set_bonus(state, data, b.id, "good", T0).ok, "a bonus can be chosen for the next batch")
 	_check(not Sim.set_bonus(state, data, b.id, "huge", T0).ok and not Sim.set_bonus(state, data, state.buildings[1].id, "big", T0).ok, "unknown bonuses, or a house, are refused")
 	_check(is_equal_approx(Sim.wage_per_worker(data, a), 15.0) and is_equal_approx(Sim.wage_per_worker(data, b), 21.0), "wage = minimum $15 + bonus ($15 + 40% = $21)")
 	state.population.current = 3
 	Sim.settle(state, data, T0)
-	_check(Sim.hired(b) == 2 and Sim.hired(a) == 1, "the bigger bonus fills first: 2 there, the 3rd person to the other")
-	_check(is_equal_approx(Sim.building_wages(state, data, b, T0), 42.0), "its wage bill: 2 x $21")
-	Sim.set_staffing(state, data, b.id, "low", T0)  # 2 posts -> 1
-	_check(Sim.hired(b) == 1 and Sim.hired(a) == 2, "lowering its staffing frees a worker, who takes the open post elsewhere")
-	Sim.set_bonus(state, data, a.id, "none", T0)
-	Sim.set_staffing(state, data, b.id, "high", T0)  # an open post again, but nobody is free
-	_check(Sim.hired(b) == 1 and Sim.hired(a) == 2, "workers are tied: an open post never pulls them from another building")
-	Sim.set_bonus(state, data, b.id, "big", T0)
-	_check(Sim.hired(a) == 2, "not even with a bigger bonus")
-	state.population.current = 4
-	Sim.settle(state, data, T0)
-	_check(Sim.hired(b) == 2, "but the next person to move in takes it")
+	_check(Sim.hired(a) == 2 and Sim.hired(b) == 1, "the bonus doesn't decide hiring: they take turns, the older one first")
+	var quote := Sim.batch_quote(state, data, b, "grow", 10, "good", T0)
+	_check(int(quote.units.wheat) == 120 and int(quote.wages) == 700, "Good: +20% units (120 instead of 100) for +40% wages ($7.00 instead of $5.00)")
+	_batch(state, data, b, 10, "good")
+	_check(Sim.bonus_level(data, b) == "good" and not Sim.set_bonus(state, data, b.id, "none", T0).ok, "locked in once the batch starts")
+	Sim.settle(state, data, T0 + 10000)
+	Sim.collect(state, data, b.id, T0 + 10000)
+	_check(int(state.inventory.wheat) == 120 and Sim.set_bonus(state, data, b.id, "none", T0 + 10000).ok, "120 wheat made; once collected, the bonus can change for the next batch")
 
 	var even := Sim.new_game(data, T0)
 	var farms: Array = []
@@ -1021,19 +1015,16 @@ func test_hiring_by_bonus() -> void:
 		farms.append(Sim.find_building(even, Sim.build(even, data, "crew_farm", Vector2i(x, 5), T0).building_id))
 	even.population.current = 3
 	Sim.settle(even, data, T0)
-	_check(Sim.hired(farms[0]) == 1 and Sim.hired(farms[1]) == 1 and Sim.hired(farms[2]) == 1, "equal bonuses: they take turns, one each")
+	_check(Sim.hired(farms[0]) == 1 and Sim.hired(farms[1]) == 1 and Sim.hired(farms[2]) == 1, "they take turns, one each")
 	even.population.current = 2
 	Sim.settle(even, data, T0)
-	_check(Sim.hired(farms[2]) == 0 and Sim.hired(farms[0]) == 1, "fewer people: the newest building (same bonus) loses first")
-	Sim.set_bonus(even, data, farms[2].id, "small", T0)
-	even.population.current = 3
+	_check(Sim.hired(farms[2]) == 0 and Sim.hired(farms[0]) == 1, "fewer people: the newest building loses first")
+	Sim.set_bonus(even, data, farms[1].id, "big", T0)
+	even.population.current = 1
 	Sim.settle(even, data, T0)
-	Sim.set_bonus(even, data, farms[0].id, "big", T0)
-	even.population.current = 2
-	Sim.settle(even, data, T0)
-	_check(Sim.hired(farms[1]) == 0 and Sim.hired(farms[0]) == 1 and Sim.hired(farms[2]) == 1, "fewer people: the smallest bonus loses first")
+	_check(Sim.hired(farms[1]) == 0 and Sim.hired(farms[0]) == 1, "a bonus doesn't keep workers either")
 	var e := Sim.employment(even, data, T0)
-	_check(e.jobs == 6 and e.employed == 2 and e.unemployed == 0 and e.open_jobs == 4, "employment counts whole, hired people")
+	_check(e.jobs == 6 and e.employed == 1 and e.unemployed == 0 and e.open_jobs == 5, "employment counts whole, hired people")
 
 
 ## Warehouses are staffed before any other building, whatever bonus the others pay, and lose
@@ -1063,6 +1054,7 @@ func test_warehouses_staffed_first() -> void:
 func test_hiring_away_matches_playing() -> void:
 	var data := _bonus_data()
 	data.config["population_growth_seconds"] = 10
+	data.config["bonus_output"] = {"none": 0.0, "small": 0.1, "good": 0.2, "big": 0.3}
 	var played := Sim.new_game(data, T0)
 	var away := Sim.new_game(data, T0)
 	for state in [played, away]:
@@ -1070,8 +1062,9 @@ func test_hiring_away_matches_playing() -> void:
 		for x in 3:
 			Sim.build(state, data, "crew_farm", Vector2i(x, 5), T0)
 		Sim.build(state, data, "slow_farm", Vector2i(5, 5), T0)  # finishes at T0 + 5
-		Sim.set_bonus(state, data, state.buildings[4].id, "good", T0)
-		Sim.set_bonus(state, data, state.buildings[5].id, "small", T0)
+		for i in [4, 5, 6]:
+			var bonus: String = ["good", "small", "none"][i - 4]
+			Sim.start_batch(state, data, state.buildings[i].id, "grow", 40, bonus, T0)
 	data.buildings.slow_farm["max_workers"] = 2
 	var t := T0
 	while t < T0 + 3000:
@@ -1080,9 +1073,9 @@ func test_hiring_away_matches_playing() -> void:
 	Sim.settle(away, data, t)
 	var same: bool = played.population.current == away.population.current and played.profile.currency == away.profile.currency
 	for i in played.buildings.size():
-		same = same and Sim.hired(played.buildings[i]) == Sim.hired(away.buildings[i]) and played.buildings[i].storage == away.buildings[i].storage
-	_check(same, "one long absence = playing in 7-second steps (people, hired workers, storage, cash)")
-	_check(Sim.hired(away.buildings[4]) == 2 and Sim.hired(away.buildings[5]) == 2, "the buildings with bonuses were filled")
+		same = same and Sim.hired(played.buildings[i]) == Sim.hired(away.buildings[i]) and Sim.ready_units(played.buildings[i]) == Sim.ready_units(away.buildings[i])
+	_check(same, "one long absence = playing in 7-second steps (people, hired workers, batches, cash)")
+	_check(_ready(away.buildings[4], "wheat") == 480 and _ready(away.buildings[5], "wheat") == 440, "the bonuses made more: Good +20%, Small +10%")
 
 
 ## The public water supply (plan.md §5.13): a meter records what buildings draw while they
@@ -1092,22 +1085,23 @@ func test_water_supply() -> void:
 	# Bills every hour here (12 in the game), and the extra starts at 10 m³ per cycle.
 	data.config["water"] = {"price_per_m3": 2.0, "billing_hours": 1, "tiers": [{"from": 0, "extra": 0.0}, {"from": 10, "extra": 0.25}]}
 	data.buildings["wet_farm"] = {"category": "extractor", "build_cost": 0, "buildable": true, "max_workers": 2,
-		"storage_cap": 50, "water_per_hour": 60,
+		"water_per_hour": 60,
 		"recipes": [{"id": "grow", "inputs": {}, "outputs": {"wheat": 10}, "duration": 60}]}
 	_check(is_equal_approx(Sim.water_bill_cost(data, 8.0, 16.0), 16.0), "8 m³ at $2 = $16")
 	_check(is_equal_approx(Sim.water_bill_cost(data, 14.0, 28.0), 10 * 2.0 + 4 * 2.5), "above 10 m³ in a cycle the extra costs 25% more: $20 + $10")
 	var state := Sim.new_game(data, T0)
 	var farm := Sim.find_building(state, Sim.build(state, data, "wet_farm", Vector2i(5, 5), T0).building_id)
+	_batch(state, data, farm, 5)
 	_check(Sim.water_use(state, data, farm, T0) == 0.0, "nobody working yet: no water drawn")
 	state.population.current = 1  # 1 of 2 workers: half speed, half the water
 	Sim.settle(state, data, T0)
 	_check(is_equal_approx(Sim.water_use(state, data, farm, T0), 30.0), "at half speed it draws half its water")
 	state.population.current = 2
 	Sim.settle(state, data, T0 + 1)
-	# Water follows the work done: its 5 batches (storage 50) take 5 minutes of full-speed work,
+	# Water follows the work done: its 5 hours (here 60 s each) take 5 minutes of full-speed work,
 	# so 5 m³ = $10 in all, whatever the speed was along the way.
 	Sim.settle(state, data, T0 + 1 + 300)
-	_check(Sim.is_halted(data, farm) and is_equal_approx(float(Sim.water_meter(state, T0).m3), 5.0), "the meter recorded 5 m³; full storage: no more water drawn")
+	_check(not Sim.batch_running(farm) and is_equal_approx(float(Sim.water_meter(state, T0).m3), 5.0), "the meter recorded 5 m³; the batch is done: no more water drawn")
 	var bill := Sim.water_bill_so_far(state, data, T0 + 1000)
 	_check(int(Sim.stats(state).spending.get("water", 0)) == 0 and int(bill.cost) == 1000 and is_equal_approx(float(bill.due_at), T0 + 3600), "nothing paid yet: $10 so far, due at the end of the cycle")
 	var cash := int(state.profile.currency)
@@ -1117,21 +1111,20 @@ func test_water_supply() -> void:
 	Sim.settle(state, data, T0 + 7300)
 	_check(state.water_bills.size() == 1 and is_equal_approx(float(Sim.water_meter(state, T0).cycle_start), T0 + 7200), "a cycle with no water use sends no bill")
 
+	data.config["worker_types"] = {"low_skilled": {"name": "Low-skilled", "wage_per_hour": 0}}  # only water costs money here
 	var poor := Sim.new_game(data, T0)
-	data.buildings["big_wet_farm"] = data.buildings.wet_farm.duplicate(true)
-	data.buildings.big_wet_farm["storage_cap"] = 100_000
-	Sim.build(poor, data, "big_wet_farm", Vector2i(5, 5), T0)
+	var big := Sim.find_building(poor, Sim.build(poor, data, "wet_farm", Vector2i(5, 5), T0).building_id)
 	poor.population.current = 2
 	poor.profile.currency = 0
-	poor["wage_carry"] = 0.0
-	data.config["worker_types"] = {"low_skilled": {"name": "Low-skilled", "wage_per_hour": 0}}  # only water costs money here
+	_batch(poor, data, big, 1000)
 	Sim.settle(poor, data, T0 + 3600)  # 60 m³ in the hour: 10 x $2 + 50 x $2.50 = $145
 	_check(int(poor.profile.currency) == -14500, "a heavy user pays the extra, and an unpaid bill just goes into debt")
 
 	data.config["worker_types"] = {"low_skilled": {"name": "Low-skilled", "wage_per_hour": 15}}
 	var steps := Sim.new_game(data, T0)
-	Sim.build(steps, data, "big_wet_farm", Vector2i(5, 5), T0)
-	Sim.build(steps, data, "wet_farm", Vector2i(6, 6), T0)
+	for x in 2:
+		var wet := Sim.find_building(steps, Sim.build(steps, data, "wet_farm", Vector2i(5 + x, 5), T0).building_id)
+		_batch(steps, data, wet, 150 + 50 * x)
 	steps.population.current = 4
 	var away := steps.duplicate(true)
 	var at := T0
@@ -1145,16 +1138,189 @@ func test_water_supply() -> void:
 	_check(same, "three bills while away = the same three bills playing in 7-second steps")
 
 	data.resources.wheat.erase("price")
-	for type_id in ["farm", "slow_farm", "crew_farm", "big_wet_farm"]:
+	for type_id in ["farm", "slow_farm", "crew_farm"]:
 		data.buildings.erase(type_id)
 	data.config["pricing"] = {"payback_hours": 10, "typical_tax_rate": 0.0}
 	# wet_farm: 2 workers x $15 x 1/60 h = $0.50, water 60 m³/h x 1/60 h x $2 = $2: $2.50 / 10
 	_check(Sim.unit_price(data, "wheat") == 25, "water is part of the price per unit ($0.25)")
 
 
-## Cost tags (plan.md §5.14): every stock knows what it cost to make, the cost moves with the
-## goods, and mixing averages it. Minimum wage $15; crew_farm 2 workers, 10 wheat per 60 s (wages
-## $0.50 a batch = 5 cents a wheat); crew_mill 3 workers, 10 wheat -> 8 flour in 90 s.
+## Own water (plan.md §5.13.1): a Water Treatment Plant cleans water_supply m³ an hour with all its
+## workers; buildings use it first and only the rest is metered on the public bill. Its water
+## costs its wages: 2 workers x $15 / 40 m³ = $0.75 a m³ (public $2).
+func test_own_water_plant() -> void:
+	var data := _bonus_data()
+	data.config["water"] = {"price_per_m3": 2.0, "billing_hours": 1, "tiers": [{"from": 0, "extra": 0.0}]}
+	data.buildings["wet_farm"] = {"category": "extractor", "build_cost": 0, "buildable": true, "max_workers": 2,
+		"water_per_hour": 60, "recipes": [{"id": "grow", "inputs": {}, "outputs": {"wheat": 10}, "duration": 60}]}
+	data.buildings["plant"] = {"category": "utility", "build_cost": 0, "buildable": true, "max_workers": 2,
+		"fixed_workers": true, "fixed_wage": true, "water_supply": 40,
+		"upgrades": [{"max_workers": 4, "water_supply": 100}]}
+	var state := Sim.new_game(data, T0)
+	var plant := Sim.find_building(state, Sim.build(state, data, "plant", Vector2i(3, 3), T0).building_id)
+	var farm := Sim.find_building(state, Sim.build(state, data, "wet_farm", Vector2i(5, 5), T0).building_id)
+	state.population.current = 1  # 1 of the plant's 2 workers (the older building hires first)
+	Sim.settle(state, data, T0)
+	_check(is_equal_approx(Sim.water_supply(state, data, plant, T0), 20.0), "1 of 2 workers: half its water (20 m³/h)")
+	state.population.current = 4
+	Sim.settle(state, data, T0)
+	_check(is_equal_approx(Sim.water_supply(state, data, plant, T0), 40.0) and is_equal_approx(Sim.own_water_price(state, data, T0), 0.75), "all workers: 40 m³/h at $0.75 a m³ (its wages)")
+	_check(is_equal_approx(Sim.public_water_use(state, data, T0), 0.0), "the farm is idle: nothing drawn, the plant's water is spare")
+	# A 60-hour batch (60 s each = 1 real hour): 60 m³/h, 40 from the plant at $0.75 + 20 public at $2.
+	var quote := Sim.batch_quote(state, data, farm, "grow", 60, "none", T0)
+	_check(is_equal_approx(float(quote.water), 7000.0), "the batch's water estimate: 40 x $0.75 + 20 x $2 = $70")
+	_batch(state, data, farm, 60)
+	_check(is_equal_approx(Sim.public_water_use(state, data, T0), 20.0) and is_equal_approx(Sim.water_cost_per_hour(state, data, farm, T0), 70.0), "the farm draws 60: the plant covers 40, the public supply 20 ($70 an hour)")
+	var cash := int(state.profile.currency)
+	Sim.settle(state, data, T0 + 3600)
+	_check(state.water_bills.size() == 1 and is_equal_approx(float(state.water_bills[0].m3), 20.0) and int(state.water_bills[0].cost) == 4000, "only the public 20 m³ are billed ($40)")
+	_check(int(state.profile.currency) == cash - 4000 - 3000, "and the plant's 2 workers are paid by the hour ($30)")
+
+	Sim.suspend(state, data, plant.id, T0 + 3600)
+	_check(is_equal_approx(Sim.own_water_total(state, data, T0 + 3600), 0.0), "a suspended plant cleans nothing")
+	Sim.resume(state, data, plant.id, T0 + 3600)
+
+	# One long absence = playing in short steps, with the plant and a farm that stops halfway.
+	var steps := Sim.new_game(data, T0)
+	Sim.build(steps, data, "plant", Vector2i(3, 3), T0)
+	var wet := Sim.find_building(steps, Sim.build(steps, data, "wet_farm", Vector2i(5, 5), T0).building_id)
+	steps.population.current = 4
+	Sim.settle(steps, data, T0)
+	_batch(steps, data, wet, 150)
+	var away := steps.duplicate(true)
+	var at := T0
+	while at < T0 + 3 * 3600 + 100:
+		at = minf(at + 7.0, T0 + 3 * 3600 + 100)
+		Sim.settle(steps, data, at)
+	Sim.settle(away, data, T0 + 3 * 3600 + 100)
+	var same: bool = steps.water_bills.size() == away.water_bills.size() and steps.profile.currency == away.profile.currency
+	for i in mini(steps.water_bills.size(), away.water_bills.size()):
+		same = same and int(steps.water_bills[i].cost) == int(away.water_bills[i].cost)
+	_check(same and steps.water_bills.size() == 3, "away = playing in 7-second steps (bills and cash)")
+
+	plant["level"] = 2  # upgraded: 4 workers clean 100 m³/h
+	_check(int(Sim.level_stat(data, plant, "water_supply", 0)) == 100, "Level 2 cleans 100 m³/h")
+
+
+## Electricity test data (plan.md §5.5): the office is City Hall with a 4 MW grid link reaching 3
+## tiles; a farm using 2 MW, a mill using 3 MW, a "lamp" farm using 1 MW, a 2 MW turbine (reach 2)
+## and a substation (reach 3). Power costs $30 a MWh, billed every hour.
+func _power_data() -> Dictionary:
+	var data := _bonus_data()
+	data.config["power"] = {"price_per_mwh": 30, "billing_hours": 1, "tiers": [{"from": 0, "extra": 0.0}]}
+	data.buildings.office["grid_mw"] = 4
+	data.buildings.office["power_radius"] = 3
+	for type_id in ["crew_farm", "crew_mill"]:
+		data.buildings[type_id] = data.buildings[type_id].duplicate(true)
+	data.buildings.crew_farm["power_mw"] = 2
+	data.buildings.crew_mill["power_mw"] = 3
+	data.buildings["lamp"] = data.buildings.crew_farm.duplicate(true)
+	data.buildings.lamp["power_mw"] = 1
+	data.buildings["turbine"] = {"category": "power", "build_cost": 0, "buildable": true, "power_supply": 2, "power_radius": 2}
+	data.buildings["sub"] = {"category": "power", "build_cost": 0, "buildable": true, "power_radius": 3}
+	data.buildings["atom"] = {"category": "power", "build_cost": 0, "buildable": false, "power_supply": 50, "power_radius": 3,
+		"coming_soon": "Needs College graduates."}
+	return data
+
+
+## Power (plan.md §5.5), Tropico-style: only inside the network around City Hall, oldest building
+## first, and a building that doesn't fit gets none and stops; own plants first, the rest billed.
+func test_power() -> void:
+	var data := _power_data()
+	var state := Sim.new_game(data, T0)
+	_check(Sim.power_on(data) and state.has("power_meter"), "a new game has a power meter")
+	var farm := Sim.find_building(state, Sim.build(state, data, "crew_farm", Vector2i(2, 2), T0).building_id)
+	var mill := Sim.find_building(state, Sim.build(state, data, "crew_mill", Vector2i(8, 8), T0).building_id)
+	var lamp := Sim.find_building(state, Sim.build(state, data, "lamp", Vector2i(1, 1), T0).building_id)
+	state.population.current = 10
+	state.inventory["wheat"] = 1000
+	Sim.settle(state, data, T0)
+	var quote := Sim.batch_quote(state, data, farm, "grow", 60, "none", T0)
+	_check(is_equal_approx(float(quote.power), 6000.0), "a 1-hour batch's power estimate: 2 MW x 1 h x $30 = $60")
+	_check(Sim.power_problem(farm) == "" and str(farm.power) == "", "an idle farm needs no power yet")
+	_batch(state, data, farm, 100)
+	_batch(state, data, mill, 50)
+	_batch(state, data, lamp, 100)
+	_check(Sim.power_problem(mill) == "no_grid" and Sim.workers_working(state, data, mill, T0) == 0.0, "the mill is outside City Hall's reach: no power, nobody works")
+	_check(str(farm.power) == "on" and str(lamp.power) == "on", "the farm and the lamp are inside it: powered")
+	var summary := Sim.power_summary(state, data, T0)
+	_check(is_equal_approx(float(summary.used), 3.0) and is_equal_approx(float(summary.public), 3.0), "3 MW used, all from the public grid")
+
+	Sim.build(state, data, "sub", Vector2i(3, 3), T0)  # its circle overlaps City Hall's: joined
+	Sim.build(state, data, "sub", Vector2i(6, 6), T0)  # overlaps the first one, and reaches the mill
+	_check(Sim.power_problem(mill) == "short", "in the network now, but the farm (older) took 2 of the 4 MW: 3 don't fit")
+	_check(str(lamp.power) == "on", "the newer lamp still fits in the 2 MW left")
+	_check(Sim.workers_working(state, data, mill, T0) == 0.0 and Sim.workers_working(state, data, farm, T0) == 2.0, "the mill doesn't work at all (no slowing down)")
+
+	Sim.build(state, data, "turbine", Vector2i(1, 2), T0)  # +2 MW of its own
+	_check(str(mill.power) == "on" and str(farm.power) == "on" and str(lamp.power) == "on", "with the turbine all three fit (6 MW)")
+	summary = Sim.power_summary(state, data, T0)
+	_check(is_equal_approx(float(summary.own), 2.0) and is_equal_approx(float(summary.public), 4.0), "own power first (2 MW), the public grid adds 4")
+	Sim.settle(state, data, T0 + 3600)
+	_check(state.power_bills.size() == 1 and is_equal_approx(float(state.power_bills[0].mwh), 4.0) and int(state.power_bills[0].cost) == 12000, "only the public 4 MWh are billed ($120)")
+	_check(int(Sim.stats(state).spending.power) == 12000 and Sim.cash_check(state).ok, "the bill is in the spending and the cash check adds up")
+	_check(_ready(mill, "flour") > 0, "the mill worked once it had power")
+
+	var check := Sim.can_build(state, data, "atom", Vector2i(4, 1), T0)
+	_check(not check.ok and check.error == "Needs College graduates.", "a coming-soon building can't be built, and says why")
+	var free := Sim.find_building(state, Sim.build(state, data, "sub", Vector2i(9, 0), T0 + 3600).building_id)
+	_check(not Sim.power_network(state, data, T0 + 3600).ids.has(free.id), "a substation whose circle touches nothing isn't joined")
+
+
+## Away = playing with power: the mill is short until the farm's batch ends, then gets its power.
+func test_power_away_matches_playing() -> void:
+	var data := _power_data()
+	var steps := Sim.new_game(data, T0)
+	var farm := Sim.find_building(steps, Sim.build(steps, data, "crew_farm", Vector2i(2, 2), T0).building_id)
+	var mill := Sim.find_building(steps, Sim.build(steps, data, "crew_mill", Vector2i(1, 2), T0).building_id)
+	steps.population.current = 10
+	steps.inventory["wheat"] = 1000
+	Sim.settle(steps, data, T0)
+	_batch(steps, data, farm, 30)  # 30 minutes
+	_batch(steps, data, mill, 20)  # 30 minutes of work, once it has power
+	_check(Sim.power_problem(mill) == "short", "2 + 3 MW don't fit in 4: the mill waits")
+	var away := steps.duplicate(true)
+	var early := steps.duplicate(true)
+	Sim.settle(early, data, T0 + 1700)
+	_check(_ready(Sim.find_building(early, mill.id), "flour") == 0, "nothing milled while it had no power")
+	var at := T0
+	while at < T0 + 5000:
+		at = minf(at + 7.0, T0 + 5000)
+		Sim.settle(steps, data, at)
+	Sim.settle(away, data, T0 + 5000)
+	var a := Sim.find_building(away, mill.id)
+	_check(_ready(a, "flour") == 160 and _ready(mill, "flour") == 160, "the mill made its whole batch after the farm stopped")
+	var same: bool = steps.profile.currency == away.profile.currency and steps.power_bills.size() == away.power_bills.size()
+	for i in mini(steps.power_bills.size(), away.power_bills.size()):
+		same = same and int(steps.power_bills[i].cost) == int(away.power_bills[i].cost)
+	_check(same and steps.power_bills.size() == 1, "away = playing in 7-second steps (power bills and cash)")
+
+
+## Saves from before electricity (version 11) get a power meter and free substations so their
+## buildings that use power are inside the network.
+func test_old_save_gets_power() -> void:
+	var data := _power_data()
+	var state := Sim.new_game(data, T0)
+	var mill := Sim.find_building(state, Sim.build(state, data, "crew_mill", Vector2i(8, 8), T0).building_id)
+	state.save_version = 11
+	state.erase("power_meter")
+	Sim.stats(state).spending.erase("power")
+	var result := SaveFormat.from_text(JSON.stringify(state), data)
+	_check(result.ok and int(result.state.save_version) == Sim.SAVE_VERSION, "a version 11 save loads")
+	var loaded: Dictionary = result.state
+	var subs := 0
+	for b in loaded.buildings:
+		subs += 1 if b.type == "sub" else 0
+	var network := Sim.power_network(loaded, data, T0)
+	_check(subs >= 1 and Sim.is_powered_cell(network, Vector2i(8, 8)), "it was given substations reaching the mill (%d)" % subs)
+	_check(loaded.has("power_meter") and Sim.stats(loaded).spending.has("power") and Sim.cash_check(loaded).ok, "with a power meter, a power line and a cash check that adds up")
+	_check(Sim.find_building(loaded, mill.id).get("power", "x") == "", "the idle mill needs no power yet")
+
+
+## Cost tags (plan.md §5.14): a batch's cost (ingredients + wages + water) is locked in when it
+## starts, and every unit collected carries its share. Minimum wage $15; crew_farm 2 workers, 10
+## wheat an "hour" of 60 s (wages $0.50 an hour = 5 cents a wheat); crew_mill 3 workers, 10
+## wheat -> 8 flour an "hour" of 90 s.
 func test_cost_tags() -> void:
 	var data := _bonus_data()
 	data.config["water"] = {"price_per_m3": 2.0, "billing_hours": 12, "tiers": [{"from": 0, "extra": 0.0}]}
@@ -1162,24 +1328,31 @@ func test_cost_tags() -> void:
 	var farm := Sim.find_building(state, Sim.build(state, data, "crew_farm", Vector2i(3, 3), T0).building_id)
 	state.population.current = 2
 	Sim.settle(state, data, T0)
-	Sim.settle(state, data, T0 + 120)  # 2 batches
-	_check(int(farm.storage.wheat) == 20 and is_equal_approx(float(farm.storage_cost.wheat), 100.0), "20 wheat made for $1.00 (wages only)")
+	var started := _batch(state, data, farm, 2)
+	_check(started.ok and is_equal_approx(float(farm.batch.cost), 100.0) and int(Sim.stats(state).spending.wages) == 100, "a 2-hour batch: 20 wheat for $1.00 of wages, paid at the start")
+	Sim.settle(state, data, T0 + 120)
 	Sim.collect(state, data, farm.id, T0 + 120)
-	_check(int(state.inventory.wheat) == 20 and is_equal_approx(Sim.average_cost(state, "wheat"), 5.0), "collected: the cost tag came along (5 cents each)")
+	_check(int(state.inventory.wheat) == 20 and is_equal_approx(Sim.average_cost(state, "wheat"), 5.0), "collected: each wheat carries its share (5 cents)")
 
 	var half := Sim.new_game(data, T0)
 	var slow := Sim.find_building(half, Sim.build(half, data, "crew_farm", Vector2i(3, 3), T0).building_id)
 	half.population.current = 1  # 1 of 2 workers: half speed
 	Sim.settle(half, data, T0)
+	_batch(half, data, slow, 2)
+	_check(int(Sim.stats(half).spending.wages) == 100, "half the workers: the same wages (they just take longer)")
 	Sim.settle(half, data, T0 + 120)
-	_check(int(slow.storage.wheat) == 10 and is_equal_approx(float(slow.storage_cost.wheat), 50.0), "half the workers: half as much, at the same cost per unit")
+	_check(_ready(slow, "wheat") == 10, "half as much made in the same time")
+	Sim.collect(half, data, slow.id, T0 + 120)
+	_check(is_equal_approx(Sim.average_cost(half, "wheat"), 5.0), "at the same cost per unit")
 
 	state.population.current = 5  # the mill's 3 workers too
 	var mill := Sim.find_building(state, Sim.build(state, data, "crew_mill", Vector2i(5, 5), T0 + 120).building_id)
-	Sim.enqueue(state, data, mill.id, "mill", T0 + 120)
-	_check(is_equal_approx(float(mill.queue[0].input_cost.wheat), 50.0) and is_equal_approx(float(state.inventory_cost.wheat), 50.0), "a queued batch takes its wheat's cost with it (10 x 5 cents)")
-	Sim.settle(state, data, T0 + 210)  # 90 s later: wages 3 x $15 x 1.5 min = $1.125
-	_check(int(mill.storage.flour) == 8 and is_equal_approx(float(mill.storage_cost.flour), 50.0 + 112.5), "8 flour made for $0.50 of wheat + $1.125 wages")
+	_batch(state, data, mill, 1, "none", T0 + 120)
+	# 10 wheat at 5 cents + wages 3 x $15 x 1.5 min = $1.125, paid in whole cents: $1.13
+	_check(is_equal_approx(float(mill.batch.cost), 50.0 + 113.0) and is_equal_approx(float(state.inventory_cost.wheat), 50.0), "the batch takes its wheat's cost with it (10 x 5 cents), plus its wages")
+	Sim.settle(state, data, T0 + 210)
+	Sim.collect(state, data, mill.id, T0 + 210)
+	_check(int(state.inventory.flour) == 8 and is_equal_approx(float(state.inventory_cost.flour), 163.0), "8 flour made for $0.50 of wheat + $1.13 wages")
 
 	state.inventory["wheat"] = int(state.inventory.wheat) + 10  # 10 bought at 15 cents each
 	state.inventory_cost["wheat"] = float(state.inventory_cost.wheat) + 150.0
@@ -1189,26 +1362,27 @@ func test_cost_tags() -> void:
 	_check(is_equal_approx(Sim.average_cost(state, "wheat"), 10.0), "selling some keeps the average")
 	state.inventory["wheat"] = int(state.inventory.wheat) + 4  # 4 more bought at 10 cents: 20 wheat
 	state.inventory_cost["wheat"] = float(state.inventory_cost.wheat) + 40.0
-	Sim.enqueue(state, data, mill.id, "mill", T0 + 210)
-	Sim.enqueue(state, data, mill.id, "mill", T0 + 210)  # all 20 wheat now in 2 batches
-	Sim.cancel_job(state, data, mill.id, 1, T0 + 210)  # the waiting one: all 10 wheat back
-	_check(int(state.inventory.wheat) == 10 and is_equal_approx(float(state.inventory_cost.wheat), 100.0), "cancelling gives the wheat back with its cost tag (10 x 10 cents)")
 
-	Sim.set_bonus(state, data, mill.id, "good", T0 + 210)
-	var running := Sim.batch_running_cost(state, data, mill, data.buildings.crew_mill.recipes[0])
-	_check(is_equal_approx(float(running.wages), 112.5 * 1.4), "a +40% bonus raises the wages in the cost by 40%")
-	var breakdown := Sim.cost_breakdown(state, data, mill, T0 + 210)
-	_check(breakdown.output == "flour" and is_equal_approx(float(breakdown.total), (100.0 + 157.5) / 8.0) and is_equal_approx(float(breakdown.ingredients[0].each), 10.0), "cost per unit: the batch being made's wheat (10 each) + wages, ÷ 8 flour")
-	_check(int(breakdown.price) == 300 and is_equal_approx(float(breakdown.making_earns), 8 * 300 - 10 * 200 - 157.5), "and what milling earns over selling the wheat")
+	data.config["bonus_output"] = {"none": 0.0, "small": 0.1, "good": 0.2, "big": 0.3}
+	var quote := Sim.batch_quote(state, data, mill, "mill", 2, "good", T0 + 210)
+	# 20 wheat at 10 cents + wages 3 x $21 x 3 min = $3.15: $5.15 for 16 x 1.2 = 19 flour
+	_check(int(quote.units.flour) == 19 and int(quote.wages) == 315 and is_equal_approx(float(quote.total), 515.0), "quote: 2 hours with a Good bonus: 19 flour (+20%), wages $3.15 (+40%), $5.15 in all")
+	_check(is_equal_approx(float(quote.per_unit), 515.0 / 19.0) and is_equal_approx(float(quote.ingredients[0].each), 10.0) and int(quote.price) == 300, "cost per unit, what each ingredient costs, and the selling price")
+	_batch(state, data, mill, 2, "good", T0 + 210)
+	Sim.settle(state, data, T0 + 300)  # 1 of its 2 hours made
+	var cash := int(state.profile.currency)
+	var cancelled := Sim.cancel_batch(state, data, mill.id, T0 + 300)
+	_check(int(state.inventory.wheat) == 5 and is_equal_approx(float(state.inventory_cost.wheat), 50.0), "cancelling gives back a quarter of the wheat (half of the hour not made), with its cost tag")
+	_check(int(state.profile.currency) == cash + 78 and int(cancelled.money) == 78 and int(Sim.stats(state).income.batch_refunds) == 78, "and a quarter of the wages ($0.78), counted as money in")
+	Sim.collect(state, data, mill.id, T0 + 300)
+	_check(int(state.inventory.flour) == 8 + 9 and is_equal_approx(float(state.inventory_cost.flour), 163.0 + 515.0 * 9.0 / 19.0), "the hour made (9 flour) keeps the batch's cost per unit")
 
 	data.buildings["wet_farm"] = {"category": "extractor", "build_cost": 0, "buildable": true, "max_workers": 2,
-		"storage_cap": 100, "water_per_hour": 60, "recipes": [{"id": "grow", "inputs": {}, "outputs": {"wheat": 10}, "duration": 60}]}
+		"water_per_hour": 60, "recipes": [{"id": "grow", "inputs": {}, "outputs": {"wheat": 10}, "duration": 60}]}
 	state.population.current = 7
-	var wet := Sim.find_building(state, Sim.build(state, data, "wet_farm", Vector2i(7, 7), T0 + 210).building_id)
-	Sim.settle(state, data, T0 + 270)  # one batch: wages 50 cents + 1 m³ x $2
-	_check(is_equal_approx(float(wet.storage_cost.wheat), 250.0), "water used goes into the cost tag ($0.50 wages + $2.00 water)")
-	Sim.suspend(state, data, wet.id, T0 + 270)
-	_check(wet.storage.is_empty() and int(state.inventory.wheat) == 20 and is_equal_approx(float(state.inventory_cost.wheat), 100.0 + 250.0), "suspending sends the goods to the warehouse with their cost tags")
+	var wet := Sim.find_building(state, Sim.build(state, data, "wet_farm", Vector2i(7, 7), T0 + 300).building_id)
+	_batch(state, data, wet, 1, "none", T0 + 300)
+	_check(is_equal_approx(float(wet.batch.cost), 250.0), "the water it will use is part of its cost ($0.50 wages + 1 m³ x $2)")
 
 
 ## Older saves get cost tags at the standard cost of making things.
@@ -1222,12 +1396,20 @@ func test_old_save_gets_cost_tags() -> void:
 	var old := JSON.parse_string(SaveFormat.to_text(state, T0)) as Dictionary
 	old.save_version = 4
 	old.erase("inventory_cost")
+	for b in old.buildings:  # what a version 4 save looked like
+		b.erase("batch")
+		b["queue"] = []
+		b["blocked"] = false
 	var result := SaveFormat.from_text(JSON.stringify(old), data)
 	_check(result.ok and is_equal_approx(Sim.average_cost(result.state, "wheat"), 5.0), "old stock gets the standard cost of making it (5 cents a wheat)")
 	var real := {"resources": GameDataScript.load_json("res://data/resources.json"),
 		"buildings": GameDataScript.load_json("res://data/buildings.json"),
 		"config": GameDataScript.load_json("res://data/game_config.json")}
-	_check(is_equal_approx(Sim.standard_unit_cost(real, "wheat"), 30.0) and is_equal_approx(Sim.standard_unit_cost(real, "flour"), 75.0) and is_equal_approx(Sim.standard_unit_cost(real, "bread"), 4400.0 / 24.0), "real data: wheat $0.30, flour $0.75, bread $1.83 (the plan's example)")
+	# Plus each hour's power at the grid price (plan.md §5.5): a Mill 3 MW, a Bakery 4 MW.
+	var mwh := Sim.cents(float(real.config.power.price_per_mwh))
+	var flour := 750.0 + 3 * mwh / 32.0
+	var bread := (20 * flour + 12000.0 + 4 * mwh) / 15.0
+	_check(is_equal_approx(Sim.standard_unit_cost(real, "wheat"), 300.0) and is_equal_approx(Sim.standard_unit_cost(real, "flour"), flour) and is_equal_approx(Sim.standard_unit_cost(real, "bread"), bread), "real data: wheat $3.00, flour $7.50, bread $18.00 (plan.md §5.14), plus power")
 
 
 ## Retail prices come from costs (plan.md §5.12): ingredients + standard wages + building share
@@ -1291,13 +1473,12 @@ func test_real_data_files() -> void:
 	for type_id in buildings:
 		var def: Dictionary = buildings[type_id]
 		if def.category in ["extractor", "processor"]:
-			_check(def.has("storage_cap") and def.recipes.size() > 0, "%s has storage and recipes" % type_id)
+			_check(def.recipes.size() > 0, "%s has recipes" % type_id)
 			for recipe in def.recipes:
-				_check(recipe.duration > 0, "%s timer > 0" % recipe.id)
+				_check(float(recipe.duration) == 3600.0, "%s is one hour of work" % recipe.id)
 				for res in recipe.inputs.keys() + recipe.outputs.keys():
 					_check(resources.has(res), "%s uses known resource '%s'" % [recipe.id, res])
-		if def.category == "processor":
-			_check(def.get("queue_size", 0) > 0, "%s has a queue" % type_id)
+	_check(int(config.batch.max_hours) >= int(config.batch.default_hours), "batch lengths make sense")
 	for entry in config.starting_buildings:
 		_check(buildings.has(entry.type), "starting building '%s' exists" % entry.type)
 	var tabs := {}
@@ -1417,14 +1598,13 @@ func test_supermarket_rules() -> void:
 	_check(state.inventory.flour == 100, "asking changes nothing")
 	Sim.stock_shelf(state, data, market.id, "flour", 10, "normal", T0)
 	check = Sim.can_stock_shelf(state, data, market.id, "flour", 10, "normal", T0)
-	_check(not check.ok and check.error.contains("already on a shelf"), "each product sells on one shelf at a time")
+	_check(not check.ok and check.error.contains("already on a shelf in this store"), "a product goes on only one shelf per store")
 	Sim.stock_shelf(state, data, market.id, "bread", 10, "normal", T0)
 	check = Sim.can_stock_shelf(state, data, market.id, "cake", 10, "normal", T0)
 	_check(not check.ok and check.error.begins_with("Every shelf is full"), "only as many products as shelves")
 	var second := Sim.find_building(state, Sim.build(state, data, "market", Vector2i(6, 6), T0).building_id)
-	check = Sim.can_stock_shelf(state, data, second.id, "flour", 10, "normal", T0)
-	_check(not check.ok and check.error.contains("already on a shelf"), "...in the whole village, not just this store")
-	_check(Sim.can_stock_shelf(state, data, second.id, "cake", 10, "normal", T0).ok, "another store can sell another product")
+	_check(Sim.can_stock_shelf(state, data, second.id, "flour", 10, "normal", T0).ok, "another store can sell the same product on its own")
+	_check(Sim.can_stock_shelf(state, data, second.id, "cake", 10, "normal", T0).ok, "...or another product")
 	state.population.current = 0
 	check = Sim.can_stock_shelf(state, data, second.id, "cake", 10, "normal", T0)
 	_check(not check.ok and check.error.begins_with("Nobody lives"), "nobody to buy without people")
@@ -1461,6 +1641,54 @@ func test_supermarket_away_matches_playing() -> void:
 	_check(_difference(played.buildings[-1], away.buildings[-1], "") == "", "and the shelves end up the same")
 	var report: Dictionary = Sim.settle(_shop_town()[0], data, T0 + 60)  # nothing on the shelves
 	_check(not report.has("store_sales"), "no sales when nothing is on the shelves")
+
+
+## Two stores selling the same product: each sells on its own, sharing the village's appetite.
+## 10 people buy 10 flour an hour; store A has 5 on its shelf, store B 10.
+func _two_stores() -> Array:
+	var town := _shop_town()
+	var state: Dictionary = town[0]
+	var data: Dictionary = town[1]
+	var a: Dictionary = town[2]
+	var b := Sim.find_building(state, Sim.build(state, data, "market", Vector2i(6, 6), T0).building_id)
+	Sim.stock_shelf(state, data, a.id, "flour", 5, "normal", T0)
+	return [state, data, a, b]
+
+
+func test_stores_share_a_product() -> void:
+	var town := _two_stores()
+	var state: Dictionary = town[0]
+	var data: Dictionary = town[1]
+	var a: Dictionary = town[2]
+	var b: Dictionary = town[3]
+	var preview := Sim.stock_preview(state, data, b.id, "flour", 10, "normal", T0)
+	_check(is_equal_approx(float(preview.per_hour), 5.0) and int(preview.other_stores) == 1, "preview: shared with the other store, 5 an hour")
+	_check(Sim.stock_shelf(state, data, b.id, "flour", 10, "normal", T0).ok, "the second store puts flour on its own shelf")
+	_check(int(Sim.selling_counts(state, data, T0).get("flour", 0)) == 2, "2 stores sell flour")
+	Sim.settle(state, data, T0 + 1800)
+	_check(is_equal_approx(Sim.shelf_sold_now(state, data, a, 0, T0 + 1800), 2.5) and is_equal_approx(Sim.shelf_sold_now(state, data, b, 0, T0 + 1800), 2.5), "they share the 10 an hour: 5 each")
+	Sim.settle(state, data, T0 + 3600)
+	_check(Sim.shelves(data, a)[0].is_empty() and is_equal_approx(Sim.shelf_sold_now(state, data, b, 0, T0 + 3600), 5.0), "A sells out after an hour, B has sold 5")
+	_check(is_equal_approx(Sim.shelf_time_left(state, data, b, 0, T0 + 3600), 1800.0), "B now sells alone, at 10 an hour: 30 minutes left")
+	Sim.settle(state, data, T0 + 5400)
+	_check(Sim.shelves(data, b)[0].is_empty() and int(Sim.stats(state).sold.get("flour", 0)) == 15, "B sells out at 1.5 hours: 15 flour sold in all")
+	_check(Sim.foods_selling(state, data, T0) <= 1, "the same food in two stores still counts as one food for happiness")
+
+
+func test_stores_sharing_away_matches_playing() -> void:
+	var played: Array = _two_stores()
+	var away: Array = _two_stores()
+	var data: Dictionary = played[1]
+	for town in [played, away]:
+		Sim.stock_shelf(town[0], data, town[3].id, "flour", 10, "sale", T0)
+		Sim.stock_shelf(town[0], data, town[3].id, "bread", 23, "luxury", T0)
+	var t := T0
+	while t < T0 + 9000:
+		t += 7.0
+		Sim.settle(played[0], data, t)
+	Sim.settle(away[0], data, t)
+	_check(played[0].profile.currency == away[0].profile.currency, "two stores sharing flour: one long absence pays what playing in 7-second steps does")
+	_check(_difference(played[0].buildings, away[0].buildings, "") == "", "and the shelves end up the same")
 
 
 func test_supermarket_report() -> void:
@@ -1665,6 +1893,200 @@ func test_happiness_stops_and_restarts_growth() -> void:
 	_check(int(state.population.current) == 11, "the first person arrives 20 s after the store opens")
 
 
+# --- Job seekers (move_in_only_for_jobs, plan.md §5.6) -------------------------------
+
+## Test data where newcomers are job seekers: one every 10 s, only for open jobs, only while
+## a home has room (the starting house: room for 10 adults). Nobody lives here at the start.
+func _seeker_data() -> Dictionary:
+	var data := _data()
+	data.config["move_in_only_for_jobs"] = true
+	return data
+
+
+func test_job_seekers_fill_open_jobs() -> void:
+	var data := _seeker_data()
+	var state := Sim.new_game(data, T0)
+	Sim.settle(state, data, T0 + 1000)
+	_check(int(state.population.current) == 0, "no jobs: no job seekers, however long you wait")
+	var farm := Sim.find_building(state, Sim.build(state, data, "crew_farm", Vector2i(5, 5), T0 + 1000).building_id)
+	Sim.settle(state, data, T0 + 1009)
+	_check(int(state.population.current) == 0, "the 10-second wait starts when the jobs open")
+	Sim.settle(state, data, T0 + 1010)
+	_check(int(state.population.current) == 1, "the first job seeker arrives 10 s after the jobs open")
+	Sim.settle(state, data, T0 + 2000)
+	_check(int(state.population.current) == 2 and Sim.hired(farm) == 2, "2 jobs: 2 job seekers, both hired, then nobody else")
+	_check(int(Sim.people_stats(state).moved_in) == 2, "they count as moved in")
+	Sim.build(state, data, "crew_mill", Vector2i(6, 6), T0 + 2000)
+	Sim.build(state, data, "crew_mill", Vector2i(7, 7), T0 + 2000)
+	Sim.build(state, data, "crew_mill", Vector2i(8, 8), T0 + 2000)
+	_check(is_equal_approx(Sim.next_arrival_at(state, data, T0 + 2000), T0 + 2010), "next_arrival_at: 10 s after the new jobs open")
+	Sim.settle(state, data, T0 + 9000)
+	_check(int(state.population.current) == 10, "11 jobs but room for 10 adults: they stop when the homes are full")
+	_check(is_inf(Sim.next_arrival_at(state, data, T0 + 9000)), "next_arrival_at: none while the homes are full")
+
+
+## With move_in_group_size, job seekers arrive together: up to a full group each time, but never
+## more than the open jobs (or the homes) allow. Time away = playing through.
+func test_job_seekers_arrive_in_groups() -> void:
+	var data := _seeker_data()
+	data.config["move_in_group_size"] = 5
+	var state := Sim.new_game(data, T0)
+	Sim.build(state, data, "crew_farm", Vector2i(5, 5), T0)  # 2 jobs
+	_check(Sim.next_arrival_count(state, data, T0) == 2, "2 jobs open: the next group brings only 2")
+	Sim.settle(state, data, T0 + 10)
+	_check(int(state.population.current) == 2, "...and they arrive together after 10 s")
+	_check(Sim.next_arrival_count(state, data, T0 + 10) == 0, "jobs filled: nobody else is coming")
+	for cell in [Vector2i(6, 6), Vector2i(7, 7), Vector2i(8, 8)]:
+		Sim.build(state, data, "crew_mill", cell, T0 + 10)  # 9 more jobs, room for only 8 more adults
+	var played := state.duplicate(true)
+	_check(Sim.next_arrival_count(state, data, T0 + 10) == 5, "9 jobs open: a full group of 5 comes next")
+	Sim.settle(state, data, T0 + 19)
+	_check(int(state.population.current) == 2, "nobody before the 10 s are up")
+	Sim.settle(state, data, T0 + 20)
+	_check(int(state.population.current) == 7 and int(Sim.people_stats(state).moved_in) == 7, "5 arrive at once")
+	_check(Sim.next_arrival_count(state, data, T0 + 20) == 3, "room for only 3 more adults: the next group is 3")
+	Sim.settle(state, data, T0 + 100)
+	_check(int(state.population.current) == 10, "then 3 more: the homes are full")
+	var t := T0 + 10
+	while t < T0 + 100:
+		t = minf(t + 3.0, T0 + 100)
+		Sim.settle(played, data, t)
+	_check(int(played.population.current) == 10 and str(Sim.people_stats(played)) == str(Sim.people_stats(state)), "playing in 3-second steps gives the same")
+
+
+## Adults already here take open jobs first; job seekers only come for the rest.
+func test_job_seekers_come_after_the_unemployed() -> void:
+	var data := _seeker_data()
+	var state := Sim.new_game(data, T0)
+	state.population.current = 3
+	Sim.build(state, data, "crew_farm", Vector2i(5, 5), T0)  # 2 jobs: 1 adult left without one
+	Sim.settle(state, data, T0 + 1000)
+	_check(int(state.population.current) == 3, "an adult is out of work: no job seekers")
+	Sim.build(state, data, "crew_mill", Vector2i(6, 6), T0 + 1000)  # 3 more jobs: 1 for him, 2 open
+	Sim.settle(state, data, T0 + 2000)
+	var e := Sim.employment(state, data, T0 + 2000)
+	_check(int(state.population.current) == 5 and int(e.unemployed) == 0 and int(e.open_jobs) == 0, "2 job seekers for the 2 jobs nobody here could take")
+
+
+## Happiness bands set the job seekers' speed (move_in) apart from the babies' speed.
+func test_job_seekers_need_happiness() -> void:
+	var data := _seeker_data()
+	data.config["happiness"] = {"needs_from_population": 0, "food_scores": [0.0, 1.0], "weights": {"food": 1},
+		"growth_speeds": [{"from": 0, "speed": 0.5, "move_in": 0.0}, {"from": 0.5, "speed": 1.0}]}
+	var state := Sim.new_game(data, T0)
+	Sim.build(state, data, "crew_farm", Vector2i(5, 5), T0)
+	var happy := Sim.happiness(state, data, T0)
+	_check(happy.move_in_speed == 0.0 and happy.growth_speed == 0.5, "no food: babies at half speed, no job seekers")
+	Sim.settle(state, data, T0 + 1000)
+	_check(int(state.population.current) == 0 and is_inf(Sim.next_arrival_at(state, data, T0 + 1000)), "too unhappy: open jobs stay open")
+	data.config.happiness.weights = {}  # nothing counts: 100%, the top band (no move_in: same as speed)
+	_check(Sim.happiness(state, data, T0 + 1000).move_in_speed == 1.0, "a band without move_in uses its birth speed")
+	Sim.settle(state, data, T0 + 1000.5)  # happiness is read at the start of each piece of time
+	Sim.settle(state, data, T0 + 1011)
+	_check(int(state.population.current) == 1, "happy again: the wait starts over and the first one comes")
+
+
+## Job seekers while away = playing through it, with jobs and homes opening partway.
+func test_job_seekers_away_matches_playing() -> void:
+	var data := _seeker_data()
+	data.buildings.slow_farm["max_workers"] = 2
+	var played := Sim.new_game(data, T0)
+	for x in 3:
+		Sim.build(played, data, "crew_mill", Vector2i(x, 5), T0)
+	Sim.build(played, data, "crew_farm", Vector2i(4, 5), T0)
+	Sim.build(played, data, "slow_farm", Vector2i(5, 5), T0)  # 2 jobs from T0 + 5
+	Sim.build(played, data, "cabin", Vector2i(8, 8), T0)  # room for 6 more adults from T0 + 200
+	var away := played.duplicate(true)
+	var t := T0
+	while t < T0 + 3000:
+		t += 7.0
+		Sim.settle(played, data, t)
+	Sim.settle(away, data, t)
+	_check(int(away.population.current) == 13, "13 jobs, room for 16: 13 job seekers")
+	var same: bool = played.population.current == away.population.current and played.profile.currency == away.profile.currency
+	same = same and is_equal_approx(float(played.population.growth_anchor), float(away.population.growth_anchor))
+	for i in played.buildings.size():
+		same = same and Sim.hired(played.buildings[i]) == Sim.hired(away.buildings[i]) and played.buildings[i].storage == away.buildings[i].storage
+	_check(same, "one long absence = playing in 7-second steps (people, hired, storage, cash)")
+	var halfway := Sim.new_game(data, T0)
+	for x in 3:
+		Sim.build(halfway, data, "crew_mill", Vector2i(x, 5), T0)
+	Sim.settle(halfway, data, T0 + 100)
+	_check(int(halfway.population.current) == 9, "9 jobs: 9 job seekers, one every 10 s (the last at T0 + 90)")
+
+
+## Migrant workers who don't need a home (move_in_needs_home false): 10 adults fill the starting
+## house (room for 10), so migrants for the open jobs live in Makeshift Huts.
+func _migrant_data() -> Dictionary:
+	var data := _seeker_data()
+	data.config["move_in_needs_home"] = false
+	data.buildings["hut"] = {"category": "residential", "build_cost": 0, "buildable": false, "households": 1, "hut": true}
+	return data
+
+
+## 10 adults in a full house, 14 jobs (4 mills + a farm): 4 posts open. Returns the state.
+func _migrant_town(data: Dictionary) -> Dictionary:
+	var state := Sim.new_game(data, T0)
+	state.population.current = 10
+	for x in 4:
+		Sim.build(state, data, "crew_mill", Vector2i(x, 5), T0)
+	Sim.build(state, data, "crew_farm", Vector2i(5, 5), T0)
+	return state
+
+
+func _huts(state: Dictionary) -> int:
+	return state.buildings.filter(func(b): return b.type == "hut").size()
+
+
+func test_migrants_live_in_huts() -> void:
+	var data := _migrant_data()
+	var state := _migrant_town(data)
+	Sim.settle(state, data, T0 + 39)
+	_check(int(state.population.current) == 13, "homes full, jobs open: migrants still come, one every 10 s")
+	Sim.settle(state, data, T0 + 1000)
+	var e := Sim.employment(state, data, T0 + 1000)
+	_check(int(state.population.current) == 14 and int(e.open_jobs) == 0, "they stop when every job is filled (14 adults, 14 jobs)")
+	var homes := Sim.housing(state, data, T0 + 1000)
+	_check(int(homes.homeless) == 2 and _huts(state) == 2, "7 households, room for 5: 2 live in Makeshift Huts")
+	_check(is_inf(Sim.next_arrival_at(state, data, T0 + 1000)), "next_arrival_at: none once the jobs are filled")
+	var needs := _migrant_data()
+	needs.config["move_in_needs_home"] = true
+	var housed := _migrant_town(needs)
+	Sim.settle(housed, needs, T0 + 1000)
+	_check(int(housed.population.current) == 10, "move_in_needs_home true: nobody comes while the homes are full")
+
+
+## Huts lower the Housing need; below the move-in band migrants stop coming.
+func test_migrants_stop_when_unhappy() -> void:
+	var data := _migrant_data()
+	data.config["happiness"] = {"needs_from_population": 0, "weights": {"housing": 1},
+		"growth_speeds": [{"from": 0, "speed": 0.0, "move_in": 0.0}, {"from": 0.8, "speed": 1.0}]}
+	var state := _migrant_town(data)
+	Sim.settle(state, data, T0 + 1000)
+	# 12 adults = 6 households, 1 in a hut: 83%, still coming. 13 adults = 7 households, 2 in huts: 71%.
+	_check(int(state.population.current) == 13, "the 13th migrant brings happiness under 80%: no more come (13 people)")
+	_check(is_inf(Sim.next_arrival_at(state, data, T0 + 1000)), "next_arrival_at: none while too unhappy, though a job is open")
+
+
+## Migrants and huts while away = playing through it; a new home later takes them out of the huts.
+func test_migrants_away_matches_playing() -> void:
+	var data := _migrant_data()
+	var played := _migrant_town(data)
+	Sim.build(played, data, "cabin", Vector2i(8, 8), T0)  # room for 3 more households from T0 + 200
+	var away := played.duplicate(true)
+	var t := T0
+	while t < T0 + 3000:
+		t += 7.0
+		Sim.settle(played, data, t)
+	Sim.settle(away, data, t)
+	var same: bool = played.population.current == away.population.current and played.profile.currency == away.profile.currency
+	same = same and played.buildings.size() == away.buildings.size()
+	for i in mini(played.buildings.size(), away.buildings.size()):
+		same = same and played.buildings[i].type == away.buildings[i].type and Sim.hired(played.buildings[i]) == Sim.hired(away.buildings[i])
+	_check(same, "one long absence = playing in 7-second steps (people, buildings, hired, cash)")
+	_check(int(away.population.current) == 14 and _huts(away) == 0 and _huts(played) == 0, "once the cabin is built, the migrants leave their huts for real homes")
+
+
 # --- Births, children & deaths (plan.md §5.6) ----------------------------------------
 
 ## Test data with births and deaths and no immigration: 10 founding adults in the starting house
@@ -1728,24 +2150,26 @@ func test_deaths_in_proportion() -> void:
 	_check(Sim.adults(town) == 1 and Sim.hired(farm) == 1, "a worker died: the farm has one worker left")
 
 
-## Babies need a free child place in a household with a real home: 2 per household. Homeless
-## households (no home for them) have none.
-func test_babies_need_child_places() -> void:
+## Babies need a free child place: 2 per family (household). A house isn't needed: homeless
+## families have child places and babies too.
+func test_babies_need_a_child_place() -> void:
 	var data := _life_data(0.1, 0.0)
-	var state := Sim.new_game(data, T0)  # 10 adults: 5 households in the house, 10 child places
-	state.population.current = 24  # 14 adults (7 households, 2 of them homeless) + 10 children
-	state.population.children = [{"count": 10, "grows_up_at": T0 + 900000}]
+	var state := Sim.new_game(data, T0)  # room for 5 households in the house
+	state.population.current = 28  # 14 adults (7 households, 2 of them homeless) + 14 children
+	state.population.children = [{"count": 14, "grows_up_at": T0 + 900000}]
+	_check(int(Sim.housing(state, data, T0).homeless) == 2, "2 households have no home")
+	_check(int(Sim.housing(state, data, T0).child_places) == 14, "7 families x 2: the homeless have child places too")
 	Sim.settle(state, data, T0 + 36000)
-	_check(int(Sim.people_stats(state).born) == 0, "every place taken (5 housed households x 2): no babies, however long")
-	_check(int(Sim.housing(state, data, T0 + 36000).homeless) == 2, "2 households have no home")
-	Sim.build(state, data, "home", Vector2i(5, 5), T0 + 36000)  # room for the 2 homeless households
-	_check(int(Sim.housing(state, data, T0 + 36000).child_places) == 14, "housed, they have child places too")
-	Sim.settle(state, data, T0 + 36000 + 3600)
-	_check(int(Sim.people_stats(state).born) >= 1, "so babies come again")
-	# Only adults with a home have babies: 14 adults, room for 10 of them, no children yet.
+	_check(int(Sim.people_stats(state).born) == 0, "every family has 2 children: no babies, however long")
+	var homeless := Sim.new_game(data, T0)
+	homeless.population.current = 24  # 14 adults + 10 children: the homeless families have room
+	homeless.population.children = [{"count": 10, "grows_up_at": T0 + 900000}]
+	Sim.settle(homeless, data, T0 + 3600)
+	_check(int(Sim.people_stats(homeless).born) >= 1, "families without a house still have babies")
+	# All adults have babies, housed or not: 14 adults, room in homes for 10, no children yet.
 	var crowded := Sim.new_game(data, T0)
 	crowded.population.current = 14
-	_check(is_equal_approx(Sim.next_birth_at(crowded, data, T0), T0 + 3600.0), "10 housed adults x 0.1 an hour: a baby in an hour (the 4 homeless add none)")
+	_check(is_equal_approx(Sim.next_birth_at(crowded, data, T0), T0 + 3600.0 / 1.4), "14 adults x 0.1 an hour: a baby in 1/1.4 of an hour (the 4 homeless count too)")
 
 
 ## Demolishing a home: nobody leaves. Its households move into other homes, or become homeless
@@ -1883,6 +2307,26 @@ func test_housing_need() -> void:
 	_check(float(happy.leave_per_hour) == 0.0, "80%: nobody leaves")
 
 
+## On top of the Housing need, every household in a hut takes a share off (up to a limit).
+func test_homeless_penalty() -> void:
+	var data := _leaving_data(0.0, 0.0)
+	data.config.happiness["homeless_penalty"] = {"per_household": 0.02, "max": 0.3}
+	var state := Sim.new_game(data, T0)  # the house: 5 households
+	var happy := Sim.happiness(state, data, T0)
+	_check(float(happy.homeless_penalty) == 0.0 and float(happy.score) == 1.0, "everyone has a home: no penalty")
+	state.population.current = 16  # 8 households: 3 homeless
+	happy = Sim.happiness(state, data, T0)
+	_check(is_equal_approx(float(happy.homeless_penalty), 0.06), "3 households in huts: 2% each = 6% off")
+	_check(is_equal_approx(float(happy.score), 0.625 - 0.06), "score = Housing need (5 of 8) minus the penalty")
+	state.population.current = 50  # 25 households: 20 homeless
+	happy = Sim.happiness(state, data, T0)
+	_check(is_equal_approx(float(happy.homeless_penalty), 0.3), "20 households in huts: at most 30% off")
+	_check(float(happy.score) == 0.0, "the score never goes below 0 (20% Housing need - 30%)")
+	data.config.happiness.needs_from_population = 100
+	happy = Sim.happiness(state, data, T0)
+	_check(float(happy.homeless_penalty) == 0.0 and float(happy.score) == 1.0, "while needs don't count, huts don't either")
+
+
 ## An unhappy village loses people: the homeless first, workers keep their posts; time away
 ## gives the same result as playing through it.
 func test_unhappy_people_leave() -> void:
@@ -1904,6 +2348,29 @@ func test_unhappy_people_leave() -> void:
 		Sim.settle(played, data, t)
 	_check(int(played.population.current) == int(state.population.current) and str(Sim.people_stats(played)) == str(Sim.people_stats(state)), "4 hours away = 4 hours played (%d vs %d people)" % [int(state.population.current), int(played.population.current)])
 	_check(int(Sim.people_stats(state).moved_away) >= 6, "about 7 people left in 4 hours")
+
+
+## With leave_group_size, people wait until a whole group is ready, then leave together, at the
+## moment settling predicts. Time away = playing through.
+func test_unhappy_people_leave_in_groups() -> void:
+	var data := _leaving_data(0.0, 0.0)
+	data.config.happiness["leave_group_size"] = 5
+	var state := Sim.new_game(data, T0)
+	state.population.current = 60  # 25 households homeless: 3% an hour = 1.8 an hour, a group of 5 in 10000 s
+	Sim.settle(state, data, T0)
+	var played := state.duplicate(true)
+	Sim.settle(state, data, T0 + 9990)
+	_check(int(state.population.current) == 60, "nobody leaves before a whole group is ready (%d people)" % int(state.population.current))
+	var report := Sim.settle(state, data, T0 + 10001)
+	_check(int(state.population.current) == 55 and int(report.get("moved_away", 0)) == 5, "then 5 leave at once")
+	Sim.settle(state, data, T0 + 8 * 3600)
+	var t := T0
+	while t < T0 + 8 * 3600:
+		t = minf(t + 7.0, T0 + 8 * 3600)
+		Sim.settle(played, data, t)
+	var left := int(Sim.people_stats(state).moved_away)
+	_check(left % 5 == 0 and left >= 10, "only whole groups leave (%d in 8 hours)" % left)
+	_check(int(played.population.current) == int(state.population.current) and str(Sim.people_stats(played)) == str(Sim.people_stats(state)), "8 hours away = 8 hours played (%d vs %d people)" % [int(state.population.current), int(played.population.current)])
 
 
 ## With births, deaths and leaving, the village can't outgrow its homes forever.
@@ -2043,7 +2510,10 @@ func test_real_life_data() -> void:
 		if data.buildings[b.type].get("category", "") == "storage":
 			store = b
 	_check(Sim.storage_capacity(state, data, store) == int(data.buildings[store.type].capacity), "real data: the starting warehouse is fully staffed")
-	_check(float(data.config.population_growth_seconds) <= 0.0, "real data: nobody moves in (immigration is off for now)")
+	_check(float(data.config.population_growth_seconds) > 0.0 and bool(data.config.get("move_in_only_for_jobs", false)), "real data: newcomers are migrant workers")
+	_check(not bool(data.config.get("move_in_needs_home", true)), "real data: migrant workers come even when the homes are full")
+	Sim.settle(state, data, T0 + 3600)
+	_check(int(Sim.people_stats(state).moved_in) == 0, "real data: a new game's founders fill its jobs, so no job seekers come")
 	_check(not data.config.get("life", {}).is_empty(), "real data: births and deaths are switched on")
 
 
@@ -2055,6 +2525,8 @@ func test_real_happiness_data() -> void:
 	_check(Sim._has_needs(data), "real data: needs are switched on")
 	var state := Sim.new_game(data, T0)
 	_check(Sim.happiness(state, data, T0).score == 1.0, "real data: a new game starts at 100% (too small to complain)")
+	_check(float(data.config.happiness.get("homeless_penalty", {}).get("per_household", 0.0)) > 0.0, "real data: households in huts lower happiness on top of the Housing need")
+	_check(float(Sim.happiness(state, data, T0 + 4 * 3600.0).homeless_penalty) == 0.0, "real data: a new game has no homeless, so no penalty")
 
 
 ## The real data: the Supermarket and the goods it sells make sense.
@@ -2074,4 +2546,648 @@ func test_real_shop_data() -> void:
 		_check(float(tags[tag].price) > last_price and float(tags[tag].speed) < last_speed, "real data: tag '%s' costs more and sells slower than the one before" % tag)
 		last_price = float(tags[tag].price)
 		last_speed = float(tags[tag].speed)
-	_check(int(data.buildings.supermarket.build_cost) + int(data.buildings.wheat_farm.build_cost) + int(data.buildings.flour_mill.build_cost) <= int(data.config.starting_cash), "real data: starting cash covers a Wheat Farm, a Flour Mill and a Supermarket")
+	# Construction (plan.md §5.15): at the worst prices (every material at its highest swing).
+	var construction: Dictionary = data.config.construction
+	var worst := 0.0
+	for type in ["supermarket", "wheat_farm", "flour_mill"]:
+		for line in Sim.construction_quote(data, type, 1, T0).lines:
+			var base := Sim.cents(float(construction.materials.get(line.id, {}).get("price", 0)))
+			worst += float(line.cost) if line.id == "labor" else int(line.amount) * base * (1.0 + float(construction.price_swing))
+	_check(worst <= Sim.cents(float(data.config.starting_cash)), "real data: starting cash covers a Wheat Farm, a Flour Mill and a Supermarket even at the highest material prices")
+	var times := [3600.0, 3600.0, 7200.0, 10800.0]
+	for type in data.buildings:
+		if not data.buildings[type].get("buildable", false):
+			continue
+		_check(Sim.max_level(data, type) == 4, "real data: %s goes up to Level 4" % type)
+		for level in range(1, Sim.max_level(data, type) + 1):
+			_check(Sim.construction_seconds(data, type, level) == times[level - 1], "real data: %s Level %d takes %s s" % [type, level, times[level - 1]])
+
+
+# --- Construction materials (plan.md §5.15) --------------------------------------
+
+## Test data where building and upgrading need materials and a crew: a lodge (a home) needs
+## 100 Bricks + 2 Steel at Level 1. Bricks cost $1 and Steel $50, give or take 20% each hour;
+## the crew is 8 at $15 an hour.
+func _construction_data() -> Dictionary:
+	var data := _data()
+	data.config["starting_cash"] = 100000
+	data.config["worker_types"] = {"low_skilled": {"name": "Low-skilled", "wage_per_hour": 15}}
+	data.config["construction"] = {
+		"materials": {"bricks": {"name": "Bricks", "price": 1}, "steel": {"name": "Steel", "unit": "beam", "price": 50}},
+		"labor_worker_type": "low_skilled", "crew": 8, "level_growth": 2,
+		"level_seconds": [3600, 3600, 7200, 10800], "price_swing": 0.2, "price_change_seconds": 3600}
+	data.buildings["lodge"] = {"category": "residential", "buildable": true, "households": 2,
+		"materials": {"bricks": 100, "steel": 2},
+		"upgrades": [{"households": 3}, {"households": 4}, {"households": 5}]}
+	return data
+
+
+func test_construction_needs_double_each_level() -> void:
+	var data := _construction_data()
+	var expect := [[100, 2, 8], [200, 4, 16], [400, 8, 32], [800, 16, 64]]
+	var times := [3600.0, 3600.0, 7200.0, 10800.0]
+	for level in range(1, 5):
+		var needs := Sim.construction_needs(data, "lodge", level)
+		var e: Array = expect[level - 1]
+		_check(int(needs.bricks) == e[0] and int(needs.steel) == e[1] and int(needs.crew) == e[2], "Level %d needs %d Bricks, %d Steel and a crew of %d (doubling each level)" % [level, e[0], e[1], e[2]])
+		_check(Sim.construction_seconds(data, "lodge", level) == times[level - 1], "Level %d takes %s s" % [level, times[level - 1]])
+	_check(Sim.construction_seconds(data, "lodge", 9) == 10800.0, "levels past the list take its last time")
+	_check(Sim.construction_seconds(data, "slow_farm", 1) == 5.0, "a building's own build_time still counts")
+	_check(int(Sim.construction_needs(data, "office", 1).crew) == 0 and Sim.construction_value(data, "office") == 0, "a building without materials needs no crew (the office stays free)")
+	var labor := {}
+	for line in Sim.construction_quote(data, "lodge", 3, T0).lines:
+		if line.id == "labor":
+			labor = line
+	_check(int(labor.get("amount", 0)) == 32 and is_equal_approx(float(labor.get("hours", 0)), 2.0) and int(labor.get("cost", 0)) == 96000, "Level 3 labor: a crew of 32 for 2 h at $15 = $960")
+	_check(Sim.level_value(data, "lodge", 1) == 100 * 100 + 2 * 5000 + 8 * 1500, "at base prices Level 1 is worth $100 of Bricks + $100 of Steel + $120 of labor")
+	_check(Sim.construction_value(data, "lodge", 2) == Sim.level_value(data, "lodge", 1) + Sim.level_value(data, "lodge", 2), "a building's value adds its upgrades")
+	data.buildings.lodge["crew"] = 3
+	_check(int(Sim.construction_needs(data, "lodge", 3).crew) == 12, "a building can have its own crew (3, so 12 at Level 3)")
+
+
+func test_material_prices_move_with_the_market() -> void:
+	var data := _construction_data()
+	var hour := floorf(T0 / 3600.0) * 3600.0
+	var seen := {}
+	var in_range := true
+	var steady := true
+	for h in 48:
+		var p := Sim.material_price(data, "steel", hour + h * 3600.0)
+		in_range = in_range and p >= 4000 and p <= 6000
+		steady = steady and Sim.material_price(data, "steel", hour + h * 3600.0 + 3599.0) == p
+		seen[p] = true
+	_check(in_range, "Steel stays between $40 and $60 ($50 give or take 20%)")
+	_check(steady, "the price stays the same for the whole hour")
+	_check(seen.size() > 10, "the price changes from hour to hour")
+	_check(Sim.next_price_change_at(data, hour + 10.0) == hour + 3600.0, "the next price comes at the turn of the hour")
+	data.config.construction.price_swing = 0.0
+	_check(Sim.material_price(data, "steel", T0) == 5000, "with no swing it's the base price")
+
+
+func test_building_buys_materials_and_pays_the_crew() -> void:
+	var data := _construction_data()
+	var state := Sim.new_game(data, T0)
+	var expected := 100 * Sim.material_price(data, "bricks", T0) + 2 * Sim.material_price(data, "steel", T0) + 8 * 1500
+	var quote := Sim.construction_quote(data, "lodge", 1, T0)
+	_check(int(quote.cost) == expected and float(quote.seconds) == 3600.0, "building costs the materials at today's prices + the crew, and takes 1 h")
+	var cash: int = state.profile.currency
+	var result := Sim.build(state, data, "lodge", Vector2i(5, 5), T0)
+	var lodge := Sim.find_building(state, result.building_id)
+	_check(result.ok and state.profile.currency == cash - expected and int(lodge.paid) == expected and int(Sim.stats(state).spending.construction) == expected, "it's all paid at once, counted as construction and as the building's value")
+	_check(not Sim.is_built(lodge, T0 + 3599) and Sim.is_built(lodge, T0 + 3600), "ready after 1 h")
+	_check(is_equal_approx(Sim.construction_progress(lodge, data, T0 + 1800), 0.5), "half built after 30 min")
+	var t := T0 + 3600.0
+	Sim.settle(state, data, t)
+	var up := 200 * Sim.material_price(data, "bricks", t) + 4 * Sim.material_price(data, "steel", t) + 16 * 1500
+	var check := Sim.can_upgrade(state, data, lodge.id, t)
+	_check(check.ok and int(check.cost) == up and float(check.seconds) == 3600.0, "Level 2: twice the materials and crew, at that hour's prices, and 1 h")
+	cash = state.profile.currency
+	Sim.upgrade(state, data, lodge.id, t)
+	_check(state.profile.currency == cash - up and int(lodge.paid) == expected + up, "the upgrade is paid at once and adds to the building's value")
+	Sim.settle(state, data, t + 3600.0)
+	_check(Sim.building_level(lodge) == 2 and float(Sim.can_upgrade(state, data, lodge.id, t + 3600.0).seconds) == 7200.0, "Level 3 takes 2 h")
+	var poor := Sim.new_game(data, T0)
+	poor.profile.currency = expected - 1
+	_check(Sim.can_build(poor, data, "lodge", Vector2i(5, 5), T0).error == "Not enough money.", "it needs the money for the materials and crew")
+
+
+# --- Upgrades (plan.md §5.15) ----------------------------------------------------
+
+## Test data with upgrades: the crew farm (2 workers) and crew mill (3) grow, the house gets
+## more households. No one moves in, so the worker counts stay put.
+func _upgrade_data() -> Dictionary:
+	var data := _data()
+	data.config["population_growth_seconds"] = 0
+	data.config["worker_types"] = {"low_skilled": {"name": "Low-skilled", "wage_per_hour": 36}}
+	data.buildings.crew_farm["upgrades"] = [
+		{"cost": 50, "time": 600, "max_workers": 3},
+		{"cost": 100, "time": 1200, "max_workers": 4}]
+	data.buildings.crew_mill["upgrades"] = [{"cost": 50, "time": 100, "max_workers": 6}]
+	data.buildings.house["upgrades"] = [{"cost": 0, "time": 100, "households": 8}]
+	return data
+
+
+func test_upgrade_rules() -> void:
+	var data := _upgrade_data()
+	var state := Sim.new_game(data, T0)
+	state.population.current = 10
+	var farm := Sim.find_building(state, Sim.build(state, data, "crew_farm", Vector2i(5, 5), T0).building_id)
+	var check := Sim.can_upgrade(state, data, farm.id, T0)
+	_check(check.ok and int(check.level) == 2 and int(check.cost) == 5000 and float(check.seconds) == 600.0, "Level 2 costs $50 and takes 10 minutes")
+	_check(Sim.building_level(farm) == 1 and Sim.max_level(data, "crew_farm") == 3, "built at Level 1, can reach Level 3")
+	_check(not Sim.can_upgrade(state, data, state.buildings[0].id, T0).ok, "a building without upgrades can't be upgraded")
+	var slow := Sim.find_building(state, Sim.build(state, data, "slow_farm", Vector2i(6, 6), T0).building_id)
+	_check(Sim.can_upgrade(state, data, slow.id, T0).error == "Still under construction.", "not while it's being built")
+	var cash: int = state.profile.currency
+	_check(Sim.upgrade(state, data, farm.id, T0).ok, "upgrade starts")
+	_check(state.profile.currency == cash - 5000 and int(Sim.stats(state).spending.construction) >= 5000, "its cost is paid at once and counted as construction")
+	_check(Sim.can_upgrade(state, data, farm.id, T0 + 1).error == "It's already being upgraded.", "one upgrade at a time")
+	_check(Sim.building_level(farm) == 1 and Sim.is_upgrading(farm, T0 + 599), "still Level 1 while it's being upgraded")
+	Sim.settle(state, data, T0 + 600)
+	_check(Sim.building_level(farm) == 2 and not Sim.is_upgrading(farm, T0 + 600) and Sim.max_workers(data, farm) == 3, "Level 2 when it's done: 3 workers")
+	Sim.upgrade(state, data, farm.id, T0 + 600)
+	Sim.settle(state, data, T0 + 1800)
+	_check(Sim.building_level(farm) == 3 and Sim.max_workers(data, farm) == 4, "Level 3: 4 workers")
+	_check(Sim.can_upgrade(state, data, farm.id, T0 + 1800).error == "It's at the highest level (3).", "no upgrade past the highest level")
+	var poor := Sim.new_game(data, T0)
+	var other := Sim.find_building(poor, Sim.build(poor, data, "crew_farm", Vector2i(5, 5), T0).building_id)
+	poor.profile.currency = 4999
+	_check(Sim.can_upgrade(poor, data, other.id, T0).error == "Not enough money.", "it needs the money")
+	poor.profile.currency = 5000
+	Sim.settle(poor, data, T0 + 1000)
+	Sim.upgrade(poor, data, other.id, T0 + 500)  # the clock was set back 500 s
+	_check(float(other.upgrade_done_at) == T0 + 1600.0, "a clock set backwards starts the upgrade from the time already worked out, never earlier")
+
+
+## A farm closes while it's upgraded (its workers go home), so it can't have a batch then.
+## Afterwards its bigger crew works faster (3 of 2 = 1.5x), and a batch costs the same wages.
+func test_upgrade_closes_and_works_faster() -> void:
+	var data := _upgrade_data()
+	var state := Sim.new_game(data, T0)
+	state.population.current = 10
+	var farm := Sim.find_building(state, Sim.build(state, data, "crew_farm", Vector2i(5, 5), T0).building_id)
+	var batch_wages := int(Sim.batch_quote(state, data, farm, "grow", 6, "none", T0).wages)
+	_batch(state, data, farm, 1)
+	_check(Sim.can_upgrade(state, data, farm.id, T0 + 30).error == Sim.BATCH_BUSY, "not while it has a batch")
+	Sim.settle(state, data, T0 + 60)
+	Sim.collect(state, data, farm.id, T0 + 60)
+	Sim.upgrade(state, data, farm.id, T0 + 60)
+	_check(Sim.hired(farm) == 0 and Sim.posts(data, farm, T0 + 60) == 0, "closed: its workers go home")
+	_check(_batch(state, data, farm, 1, "none", T0 + 100).error == "It's being upgraded.", "no batch while it's closed, and it says why")
+	_check(is_equal_approx(Sim.construction_progress(farm, data, T0 + 360), 0.5), "half way through the upgrade")
+	Sim.settle(state, data, T0 + 660)
+	_check(Sim.hired(farm) == 3, "open again with 3 workers")
+	_batch(state, data, farm, 6, "none", T0 + 660)
+	_check(is_equal_approx(Sim.building_speed(state, data, farm, T0 + 660), 1.5), "3 of 2 workers: 1.5x speed")
+	Sim.settle(state, data, T0 + 699)
+	_check(Sim.ready_units(farm).is_empty(), "an hour takes 40 s at 1.5x")
+	Sim.settle(state, data, T0 + 700)
+	_check(_ready(farm, "wheat") == 10, "first hour done 40 s after it started")
+	Sim.settle(state, data, T0 + 900)
+	_check(_ready(farm, "wheat") == 60, "all 6 hours in 240 s instead of 360")
+	_check(int(farm.batch.wages) == batch_wages, "a batch costs the same wages at any level")
+
+
+## Homes stay lived in while they're upgraded; the new households move in when it's done.
+func test_upgrade_home_stays_open() -> void:
+	var data := _upgrade_data()
+	var state := Sim.new_game(data, T0)
+	state.population.current = 16  # 8 households, room for 5
+	Sim.settle(state, data, T0)
+	var house: Dictionary = state.buildings[1]
+	_check(int(Sim.housing(state, data, T0).homeless) == 3, "3 households have no home")
+	Sim.upgrade(state, data, house.id, T0)
+	Sim.settle(state, data, T0 + 99)
+	_check(int(Sim.housing(state, data, T0 + 99).homes[house.id].households) == 5, "the 5 households stay while it's upgraded")
+	Sim.settle(state, data, T0 + 100)
+	_check(int(Sim.housing(state, data, T0 + 100).homeless) == 0 and Sim.home_households(data, house) == 8, "room for 8 when it's done")
+
+
+## Being away through an upgrade ends exactly like playing through it.
+func test_upgrade_away_matches_playing() -> void:
+	var data := _upgrade_data()
+	var away := Sim.new_game(data, T0)
+	away.population.current = 10
+	var farm := Sim.find_building(away, Sim.build(away, data, "crew_farm", Vector2i(5, 5), T0).building_id)
+	var mill := Sim.find_building(away, Sim.build(away, data, "crew_mill", Vector2i(6, 6), T0).building_id)
+	away.inventory["wheat"] = 40
+	Sim.start_batch(away, data, mill.id, "mill", 4, "none", T0)
+	Sim.settle(away, data, T0 + 25)
+	Sim.upgrade(away, data, farm.id, T0 + 25)
+	var playing: Dictionary = away.duplicate(true)
+	Sim.settle(away, data, T0 + 2000)
+	var t := T0 + 25
+	while t < T0 + 2000:
+		t = minf(t + 7.0, T0 + 2000)
+		Sim.settle(playing, data, t)
+	_check(away.profile.currency == playing.profile.currency, "same cash away and playing")
+	_check(_difference(away.buildings[4].batch, playing.buildings[4].batch, "") == "" and _ready(away.buildings[4], "flour") == 32, "same goods made away and playing")
+	_check(Sim.building_level(away.buildings[3]) == 2 and Sim.building_level(playing.buildings[3]) == 2, "the upgrade is done either way")
+	_check(Sim.hired(away.buildings[3]) == Sim.hired(playing.buildings[3]), "the same workers either way")
+
+
+# --- Balance sheet, cash check and money log (plan.md §5.19) -------------------------
+
+## A new game: the company is worth its starting capital (cash + starter buildings at their build
+## cost), nothing has been earned yet, and the cash check adds up.
+func test_balance_sheet_new_game() -> void:
+	var data := _data()
+	var state := Sim.new_game(data, T0)
+	var sheet := Sim.balance_sheet(state, data, T0)
+	_check(int(sheet.cash) == 50000 and int(sheet.buildings) == 30000, "$500 cash + the $300 starter warehouse")
+	_check(int(sheet.capital) == 80000 and int(sheet.company_value) == 80000 and int(sheet.profit_kept) == 0, "worth its starting capital, no profit yet")
+	_check(int(sheet.total_owed) == 0 and int(sheet.debt) == 0, "owes nothing")
+	_check(Sim.cash_check(state).ok and int(Sim.cash_check(state).start) == 50000, "cash check: starts at $500 and adds up")
+
+
+## Building turns cash into a building: the company is worth the same. It counts as "being built"
+## until it's finished.
+func test_balance_sheet_build() -> void:
+	var data := _data()
+	var state := Sim.new_game(data, T0)
+	_check(Sim.build(state, data, "slow_farm", Vector2i(5, 5), T0).ok, "a farm that takes 5 s to build")
+	var sheet := Sim.balance_sheet(state, data, T0)
+	_check(int(sheet.cash) == 40000 and int(sheet.being_built) == 10000 and int(sheet.buildings) == 30000, "$100 moved from cash to being built")
+	_check(int(sheet.company_value) == 80000, "worth the same")
+	Sim.settle(state, data, T0 + 5)
+	sheet = Sim.balance_sheet(state, data, T0 + 5)
+	_check(int(sheet.being_built) == 0 and int(sheet.buildings) == 40000, "finished: it counts as a building")
+	_check(Sim.cash_check(state).ok, "cash check adds up")
+	sheet = Sim.balance_sheet(state, data, T0 + 1)  # the clock was set back 4 s
+	_check(int(sheet.being_built) == 0 and int(sheet.buildings) == 40000, "a clock set backwards doesn't make it unfinished again")
+
+
+## An upgrade's cost is "being built" until it's done, then part of the building's value.
+func test_balance_sheet_upgrade() -> void:
+	var data := _upgrade_data()
+	var state := Sim.new_game(data, T0)
+	var farm := Sim.find_building(state, Sim.build(state, data, "crew_farm", Vector2i(5, 5), T0).building_id)
+	var before := int(Sim.balance_sheet(state, data, T0).company_value)
+	Sim.upgrade(state, data, farm.id, T0)
+	var sheet := Sim.balance_sheet(state, data, T0)
+	_check(int(farm.paid) == 5000 and int(sheet.being_built) == 5000 and int(sheet.company_value) == before, "the $50 upgrade is being built; worth the same")
+	Sim.settle(state, data, T0 + 600)
+	sheet = Sim.balance_sheet(state, data, T0 + 600)
+	_check(int(sheet.being_built) == 0 and not farm.has("upgrade_paid") and int(sheet.buildings) == 30000 + 5000, "done: part of the building's value")
+
+
+## Demolishing gives back half the price: the company loses the other half.
+func test_balance_sheet_demolish() -> void:
+	var data := _data()
+	var state := Sim.new_game(data, T0)
+	var farm := Sim.find_building(state, Sim.build(state, data, "farm", Vector2i(5, 5), T0).building_id)
+	Sim.demolish(state, data, farm.id, T0)
+	var sheet := Sim.balance_sheet(state, data, T0)
+	_check(int(sheet.company_value) == 80000 - 5000 and int(sheet.profit_kept) == -5000, "$50 of the $100 farm is lost")
+	_check(Sim.cash_check(state).ok, "the refund is counted: cash check adds up")
+
+
+## Selling goods turns their cost into money: the profit kept grows by what they earned over
+## what they cost to make.
+func test_balance_sheet_sell() -> void:
+	var data := _data()
+	var state := Sim.new_game(data, T0)
+	state.inventory["wheat"] = 3
+	state["inventory_cost"] = {"wheat": 150.0}  # they cost $0.50 each to make
+	var sheet := Sim.balance_sheet(state, data, T0)
+	_check(int(sheet.goods.wheat.qty) == 3 and int(sheet.goods.wheat.value) == 150, "3 wheat worth $1.50 (what they cost)")
+	var before := int(sheet.profit_kept)
+	Sim.sell(state, data, "wheat", 3, T0)
+	sheet = Sim.balance_sheet(state, data, T0)
+	_check(int(sheet.profit_kept) == before + 600 - 150 and not sheet.goods.has("wheat"), "sold for $6: $4.50 more profit kept")
+	_check(Sim.cash_check(state).ok, "cash check adds up")
+
+
+## Supermarket goods sold but not paid yet count as "shop sales not paid yet"; the unsold ones
+## still count as goods.
+func test_balance_sheet_shop_sales_not_paid_yet() -> void:
+	var town := _shop_town()
+	var state: Dictionary = town[0]
+	var data: Dictionary = town[1]
+	var market: Dictionary = town[2]
+	Sim.stock_shelf(state, data, market.id, "flour", 10, "normal", T0)
+	Sim.settle(state, data, T0 + 1800)
+	var sheet := Sim.balance_sheet(state, data, T0 + 1800)
+	_check(int(sheet.receivable) == 1500, "5 sold at $3.00, not paid yet: $15")
+	_check(int(sheet.goods.flour.qty) == 95, "90 in the warehouse + 5 unsold on the shelf")
+	Sim.settle(state, data, T0 + 3600)
+	sheet = Sim.balance_sheet(state, data, T0 + 3600)
+	_check(int(sheet.receivable) == 0 and Sim.cash_check(state).ok, "sold out and paid: nothing waiting, cash check adds up")
+
+
+## Wages paid with no cash: cash below 0 is debt, owed on the balance sheet.
+func test_balance_sheet_debt() -> void:
+	var data := _upgrade_data()
+	var state := Sim.new_game(data, T0)
+	state.population.current = 10
+	Sim.build(state, data, "crew_store", Vector2i(5, 5), T0)  # its workers are paid as they go
+	Sim.dev_set_cash(state, 0)
+	Sim.settle(state, data, T0 + 3600)  # 4 workers x $36 for an hour
+	var sheet := Sim.balance_sheet(state, data, T0 + 3600)
+	_check(int(sheet.cash) == 0 and int(sheet.debt) == 14400, "$144 of wages took cash to -$144: that's debt")
+	_check(int(sheet.company_value) == int(sheet.total_owned) - int(sheet.total_owed), "value = owned - owed")
+	_check(Sim.cash_check(state).ok, "cash check adds up")
+
+
+## Dev tools change cash, and the cash check counts it, so it still adds up.
+func test_cash_check_counts_dev_tools() -> void:
+	var data := _data()
+	var state := Sim.new_game(data, T0)
+	Sim.dev_add_cash(state, 1000)
+	_check(int(Sim.cash_check(state).dev) == 1000 and Sim.cash_check(state).ok, "added $10: counted")
+	Sim.dev_set_cash(state, -250)
+	_check(int(Sim.cash_check(state).dev) == -50250 and Sim.cash_check(state).ok, "set to -$2.50: counted")
+	_check(Sim._total(Sim.stats(state).income) == 0, "not counted as income")
+
+
+## The money log: one entry per 30 minutes, time away = one entry, and the entries add up to the
+## all-time totals.
+func test_money_log() -> void:
+	var data := _upgrade_data()
+	data.config["money_log_minutes"] = 30
+	var state := Sim.new_game(data, T0)
+	state.population.current = 10
+	Sim.build(state, data, "crew_store", Vector2i(5, 5), T0)  # 4 workers at $36/hour, paid as they go
+	for i in 6:
+		Sim.settle(state, data, T0 + 300 * (i + 1))  # playing for 30 minutes
+	var rows := Sim.money_log(state, T0 + 1800)
+	_check(rows.size() == 1 and float(rows[0].from) == T0 and float(rows[0].to) == T0 + 1800 and not rows[0].open, "one block of 30 minutes")
+	_check(rows.size() == 1 and int(rows[0].spending.get("wages", 0)) == 7200 and int(rows[0].net) == -7200, "it paid $72 of wages")
+	Sim.settle(state, data, T0 + 1800 + 21600)  # 6 hours away
+	rows = Sim.money_log(state, T0 + 1800 + 21700)
+	_check(rows.size() == 3 and rows[0].open and float(rows[1].to) - float(rows[1].from) == 21600.0, "6 hours away = one block; the next one is still running")
+	var wages := 0
+	for row in rows:
+		wages += int(row.spending.get("wages", 0))
+	_check(wages == int(Sim.stats(state).spending.wages), "the blocks add up to the all-time wages")
+	data.config["money_log_size"] = 3
+	for i in 5:
+		Sim.settle(state, data, T0 + 30000 + 1800 * i)
+	_check(Sim.stats(state).money_log.size() == 3, "only the latest money_log_size snapshots are kept")
+	Sim.settle(state, data, T0)  # the clock moved backwards
+	_check(Sim.stats(state).money_log.size() == 3 and float(Sim.stats(state).money_log[-1].t) == T0 + 30000 + 7200, "a clock set backwards adds nothing")
+
+
+## A version 7 save (from before the balance sheet) gets list prices for its buildings, and a
+## starting cash that makes the cash check add up.
+func test_old_save_gets_balance_sheet() -> void:
+	var data := {"resources": GameDataScript.load_json("res://data/resources.json"),
+		"buildings": GameDataScript.load_json("res://data/buildings.json"),
+		"config": GameDataScript.load_json("res://data/game_config.json")}
+	var state := Sim.new_game(data, T0)
+	var old := JSON.parse_string(SaveFormat.to_text(state, T0)) as Dictionary
+	old.save_version = 7
+	old.buildings = old.buildings.filter(func(b): return b.type != "construction_office")  # came in version 11
+	for b in old.buildings:
+		b.erase("paid")
+		if b.type == "city_hall":
+			b.type = "construction_office"  # its id before version 11
+	for key in ["capital", "adjustments", "money_log"]:
+		old.stats.erase(key)
+	old.stats.income.sales = 12345  # it earned and spent some money before
+	old.stats.spending.wages = 345
+	var result := SaveFormat.from_text(JSON.stringify(old), data)
+	var s: Dictionary = result.state if result.ok else {}
+	var house: Dictionary = s.get("buildings", [{}, {}])[1]
+	_check(result.ok and int(house.get("paid", -1)) == Sim.construction_value(data, house.type) and int(house.paid) > 0, "buildings get their value (materials and labor at base prices)")
+	_check(result.ok and Sim.cash_check(s).ok and int(Sim.cash_check(s).start) == int(s.profile.currency) - 12000, "the cash check adds up")
+
+
+## Each hour's share is rounded down, so the shares add up exactly to the whole batch.
+func test_portions_add_up() -> void:
+	var data := _data()
+	data.config["wage_bonuses"] = {"none": 0.0, "small": 0.2}
+	data.config["bonus_output"] = {"none": 0.0, "small": 0.15}
+	var state := Sim.new_game(data, T0)
+	var farm := Sim.find_building(state, Sim.build(state, data, "farm", Vector2i(5, 5), T0).building_id)
+	_check(int(_batch(state, data, farm, 7, "small").units.wheat) == 80, "7 hours x 10 x 1.15 = 80.5: 80 wheat (rounded down)")
+	var got: Array = []
+	for hour in range(1, 8):
+		Sim.settle(state, data, T0 + 60 * hour)
+		got.append(_ready(farm, "wheat"))
+	_check(got == [11, 22, 34, 45, 57, 68, 80], "each hour adds its share, ending exactly at 80: %s" % [got])
+
+
+## Version 8 saves had job queues and building storage: on loading, everything in them goes to
+## the Warehouse (queued ingredients back in full, a finished batch as its products).
+func test_old_save_queues_go_to_warehouse() -> void:
+	var data := _data()
+	var state := Sim.new_game(data, T0)
+	var mill := Sim.find_building(state, Sim.build(state, data, "mill", Vector2i(5, 5), T0).building_id)
+	var old := JSON.parse_string(SaveFormat.to_text(state, T0)) as Dictionary
+	old.save_version = 8
+	for b in old.buildings:
+		b.erase("batch")
+		b["queue"] = []
+		b["blocked"] = false
+	var m: Dictionary = old.buildings[-1]
+	m.storage = {"flour": 16}
+	m["storage_cost"] = {"flour": 160.0}
+	m.queue = [{"recipe_id": "mill", "input_cost": {"wheat": 50.0}}, {"recipe_id": "mill", "input_cost": {"wheat": 70.0}}]
+	m.blocked = true  # the first job is finished, waiting for room
+	var result := SaveFormat.from_text(JSON.stringify(old), data)
+	_check(result.ok and int(result.state.save_version) == Sim.SAVE_VERSION, "a version 8 save with queues loads")
+	var s: Dictionary = result.state if result.ok else {"inventory": {}, "inventory_cost": {}, "buildings": []}
+	var loaded := Sim.find_building(s, mill.id)
+	_check(int(s.inventory.get("flour", 0)) == 16 + 8 and int(s.inventory.get("wheat", 0)) == 10, "stored flour + the finished batch's 8 flour, and the waiting job's 10 wheat, are in the warehouse")
+	_check(is_equal_approx(float(s.inventory_cost.get("wheat", 0.0)), 70.0) and is_equal_approx(float(s.inventory_cost.get("flour", 0.0)), 160.0 + 8 * 300.0), "with their cost tags (the finished batch at its standard cost)")
+	_check(not loaded.is_empty() and loaded.get("batch", null) == {} and not loaded.has("queue") and loaded.storage.is_empty(), "the mill is idle, with no queue and nothing stored")
+	_check(_batch(s, data, loaded, 1).ok, "and it takes a batch")
+
+
+## The test data with roads (plan.md §5.20): the office at (0, 0) is the road hub; $10 a tile.
+func _road_data() -> Dictionary:
+	var data := _data()
+	data.buildings.office["road_hub"] = true
+	data.config["roads"] = {"price": 10}
+	return data
+
+
+func _cells(list: Array) -> Array:
+	var out := []
+	for c in list:
+		out.append(Vector2i(int(c[0]), int(c[1])))
+	return out
+
+
+func test_roads() -> void:
+	var data := _road_data()
+	var state := Sim.new_game(data, T0)
+	_check(state.roads.is_empty(), "no starting roads in this data")
+	var farm := Sim.find_building(state, Sim.build(state, data, "crew_farm", Vector2i(5, 5), T0).building_id)
+	state.population.current = 2
+	Sim.settle(state, data, T0)
+	_check(Sim.needs_road(data, farm) and not Sim.on_road(data, farm), "a building with workers needs a road and has none")
+	_check(Sim.posts(data, farm, T0) == 0 and Sim.hired(farm) == 0, "no road: no posts, no workers")
+	_check(not Sim.needs_road(data, Sim.building_at(state, Vector2i(1, 0))) and not Sim.needs_road(data, state.buildings[0]), "homes and the hub need no road")
+
+	var path := Sim.road_path_for(state, data, farm.id)
+	_check(path.size() == 9 and Sim._touches({Vector2i(5, 5): true}, path[0]) and Sim._touches({Vector2i(0, 0): true}, path[-1]), "the shortest road: 9 tiles from beside the farm to beside the office")
+	var quote := Sim.road_quote(state, data, path)
+	_check(quote.ok and int(quote.cost) == 9000 and state.profile.currency == 50000, "9 tiles at $10 = $90 (a quote changes nothing)")
+	_check(Sim.build_roads(state, data, path, T0).ok, "road built")
+	_check(state.profile.currency == 41000 and int(state.stats.spending.roads) == 9000 and Sim.cash_check(state).ok, "$90 paid, counted as roads")
+	_check(int(Sim.balance_sheet(state, data, T0).roads) == 9000, "the roads count at their price on the balance sheet")
+	_check(Sim.on_road(data, farm) and Sim.hired(farm) == 2, "linked: the farm hires its 2 workers at once")
+	_check(Sim.road_path_for(state, data, farm.id).is_empty(), "nothing more to lay")
+
+	_check(not Sim.road_quote(state, data, path).ok, "a road on a road: nothing to build")
+	var more := Sim.road_quote(state, data, path + _cells([[9, 0], [9, 1]]))
+	_check(more.ok and int(more.cost) == 2000, "tiles that are already a road are free")
+	_check(not Sim.road_quote(state, data, _cells([[1, 0]])).ok, "no road on a building")
+	_check(not Sim.road_quote(state, data, _cells([[10, 0]])).ok, "no road off the land")
+	_check(not Sim.can_build(state, data, "farm", path[0], T0).ok, "no building on a road")
+	_check(not Sim.can_move(state, data, farm.id, path[0]).ok, "no moving onto a road")
+	var cash := int(state.profile.currency)
+	state.profile.currency = 500
+	_check(not Sim.road_quote(state, data, _cells([[9, 9]])).ok, "no road without the money")
+	state.profile.currency = cash
+	var hut_spot := Sim._free_cell_near_centre(state, data)
+	_check(Sim.is_free_cell(state, hut_spot) and not Sim.is_road(state, hut_spot), "huts go up on free tiles, never on roads")
+
+	# Cut the road: the farm stops and lets its workers go. Mend it: it hires again.
+	var middle: Vector2i = path[4]
+	_check(Sim.remove_roads(state, data, [middle], T0).ok and not Sim.is_road(state, middle), "a road tile removed")
+	_check(not Sim.on_road(data, farm) and Sim.hired(farm) == 0, "cut off: no workers")
+	_check(int(state.profile.currency) == cash, "removing is free and pays nothing back")
+	_check(not Sim.remove_roads(state, data, [middle], T0).ok, "nothing to remove there any more")
+	Sim.build_roads(state, data, [middle], T0)
+	_check(Sim.hired(farm) == 2, "mended: workers back")
+
+	# Moving off the road stops it; moving back starts it again.
+	_check(Sim.move(state, data, farm.id, Vector2i(9, 9), T0).ok and Sim.hired(farm) == 0, "moved away from the road: no workers")
+	_check(Sim.move(state, data, farm.id, Vector2i(5, 5), T0).ok and Sim.hired(farm) == 2, "moved back: workers again")
+
+	# A warehouse can't be cut off while the goods wouldn't fit without it.
+	_check(path[-1] == Vector2i(0, 1), "the road reaches the office at (0, 1) (the house is at (1, 0))")
+	var store_spot := Vector2i(1, 1) if Sim.is_free_cell(state, Vector2i(1, 1)) else Vector2i(0, 2)  # beside (0, 1)
+	var store := Sim.find_building(state, Sim.build(state, data, "crew_store", store_spot, T0).building_id)
+	state.population.current = 6
+	Sim.settle(state, data, T0)
+	_check(Sim.on_road(data, store) and Sim.warehouse_cap(state, data) == 2000, "the linked warehouse with its 4 workers: 2000 room")
+	state.inventory["wheat"] = 1500
+	_check(not Sim.can_remove_roads(state, data, [Vector2i(0, 1)]).ok, "removing its road would leave goods without room: refused")
+	_check(not Sim.can_move(state, data, store.id, Vector2i(9, 8)).ok, "and so would moving it off the road")
+	state.inventory["wheat"] = 500
+	_check(Sim.can_remove_roads(state, data, [Vector2i(0, 1)]).ok, "with room left in the other warehouse it's fine")
+
+
+## A building with no road waits; time away gives the same as playing through it.
+func test_roads_away_matches_playing() -> void:
+	var data := _road_data()
+	var make := func() -> Dictionary:
+		var s := Sim.new_game(data, T0)
+		Sim.build(s, data, "crew_farm", Vector2i(5, 5), T0)
+		s.population.current = 2
+		Sim.settle(s, data, T0)
+		_batch(s, data, s.buildings[-1], 5)
+		return s
+	var away: Dictionary = make.call()
+	var playing: Dictionary = make.call()
+	var farm_id: String = away.buildings[-1].id
+	var path := Sim.road_path_for(away, data, farm_id)
+	Sim.settle(away, data, T0 + 600)
+	_check(int(away.buildings[-1].batch.get("made_hours", 0)) == 0, "no road: the batch waits")
+	Sim.build_roads(away, data, path, T0 + 600)
+	Sim.settle(away, data, T0 + 900)
+	for t in range(10, 600, 37):
+		Sim.settle(playing, data, T0 + t)
+	Sim.build_roads(playing, data, path, T0 + 600)
+	for t in range(600, 900, 23):
+		Sim.settle(playing, data, T0 + t)
+	Sim.settle(playing, data, T0 + 900)
+	_check(int(away.buildings[-1].batch.made_hours) == 5, "linked at 600 s: all 5 hours of 60 s are made by 900 s")
+	_check(away.buildings[-1].batch == playing.buildings[-1].batch and away.profile.currency == playing.profile.currency, "away = playing through it")
+
+
+## Saves from before roads get free roads laid to every building that can be reached.
+func test_old_save_gets_roads() -> void:
+	var data := _road_data()
+	var state := Sim.new_game(data, T0)
+	var farm := Sim.find_building(state, Sim.build(state, data, "crew_farm", Vector2i(5, 5), T0).building_id)
+	# A farm walled in by other farms on every side: no road can reach it.
+	var walled := Sim.find_building(state, Sim.build(state, data, "crew_farm", Vector2i(8, 8), T0).building_id)
+	for c in [[7, 8], [9, 8], [8, 7], [8, 9]]:
+		Sim.build(state, data, "farm", Vector2i(c[0], c[1]), T0)
+	state.population.current = 10
+	var old := JSON.parse_string(SaveFormat.to_text(state, T0)) as Dictionary
+	old.save_version = 9
+	old.erase("roads")
+	old.stats.spending.erase("roads")
+	for b in old.buildings:
+		b.erase("road")
+	var result := SaveFormat.from_text(JSON.stringify(old), data)
+	_check(result.ok and int(result.state.save_version) == Sim.SAVE_VERSION, "a version 9 save loads")
+	var s: Dictionary = result.state if result.ok else new_game_fallback(data)
+	_check(s.roads.size() == 9 and Sim.on_road(data, Sim.find_building(s, farm.id)) and Sim.hired(Sim.find_building(s, farm.id)) == 2, "free roads were laid to the farm, and it has its workers")
+	_check(not Sim.on_road(data, Sim.find_building(s, walled.id)), "the walled-in farm can't be reached: it says so")
+	_check(int(s.stats.spending.roads) == 0 and Sim.cash_check(s).ok and int(Sim.balance_sheet(s, data, T0).roads) == 0, "the free roads cost nothing and are worth nothing")
+
+
+func new_game_fallback(data: Dictionary) -> Dictionary:
+	return Sim.new_game(data, T0)
+
+
+## Test data with a Construction Office (plan.md §5.15): "crew_office" employs 2 construction
+## workers (3 at Level 2) and stays open while upgraded; slow_farm and slow_mill need 1 to build
+## (5 s), and each upgrade one more per level. Minimum wage $15.
+func _crew_data() -> Dictionary:
+	var data := _data()
+	data.buildings["crew_office"] = {"category": "construction", "build_cost": 50, "buildable": true, "build_time": 5,
+		"max_workers": 2, "fixed_workers": true, "staffed_first": true, "fixed_wage": true, "construction_crew": true,
+		"crew": 1, "upgrades": [{"max_workers": 3, "cost": 0, "time": 100}]}
+	for type_id in ["slow_farm", "slow_mill"]:
+		data.buildings[type_id]["crew"] = 1
+	data.buildings.slow_farm["upgrades"] = [{"cost": 0, "time": 50}, {"cost": 0, "time": 50}]
+	data.config["construction"] = {"crew_per_level": 1}
+	data.config["worker_types"] = {"low_skilled": {"wage_per_hour": 15}}
+	data.config.starting_buildings.append({"type": "crew_office", "position": [3, 0]})
+	return data
+
+
+func test_construction_workers() -> void:
+	var data := _crew_data()
+	var state := Sim.new_game(data, T0)
+	_check(Sim.crew_total(state, data, T0) == 0, "nobody lives here yet: no construction workers")
+	var none := Sim.can_build(state, data, "slow_farm", Vector2i(5, 5), T0)
+	_check(not none.ok and none.error.begins_with("No construction workers"), "no construction workers: nothing can be built")
+	_check(Sim.can_build(state, data, "farm", Vector2i(5, 5), T0).ok, "a building that needs no crew can still be built")
+	state.population.current = 10
+	Sim._hire(state, data, T0)
+	var office := Sim.building_at(state, Vector2i(3, 0))
+	_check(Sim.hired(office) == 2 and Sim.crew_total(state, data, T0) == 2 and Sim.crew_free(state, data, T0) == 2, "the office hires its 2 construction workers")
+	var needs := [int(Sim.construction_needs(data, "slow_farm", 1).crew), int(Sim.construction_needs(data, "slow_farm", 2).crew), int(Sim.construction_needs(data, "slow_farm", 3).crew)]
+	_check(needs == [1, 2, 3], "1 worker to build, one more for each level (%s)" % str(needs))
+	var farm_id: String = Sim.build(state, data, "slow_farm", Vector2i(5, 5), T0).building_id
+	_check(Sim.crew_busy(state, data, T0) == 1 and Sim.crew_free(state, data, T0) == 1, "building the farm keeps 1 busy")
+	var labor: Array = Sim.construction_quote(data, "slow_farm", 1, T0).lines.filter(func(l): return l.id == "labor")
+	_check(labor.size() == 1 and int(labor[0].amount) == 1, "the quote shows the 1 construction worker")
+	_check(Sim.build(state, data, "slow_mill", Vector2i(6, 6), T0).ok and Sim.crew_free(state, data, T0) == 0, "the mill takes the other one")
+	var busy := Sim.can_build(state, data, "slow_farm", Vector2i(7, 7), T0 + 1)
+	_check(not busy.ok and "only 0 are free" in busy.error and float(busy.get("crew_free_at", 0.0)) == T0 + 5, "all busy: it can't start, and says when one is free (%s)" % busy.error)
+	_check(Sim.can_build(state, data, "slow_farm", Vector2i(7, 7), T0 + 5).ok, "once the farm is built its worker is free again")
+	# Upgrades: Level 2 needs 2, Level 3 needs 3, more than the office has.
+	_check(Sim.upgrade(state, data, farm_id, T0 + 10).ok and Sim.crew_free(state, data, T0 + 10) == 0, "upgrading to Level 2 keeps both busy")
+	Sim.settle(state, data, T0 + 60)  # the farm reaches Level 2
+	var short := Sim.can_upgrade(state, data, farm_id, T0 + 60)
+	_check(not short.ok and "have only 2" in short.error and not short.has("crew_free_at"), "Level 3 needs 3: more than the office has (%s)" % short.error)
+	# A bigger office: it stays open while upgraded, and has 3 workers afterwards.
+	_check(Sim.upgrade(state, data, office.id, T0 + 60).ok and Sim.crew_total(state, data, T0 + 61) == 2, "the office stays open while upgraded")
+	Sim.settle(state, data, T0 + 160)
+	_check(Sim.crew_total(state, data, T0 + 160) == 3 and Sim.can_upgrade(state, data, farm_id, T0 + 160).ok, "Level 2 office: 3 workers, enough for Level 3")
+	_check(Sim.building_wages(state, data, office, T0 + 160) == 0.0, "construction workers aren't paid by the hour")
+	var wages := int(Sim.stats(state).spending.wages)
+	Sim.settle(state, data, T0 + 7360)
+	_check(int(Sim.stats(state).spending.wages) == wages, "two hours later still no wages for them (paid per project)")
+	# The last office can't go; with a second one it can.
+	_check(not Sim.can_demolish(state, data, office.id).ok, "the last Construction Office can't be demolished")
+	var second: String = Sim.build(state, data, "crew_office", Vector2i(8, 8), T0 + 7360).building_id
+	_check(second != "" and Sim.can_demolish(state, data, office.id).ok, "with a second office, one can go")
+	# Without a Construction Office in the data (the other tests), nothing needs a crew.
+	_check(not Sim.crew_on(_data()) and Sim.crew_on(data), "no Construction Office type: building needs no workers")
+
+
+## A version 10 save: its headquarters (saved as "construction_office") becomes City Hall, and it
+## gets a free Construction Office beside its roads, staffed first.
+func test_old_save_gets_construction_office() -> void:
+	var data := {"resources": GameDataScript.load_json("res://data/resources.json"),
+		"buildings": GameDataScript.load_json("res://data/buildings.json"),
+		"config": GameDataScript.load_json("res://data/game_config.json")}
+	var state := Sim.new_game(data, T0)
+	var old := JSON.parse_string(SaveFormat.to_text(state, T0)) as Dictionary
+	old.save_version = 10
+	old.buildings = old.buildings.filter(func(b): return b.type != "construction_office")
+	for b in old.buildings:
+		if b.type == "city_hall":
+			b.type = "construction_office"  # its id before version 11
+	var capital := int(old.stats.capital.buildings) - Sim.construction_value(data, "construction_office")
+	old.stats.capital.buildings = capital
+	var result := SaveFormat.from_text(JSON.stringify(old), data)
+	_check(result.ok and int(result.state.save_version) == Sim.SAVE_VERSION, "a version 10 save loads")
+	var s: Dictionary = result.state if result.ok else new_game_fallback(data)
+	var halls: Array = s.buildings.filter(func(b): return b.type == "city_hall")
+	var offices: Array = s.buildings.filter(func(b): return b.type == "construction_office")
+	_check(halls.size() == 1 and Sim.is_road_hub(data, halls[0]), "the old headquarters is City Hall, where roads start")
+	_check(offices.size() == 1 and Sim.on_road(data, offices[0]) and Sim.is_built(offices[0], T0), "it got a Construction Office, standing beside a linked road")
+	_check(offices.size() == 1 and Sim.hired(offices[0]) == 4 and Sim.crew_free(s, data, T0) == 4, "its 4 construction workers are hired")
+	_check(int(s.stats.capital.buildings) == capital + Sim.construction_value(data, "construction_office") and Sim.cash_check(s).ok, "it counts in the starting capital at its value")

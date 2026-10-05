@@ -26,25 +26,26 @@ func _ready() -> void:
 	build_menu.placement_requested.connect(_start_placement)
 	build_menu.placement_cancelled.connect(village.stop_placement)
 	build_menu.placement_confirmed.connect(_place)
+	build_menu.road_requested.connect(_start_roads)
+	build_menu.road_remove_toggled.connect(village.set_road_removing)
 	building_bar.info_requested.connect(building_panel.show_building)
 	building_bar.collect_requested.connect(_collect)
-	building_bar.produce_requested.connect(_produce)
 	building_bar.build_requested.connect(build_menu.open)
 	building_bar.move_requested.connect(_start_move)
 	building_panel.collect_requested.connect(_collect)
-	building_panel.produce_requested.connect(_produce)
-	building_panel.fill_requested.connect(_fill)
+	building_panel.start_batch_requested.connect(_ask_start_batch)
+	building_panel.cancel_batch_requested.connect(_ask_cancel_batch)
 	building_panel.closed.connect(_on_panel_closed)
-	building_panel.cancel_requested.connect(_ask_cancel)
 	building_panel.move_requested.connect(_start_move)
 	building_panel.demolish_requested.connect(_ask_demolish)
 	building_panel.staffing_requested.connect(_set_staffing)
-	building_panel.bonus_requested.connect(_set_bonus)
 	building_panel.suspend_requested.connect(_ask_suspend)
 	building_panel.resume_requested.connect(_resume)
+	building_panel.upgrade_requested.connect(_ask_upgrade)
 	building_panel.stock_requested.connect(_stock)
 	building_panel.clear_shelf_requested.connect(_ask_clear_shelf)
 	Economy.shelves_sold.connect(_on_shelves_sold)
+	Economy.people_changed.connect(_on_people_changed)
 	menu_bar.tile_pressed.connect(_on_menu_tile)
 	menu_bar.coming_soon.connect(func(title): hud.toast("%s is coming soon" % title))
 	# The bottom menu steps aside for anything else that uses the bottom of the screen.
@@ -54,6 +55,8 @@ func _ready() -> void:
 	settings_panel.new_game_requested.connect(_ask_new_game)
 	Economy.water_bill_paid.connect(func(cost: int, m3: float):
 		hud.toast("Water bill paid: %s for %s m³" % [UITheme.money(cost), UITheme.number(roundi(m3))], Economy.currency() < 0))
+	Economy.power_bill_paid.connect(func(cost: int, mwh: float):
+		hud.toast("Power bill paid: %s for %s MWh" % [UITheme.money(cost), UITheme.number(roundi(mwh))], Economy.currency() < 0))
 	_warehouse_panel = load("res://scenes/ui/warehouse_panel.gd").new()
 	_warehouse_panel.name = "WarehousePanel"
 	ui_root.add_child(_warehouse_panel)
@@ -123,14 +126,14 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 ## Tapping a building selects it; like Clash of Clans, a building with goods waiting also collects.
-## Buildings with workers (farms, mills, bakeries, warehouses…) then open their info window in
-## the middle; the others (Construction Office, houses) show the action bar at the bottom.
+## Buildings with workers (farms, mills, bakeries, warehouses, water plants…) and power buildings then
+## open their info window in the middle; the others (City Hall, houses) show the action bar at the bottom.
 func _on_building_tapped(building_id: String) -> void:
 	var b := Economy.building(building_id)
-	if not b.storage.is_empty():
+	if not Economy.waiting_goods(b).is_empty():
 		_collect(building_id)
 	village.select(building_id)
-	if GameData.buildings[b.type].category in ["extractor", "processor", "storage", "retail"]:
+	if GameData.buildings[b.type].category in ["extractor", "processor", "storage", "utility", "construction", "power", "retail"]:
 		building_bar.close()
 		building_panel.show_building(building_id)
 	else:
@@ -148,56 +151,74 @@ func _deselect() -> void:
 	building_bar.close()
 
 
+## One tap collects every building of the same type (all Bakeries, all Mills…) at once.
 func _collect(building_id: String) -> void:
-	var result := Economy.collect(building_id)
+	var result := Economy.collect_group(building_id)
 	if result.ok:
-		village.show_gain(building_id, result.moved)
+		for id in result.by_building:
+			village.show_gain(id, result.by_building[id])  # "+16 [bread]" over each one emptied
+		if result.left_over:
+			hud.toast("The warehouse is full: the rest waits inside the buildings.", true)
 	else:
 		hud.toast(result.error, true)
 
 
-func _produce(building_id: String) -> void:
+## Starting a batch pays its ingredients and wages at once and locks in its bonus (plan.md §5.1),
+## so show the whole cost first and ask.
+func _ask_start_batch(building_id: String, hours: int, bonus: String) -> void:
 	var b := Economy.building(building_id)
-	var recipe := BuildingInfo.recipe(b.type)
-	var result := Economy.enqueue(building_id, recipe.id)
-	if result.ok:
-		var used := {}
-		for res in recipe.inputs:
-			used[res] = -int(recipe.inputs[res])
-		village.show_gain(building_id, used)  # "-40 [wheat]" rises from the building
-	else:
-		hud.toast(result.error, true)
-
-
-## Queues as many batches as there's room and ingredients for.
-func _fill(building_id: String) -> void:
-	var result := Economy.fill_queue(building_id, BuildingInfo.recipe(Economy.building(building_id).type).id)
-	if result.ok:
-		var used := {}
-		for res in result.used:
-			used[res] = -int(result.used[res])
-		village.show_gain(building_id, used)
-	else:
-		hud.toast(result.error, true)
-
-
-## Cancelling a batch that's only waiting loses nothing, so it happens straight away.
-## Cancelling the batch being made loses ingredients, so we ask first.
-func _ask_cancel(building_id: String, index: int) -> void:
-	var check := Economy.can_cancel_job(building_id, index)
+	var recipe_id: String = BuildingInfo.recipe(b.type).id
+	var check := Economy.can_start_batch(building_id, recipe_id, hours, bonus)
 	if not check.ok:
 		hud.toast(check.error, true)
 		return
-	if not check.in_progress:
-		_cancel(building_id, index)
+	var item := BuildingInfo.resource_name(check.output)
+	var lines: Array[String] = []
+	var finish := "when workers come" if is_inf(float(check.finishes_at)) else "about %s" % UITheme.clock(float(check.finishes_at), TimeService.now())
+	var work := float(check.seconds) / 3600.0  # hours of work (whole in the real data)
+	var hours_text := str(roundi(work)) if is_equal_approx(work, roundf(work)) else "%.1f" % work
+	lines.append("Makes %s in %s h of work (done %s), a share every hour." % [BuildingInfo.amounts(check.units), hours_text, finish])
+	for line in check.ingredients:
+		lines.append("Ingredients: %s %s · %s" % [UITheme.number(int(line.qty)), BuildingInfo.resource_name(line.res), UITheme.money(roundi(float(line.cost)))])
+	lines.append("Labor: %d workers × %s/h · %s" % [int(check.workers), UITheme.dollars(float(check.wage_each)), UITheme.money(int(check.wages))])
+	lines.append("Water (on the water bill, estimate): %s" % UITheme.money(roundi(float(check.water))))
+	if float(check.get("power", 0.0)) > 0.0:
+		lines.append("Power (on the power bill, estimate): %s" % UITheme.money(roundi(float(check.power))))
+	if Economy.power_problem(Economy.building(building_id)) == "no_grid":
+		lines.append("
+[No power] It's outside your power network: it won't work until a Substation reaches it.")
+	lines.append("Total: %s → %s per %s (sells for %s)" % [UITheme.money(roundi(float(check.total))), UITheme.price(roundi(float(check.per_unit))), item, UITheme.price(int(check.price))])
+	lines.append("\nThe ingredients and wages are paid now; the bonus and the cost are locked in.")
+	confirm_dialog.ask("Start this batch?", "\n".join(lines), 0, {}, "Start",
+		_start_batch.bind(building_id, recipe_id, hours, bonus), "Back", "GreenButton")
+
+
+func _start_batch(building_id: String, recipe_id: String, hours: int, bonus: String) -> void:
+	var result := Economy.start_batch(building_id, recipe_id, hours, bonus)
+	if not result.ok:
+		hud.toast(result.error, true)
 		return
-	confirm_dialog.ask("Stop this batch?",
-		"It's already being made, so you only get part of the ingredients back.",
-		0, check.refund, "Stop it", _cancel.bind(building_id, index))
+	var used := {}
+	for line in result.ingredients:
+		used[line.res] = -int(line.qty)
+	if not used.is_empty():
+		village.show_gain(building_id, used)  # "-960 [wheat]" rises from the building
+	hud.toast("Batch started: %s for %s." % [BuildingInfo.amounts(result.units), UITheme.money(roundi(float(result.total)))])
 
 
-func _cancel(building_id: String, index: int) -> void:
-	var result := Economy.cancel_job(building_id, index)
+## Cancelling keeps the hours already made; the rest gives back only part, so ask first.
+func _ask_cancel_batch(building_id: String) -> void:
+	var check := Economy.can_cancel_batch(building_id)
+	if not check.ok:
+		hud.toast(check.error, true)
+		return
+	confirm_dialog.ask("Cancel this batch?",
+		"What it has made so far stays, to collect. Of the %d hours not made yet, you get back %d%% of their ingredients and wages." % [int(check.hours_left), roundi(100.0 * float(GameData.config.get("cancel_refund_in_progress", 0.0)))],
+		int(check.money), check.refund, "Cancel batch", _cancel_batch.bind(building_id))
+
+
+func _cancel_batch(building_id: String) -> void:
+	var result := Economy.cancel_batch(building_id)
 	if result.ok:
 		village.show_gain(building_id, result.refund)
 	else:
@@ -211,7 +232,7 @@ func _ask_demolish(building_id: String) -> void:
 		return
 	var building_name: String = GameData.buildings[Economy.building(building_id).type].name
 	confirm_dialog.ask("Demolish %s?" % building_name,
-		"The building is gone for good. Goods inside it and queued ingredients go to your warehouse.",
+		"The building is gone for good. Goods inside it go to your warehouse.",
 		check.money, check.goods, "Demolish", _demolish.bind(building_id))
 
 
@@ -240,8 +261,25 @@ func _start_move(building_id: String) -> void:
 	village.start_moving(building_id)  # after the bar is up, so the ghost's first check reaches it
 
 
-## ✓ in Placement Mode: build (or move) the building where the ghost stands.
+## Road Mode (plan.md §5.20): drag across the map to lay or remove road.
+func _start_roads() -> void:
+	_deselect()
+	village.start_road_mode()
+
+
+## ✓ in Placement Mode: build (or move) the building where the ghost stands. In Road Mode: build
+## (or remove) the road drawn, and stay in Road Mode for the next stretch.
 func _place() -> void:
+	if village.road_mode:
+		var removing: bool = village.road_removing
+		var done: Dictionary = village.confirm_road()
+		if not done.ok:
+			build_menu.show_hint(done.error)
+		elif removing:
+			hud.toast("Road removed: %d tiles." % done.cells.size())
+		else:
+			hud.toast("Road built: %d tiles for %s." % [done.new_cells.size(), UITheme.money(int(done.cost))])
+		return
 	var cell: Vector2i = village.ghost_cell
 	if village.moving_id != "":
 		var result := Economy.move(village.moving_id, cell)
@@ -257,16 +295,32 @@ func _place() -> void:
 		village.stop_placement()
 		build_menu.end_placement()
 		var room := int(GameData.buildings[type_id].get("households", 0))
+		var building_name: String = GameData.buildings[type_id].name
+		var done := "Construction started: %s ready in %s (%s paid for materials and crew)." % [building_name, UITheme.duration(float(result.seconds)), UITheme.money(int(result.cost))] if float(result.seconds) > 0.0 else "%s built!" % building_name
 		if room > 0:  # a home only adds room; households move in when it's for them and they can afford it
-			hud.toast("%s built! Room for %d more households." % [GameData.buildings[type_id].name, room])
+			hud.toast("%s Room for %d more households." % [done, room])
 		else:
-			hud.toast("%s built!" % GameData.buildings[type_id].name)
+			hud.toast(done)
+		var built := Economy.building(str(result.get("building_id", "")))
+		if not built.is_empty() and not Economy.on_road(built):
+			hud.toast("No road reaches it yet, so it gets no workers. Lay one with Build → Roads.", true)
 		# Heads-up: once finished, its jobs won't all be filled: there aren't enough adults.
 		var levels: Dictionary = GameData.config.get("staffing_levels", {})
 		var share := float(levels.get(GameData.config.get("default_staffing", "high"), 1.0))
 		var workers := roundi(int(GameData.buildings[type_id].get("max_workers", 0)) * share)
 		if workers > 0 and Economy.employment().jobs + workers > Economy.adults():
-			hud.toast("Not enough adults for all the jobs: work will slow down until children grow up.", true)
+			var seconds := float(GameData.config.get("population_growth_seconds", 0))
+			var group := maxi(int(GameData.config.get("move_in_group_size", 1)), 1)
+			var homes_full: bool = Economy.employment().jobs + workers > Economy.adult_room()
+			var needs_home := bool(GameData.config.get("move_in_needs_home", true))
+			if seconds > 0.0 and homes_full and needs_home:
+				hud.toast("Not enough adults for all the jobs, and no free homes for migrant workers: build homes.", true)
+			elif seconds > 0.0 and homes_full:
+				hud.toast("Migrant workers will come for the jobs: up to %d every %s. With no free homes they'll live in huts, which lowers happiness: build homes." % [group, UITheme.duration(seconds)], true)
+			elif seconds > 0.0:
+				hud.toast("Migrant workers will move in to fill the jobs: up to %d every %s while the village is happy." % [group, UITheme.duration(seconds)])
+			else:
+				hud.toast("Not enough adults for all the jobs: work will slow down until children grow up.", true)
 	else:
 		build_menu.show_hint(result.error)  # stay in Placement Mode so the player can try another tile
 
@@ -279,7 +333,7 @@ func _ask_suspend(building_id: String) -> void:
 		return
 	var building_name: String = GameData.buildings[Economy.building(building_id).type].name
 	confirm_dialog.ask("Suspend %s?" % building_name,
-		"It switches off: the workers go home and cost nothing. Work in progress is lost, but goods inside and queued ingredients go to your warehouse. Resume any time, for free.",
+		"It switches off: the workers go home and cost nothing. Goods inside go to your warehouse. Resume any time, for free.",
 		0, check.goods, "Suspend", _suspend.bind(building_id))
 
 
@@ -291,6 +345,29 @@ func _suspend(building_id: String) -> void:
 	village.show_gain(building_id, result.moved)
 	if not result.kept.is_empty():
 		hud.toast("The warehouse is full: the rest waits inside the building. Collect it later.", true)
+
+
+## Upgrading costs materials and a crew and may close the building for a while, so ask first
+## (plan.md §5.15).
+func _ask_upgrade(building_id: String) -> void:
+	var check := Economy.can_upgrade(building_id)
+	if not check.ok:
+		hud.toast(check.error, true)
+		return
+	var b := Economy.building(building_id)
+	var building_name: String = GameData.buildings[b.type].name
+	var meanwhile := "It keeps working while it's upgraded." if Economy.stays_open_while_upgrading(b) else "It closes until then: its workers go to other buildings and cost nothing."
+	confirm_dialog.ask("Upgrade %s to Level %d?" % [building_name, int(check.level)],
+		"It needs %s. At today's prices that's about %s, paid now, and it takes %s. %s" % [BuildingInfo.construction_needs(check), UITheme.money(int(check.cost)), UITheme.duration(float(check.seconds)), meanwhile],
+		0, {}, "Upgrade", _upgrade.bind(building_id))
+
+
+func _upgrade(building_id: String) -> void:
+	var result := Economy.upgrade(building_id)
+	if result.ok:
+		hud.toast("Upgrade started: Level %d in %s." % [int(result.level), UITheme.duration(float(result.seconds))])
+	else:
+		hud.toast(result.error, true)
 
 
 func _resume(building_id: String) -> void:
@@ -340,11 +417,23 @@ func _on_shelves_sold(earned: int, sold: Dictionary) -> void:
 	hud.toast("Sold out: %s. +%s" % [", ".join(parts), UITheme.money(earned)])
 
 
-## Wage bonus in the building window: costs more per worker, gets free workers first.
-func _set_bonus(building_id: String, level: String) -> void:
-	var result := Economy.set_bonus(building_id, level)
-	if not result.ok:
-		hud.toast(result.error, true)
+## People came or went: one message for the good news, a red one if people left the island.
+func _on_people_changed(report: Dictionary) -> void:
+	var parts: Array[String] = []
+	var arrived := int(report.get("population", 0))
+	if arrived > 0:
+		parts.append("%d migrant worker%s arrived" % [arrived, "" if arrived == 1 else "s"])
+	var born := int(report.get("born", 0))
+	if born > 0:
+		parts.append("%s born" % ("A baby was" if born == 1 else "%d babies were" % born))
+	var grew := int(report.get("grew_up", 0))
+	if grew > 0:
+		parts.append("%d %s grew up and can work" % [grew, "child" if grew == 1 else "children"])
+	if not parts.is_empty():
+		hud.toast(" · ".join(parts))
+	var left := int(report.get("moved_away", 0))
+	if left > 0:
+		hud.toast("%d %s left the island: the village is unhappy" % [left, "person" if left == 1 else "people"], true)
 
 
 ## Low / Medium / High staffing in the building window: fewer workers = slower but cheaper.

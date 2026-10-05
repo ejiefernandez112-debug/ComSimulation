@@ -44,6 +44,13 @@ PALETTE = {
 	"cloth_red": "#c4483b",
 	"leaf": "#5f9a3a",
 	"window": "#3b4a5c",
+	"white": "#eef1f2",
+	"concrete": "#cbc6bb",
+	"concrete_dark": "#a29c91",
+	"solar": "#28477a",
+	"solar_light": "#5d8fd1",
+	"hazard": "#e8b630",
+	"gravel": "#9a958b",
 	"grass": "#6ca444",  # preview ground only
 }
 

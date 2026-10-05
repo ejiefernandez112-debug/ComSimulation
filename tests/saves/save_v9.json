@@ -1,0 +1,577 @@
+{
+	"buildings": [
+		{
+			"batch": {},
+			"built_at": 0.0,
+			"hired": 0,
+			"id": "b1",
+			"job_started_at": 1000000.0,
+			"level": 1,
+			"paid": 0,
+			"position": [
+				9,
+				9
+			],
+			"storage": {},
+			"type": "construction_office"
+		},
+		{
+			"batch": {},
+			"built_at": 0.0,
+			"hired": 0,
+			"id": "b2",
+			"job_started_at": 1000000.0,
+			"level": 1,
+			"paid": 80000,
+			"position": [
+				12,
+				9
+			],
+			"storage": {},
+			"type": "public_housing"
+		},
+		{
+			"batch": {},
+			"built_at": 0.0,
+			"hired": 0,
+			"id": "b3",
+			"job_started_at": 1000000.0,
+			"level": 1,
+			"paid": 80000,
+			"position": [
+				15,
+				9
+			],
+			"storage": {},
+			"type": "public_housing"
+		},
+		{
+			"batch": {},
+			"built_at": 0.0,
+			"hired": 0,
+			"id": "b4",
+			"job_started_at": 1000000.0,
+			"level": 1,
+			"paid": 80000,
+			"position": [
+				18,
+				9
+			],
+			"storage": {},
+			"type": "public_housing"
+		},
+		{
+			"batch": {},
+			"built_at": 0.0,
+			"hired": 0,
+			"id": "b5",
+			"job_started_at": 1000000.0,
+			"level": 1,
+			"paid": 80000,
+			"position": [
+				12,
+				12
+			],
+			"storage": {},
+			"type": "public_housing"
+		},
+		{
+			"batch": {},
+			"built_at": 0.0,
+			"hired": 0,
+			"id": "b6",
+			"job_started_at": 1000000.0,
+			"level": 1,
+			"paid": 80000,
+			"position": [
+				15,
+				12
+			],
+			"storage": {},
+			"type": "public_housing"
+		},
+		{
+			"batch": {},
+			"built_at": 0.0,
+			"hired": 4,
+			"id": "b7",
+			"job_started_at": 1000000.0,
+			"level": 1,
+			"paid": 267000,
+			"position": [
+				6,
+				9
+			],
+			"storage": {},
+			"type": "warehouse"
+		},
+		{
+			"batch": {},
+			"built_at": 1003600.0,
+			"hired": 0,
+			"id": "b8",
+			"job_started_at": 1003600.0,
+			"level": 1,
+			"paid": 84380,
+			"position": [
+				17,
+				8
+			],
+			"storage": {},
+			"type": "small_house"
+		},
+		{
+			"batch": {},
+			"built_at": 1003600.0,
+			"hired": 0,
+			"id": "b9",
+			"job_started_at": 1003600.0,
+			"level": 1,
+			"paid": 84380,
+			"position": [
+				9,
+				8
+			],
+			"storage": {},
+			"type": "small_house"
+		},
+		{
+			"batch": {},
+			"built_at": 1003600.0,
+			"hired": 0,
+			"id": "b10",
+			"job_started_at": 1003600.0,
+			"level": 1,
+			"paid": 84380,
+			"position": [
+				5,
+				9
+			],
+			"storage": {},
+			"type": "small_house"
+		},
+		{
+			"batch": {
+				"bonus": "small",
+				"collected": {},
+				"cost": 40800.0,
+				"hours": 2,
+				"input_cost": {},
+				"inputs": {},
+				"made_hours": 0,
+				"recipe_id": "grow_wheat",
+				"units": {
+					"wheat": 132
+				},
+				"wages": 28800
+			},
+			"bonus": "small",
+			"built_at": 1003600.0,
+			"hired": 4,
+			"id": "b11",
+			"job_started_at": 1010800.0,
+			"level": 1,
+			"paid": 156760,
+			"position": [
+				11,
+				7
+			],
+			"staffing": "low",
+			"storage": {},
+			"type": "wheat_farm"
+		},
+		{
+			"batch": {
+				"bonus": "small",
+				"collected": {},
+				"cost": 40800.0,
+				"hours": 2,
+				"input_cost": {},
+				"inputs": {},
+				"made_hours": 0,
+				"recipe_id": "grow_wheat",
+				"units": {
+					"wheat": 132
+				},
+				"wages": 28800
+			},
+			"bonus": "small",
+			"built_at": 1003600.0,
+			"hired": 8,
+			"id": "b12",
+			"job_started_at": 1010800.0,
+			"level": 1,
+			"paid": 156760,
+			"position": [
+				5,
+				18
+			],
+			"storage": {},
+			"type": "wheat_farm"
+		},
+		{
+			"batch": {
+				"bonus": "small",
+				"collected": {
+					"flour": 35
+				},
+				"cost": 53527.27272727273,
+				"hours": 2,
+				"input_cost": {
+					"wheat": 24727.272727272728
+				},
+				"inputs": {
+					"wheat": 80
+				},
+				"made_hours": 1,
+				"recipe_id": "mill_flour",
+				"units": {
+					"flour": 70
+				},
+				"wages": 28800
+			},
+			"bonus": "small",
+			"built_at": 1003600.0,
+			"hired": 8,
+			"id": "b13",
+			"job_started_at": 1007200.0,
+			"level": 1,
+			"paid": 373900,
+			"position": [
+				18,
+				11
+			],
+			"storage": {},
+			"type": "flour_mill"
+		},
+		{
+			"batch": {
+				"bonus": "small",
+				"collected": {},
+				"cost": 29693.506493506495,
+				"hours": 1,
+				"input_cost": {
+					"flour": 15293.506493506495
+				},
+				"inputs": {
+					"flour": 20
+				},
+				"made_hours": 0,
+				"recipe_id": "bake_bread",
+				"units": {
+					"bread": 16
+				},
+				"wages": 14400
+			},
+			"bonus": "small",
+			"built_at": 1003600.0,
+			"hired": 8,
+			"id": "b14",
+			"job_started_at": 1010800.0,
+			"level": 1,
+			"paid": 591040,
+			"position": [
+				13,
+				13
+			],
+			"storage": {},
+			"type": "bakery"
+		},
+		{
+			"batch": {},
+			"built_at": 1003600.0,
+			"hired": 4,
+			"id": "b15",
+			"job_started_at": 1011400.0,
+			"level": 1,
+			"paid": 195155,
+			"position": [
+				18,
+				10
+			],
+			"shelves": [
+				{
+					"cost": 5352.727272727273,
+					"price": 2534,
+					"qty": 7,
+					"rate": 23.04,
+					"res": "flour",
+					"sold": 3.84,
+					"tag": "normal"
+				},
+				{},
+				{},
+				{}
+			],
+			"storage": {},
+			"type": "supermarket"
+		},
+		{
+			"batch": {},
+			"built_at": 1003600.0,
+			"hired": 0,
+			"id": "b16",
+			"job_started_at": 1003600.0,
+			"level": 1,
+			"paid": 229140,
+			"position": [
+				18,
+				13
+			],
+			"storage": {},
+			"storage_cost": {},
+			"suspended": true,
+			"type": "warehouse"
+		}
+	],
+	"inventory": {
+		"flour": 8,
+		"wheat": 184
+	},
+	"inventory_cost": {
+		"flour": 6117.402597402596,
+		"wheat": 56872.72727272727
+	},
+	"last_saved_at": 1011400.0,
+	"next_building_id": 17,
+	"plot": {
+		"grid_size": [
+			20,
+			20
+		]
+	},
+	"population": {
+		"children": [
+			{
+				"count": 1,
+				"grows_up_at": 1018800.0
+			},
+			{
+				"count": 8,
+				"grows_up_at": 1022400.0
+			},
+			{
+				"count": 7,
+				"grows_up_at": 1026000.0
+			},
+			{
+				"count": 7,
+				"grows_up_at": 1029600.0
+			}
+		],
+		"current": 73,
+		"growth_anchor": 1011400.0,
+		"growth_speed": 1.5,
+		"life_carry": {
+			"adult_deaths": 0.7916666666666665,
+			"adult_leaves": 0.0,
+			"born": 0.7499999999999999,
+			"child_deaths": 0.1801666666361109,
+			"child_leaves": 0.0
+		},
+		"move_in_speed": 1.5
+	},
+	"profile": {
+		"currency": 7856605
+	},
+	"rent_carry": 0.0,
+	"save_version": 9,
+	"settled_at": 1011400.0,
+	"started_at": 1000000.0,
+	"stats": {
+		"adjustments": 8500000,
+		"capital": {
+			"buildings": 667000,
+			"cash": 1500000
+		},
+		"history": [
+			{
+				"adults": 50,
+				"born": 0,
+				"cash": 10000000,
+				"children": 0,
+				"died": 0,
+				"employed": 4,
+				"grew_up": 0,
+				"income": 0,
+				"jobs": 4,
+				"made": {},
+				"moved_away": 0,
+				"moved_in": 0,
+				"population": 50,
+				"spending": 0,
+				"t": 1000000.0
+			},
+			{
+				"adults": 50,
+				"born": 7,
+				"cash": 8038105,
+				"children": 7,
+				"died": 0,
+				"employed": 44,
+				"grew_up": 0,
+				"income": 0,
+				"jobs": 44,
+				"made": {},
+				"moved_away": 0,
+				"moved_in": 0,
+				"population": 57,
+				"spending": 1961895,
+				"t": 1003600.0
+			},
+			{
+				"adults": 50,
+				"born": 15,
+				"cash": 7970304,
+				"children": 15,
+				"died": 0,
+				"employed": 44,
+				"grew_up": 0,
+				"income": 1799,
+				"jobs": 44,
+				"made": {
+					"wheat": 132
+				},
+				"moved_away": 0,
+				"moved_in": 0,
+				"population": 65,
+				"spending": 2031495,
+				"t": 1007200.0
+			},
+			{
+				"adults": 50,
+				"born": 22,
+				"cash": 7931304,
+				"children": 22,
+				"died": 0,
+				"employed": 44,
+				"grew_up": 0,
+				"income": 3599,
+				"jobs": 44,
+				"made": {
+					"flour": 35,
+					"wheat": 264
+				},
+				"moved_away": 0,
+				"moved_in": 0,
+				"population": 72,
+				"spending": 2072295,
+				"t": 1010800.0
+			},
+			{
+				"adults": 50,
+				"born": 23,
+				"cash": 7856605,
+				"children": 23,
+				"died": 0,
+				"employed": 44,
+				"grew_up": 0,
+				"income": 3900,
+				"jobs": 44,
+				"made": {
+					"flour": 35,
+					"wheat": 264
+				},
+				"moved_away": 0,
+				"moved_in": 0,
+				"population": 73,
+				"spending": 2147295,
+				"t": 1011400.0
+			}
+		],
+		"income": {
+			"demolish": 0,
+			"rent": 3900,
+			"sales": 0
+		},
+		"made": {
+			"flour": 35,
+			"wheat": 264
+		},
+		"money_log": [
+			{
+				"adjustments": 0,
+				"income": {
+					"demolish": 0,
+					"sales": 0
+				},
+				"sales_by_item": {},
+				"spending": {
+					"construction": 0,
+					"tax": 0,
+					"wages": 0,
+					"water": 0
+				},
+				"t": 1000000.0
+			},
+			{
+				"adjustments": 8500000,
+				"income": {
+					"demolish": 0,
+					"sales": 0
+				},
+				"sales_by_item": {},
+				"spending": {
+					"construction": 1955895,
+					"tax": 0,
+					"wages": 6000,
+					"water": 0
+				},
+				"t": 1003600.0
+			},
+			{
+				"adjustments": 8500000,
+				"income": {
+					"demolish": 0,
+					"rent": 1799,
+					"sales": 0
+				},
+				"sales_by_item": {},
+				"spending": {
+					"construction": 1955895,
+					"tax": 0,
+					"wages": 75600,
+					"water": 0
+				},
+				"t": 1007200.0
+			},
+			{
+				"adjustments": 8500000,
+				"income": {
+					"demolish": 0,
+					"rent": 3599,
+					"sales": 0
+				},
+				"sales_by_item": {},
+				"spending": {
+					"construction": 1955895,
+					"tax": 0,
+					"wages": 116400,
+					"water": 0
+				},
+				"t": 1010800.0
+			}
+		],
+		"people": {
+			"born": 23,
+			"died": 0,
+			"grew_up": 0,
+			"moved_away": 0,
+			"moved_in": 0
+		},
+		"sales_by_item": {},
+		"sold": {},
+		"spending": {
+			"construction": 1955895,
+			"tax": 0,
+			"wages": 191400,
+			"water": 0
+		}
+	},
+	"wage_carry": 0.0,
+	"water_meter": {
+		"base_cost": 260.0,
+		"cycle_start": 1000000.0,
+		"m3": 130.0
+	}
+}

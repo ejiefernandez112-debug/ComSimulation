@@ -7,6 +7,7 @@ extends Node2D
 
 const SPRITES := "res://assets/buildings/"
 const HEIGHT := 30.0  # placeholder box height
+const FOOTPRINT := 0.74  # placeholder box size, in tiles: it stands on its plot, lawn showing around it
 const BUBBLE_RADIUS := 17.0
 const CONSTRUCTION_TINT := Color(1, 1, 1, 0.45)
 const SUSPENDED_TINT := Color(0.55, 0.55, 0.62)  # greyed: switched off by the player
@@ -17,6 +18,9 @@ const CATEGORY_COLORS := {
 	"extractor": Color("d6b84a"),
 	"processor": Color("9c7bb5"),
 	"storage": Color("7aa0b8"),
+	"utility": Color("5fb3c9"),
+	"construction": Color("e0a43a"),
+	"power": Color("f2c94c"),
 	"retail": Color("6fb07f"),
 }
 
@@ -37,6 +41,8 @@ var _b := {}
 var _constructing := false
 var _suspended := false
 var _build_bar := Node2D.new()
+var _no_road := Node2D.new()  # a red sign: no road (plan.md §5.20) or no power (§5.5)
+var _sign_icon := "road"  # what the red sign shows: "road" or "power"
 
 
 func _ready() -> void:
@@ -61,6 +67,10 @@ func _ready() -> void:
 	_bubble.position = Vector2(0, -top_height() - 24)
 	_bubble.draw.connect(_draw_bubble)
 	add_child(_bubble)
+	_no_road.z_index = 5
+	_no_road.visible = false
+	_no_road.draw.connect(_draw_no_road)
+	add_child(_no_road)
 
 
 func _draw() -> void:
@@ -93,9 +103,24 @@ func refresh(b: Dictionary) -> void:
 		queue_redraw()
 		if finished:
 			pop_in()  # construction done
-	var has_goods: bool = not b.storage.is_empty()
+	# A batch's finished hours wait in the building (plan.md §5.1): the bubble appears once the
+	# first hour is done and stays until they are collected.
+	var waiting := Economy.waiting_goods(b)
+	var has_goods: bool = not waiting.is_empty()
+	# No road comes first (without workers nothing works anyway); a home without power gets no
+	# sign, because nothing happens to it yet.
+	var sign := ""
+	if not constructing and not Economy.on_road(b):
+		sign = "road"
+	elif not constructing and Economy.power_problem(b) != "" and GameData.buildings[b.type].category != "residential":
+		sign = "power"
+	_no_road.visible = sign != ""
+	if sign != "" and sign != _sign_icon:
+		_sign_icon = sign
+		_no_road.queue_redraw()
+	_no_road.position = Vector2(26 if has_goods else 0, -top_height() - 20)  # beside a bubble
 	if has_goods:
-		var icon := UITheme.icon(b.storage.keys()[0])
+		var icon := UITheme.icon(waiting.keys()[0])
 		if icon != _bubble_icon:
 			_bubble_icon = icon
 			_bubble.queue_redraw()
@@ -150,8 +175,8 @@ func hits(world: Vector2) -> bool:
 	var local := world - position
 	var art := picture(type_id)
 	if art.is_empty():
-		var base := Iso.diamond_at(Vector2.ZERO)
-		var top := Iso.diamond_at(Vector2.ZERO, HEIGHT)
+		var base := _footprint(Vector2.ZERO)
+		var top := _footprint(Vector2.ZERO, HEIGHT)
 		return Geometry2D.is_point_in_polygon(local, PackedVector2Array([top[0], top[1], base[1], base[2], base[3], top[3]]))
 	if not _hit_images.has(type_id):
 		var image: Image = art.texture.get_image()
@@ -179,7 +204,7 @@ func top_height() -> float:
 ## Pictures from the sprite studio already include their shadow.
 func draw_shadow(layer: Node2D) -> void:
 	if picture(type_id).is_empty():
-		layer.cast(Iso.diamond_at(position), HEIGHT)
+		layer.cast(_footprint(position), HEIGHT)
 
 
 func _draw_bubble() -> void:
@@ -190,6 +215,17 @@ func _draw_bubble() -> void:
 	_bubble.draw_circle(Vector2.ZERO, r, Color("fffdf4"), true, -1.0, true)
 	if _bubble_icon:
 		_bubble.draw_texture_rect(_bubble_icon, Rect2(-r * 0.78, -r * 0.8, r * 1.56, r * 1.56), false)
+
+
+## A round red sign with a road (or a lightning bolt) on it, and a bar across: "no road here" /
+## "no power here".
+func _draw_no_road() -> void:
+	var r := 12.0
+	_no_road.draw_circle(Vector2.ZERO, r + 2.5, UITheme.OUTLINE, true, -1.0, true)
+	_no_road.draw_circle(Vector2.ZERO, r, Color("d8452f"), true, -1.0, true)
+	_no_road.draw_circle(Vector2.ZERO, r - 3.5, Color("fffdf4"), true, -1.0, true)
+	_no_road.draw_texture_rect(UITheme.icon(_sign_icon), Rect2(-6.5, -6.5, 13, 13), false)
+	_no_road.draw_line(Vector2(-6.5, -6.5), Vector2(6.5, 6.5), Color("d8452f"), 2.6, true)
 
 
 ## Construction progress bar with the time left written above it.
@@ -253,12 +289,20 @@ static func draw_name(canvas: CanvasItem, at: Vector2, type_id: String, alpha: f
 	canvas.draw_string(UITheme.font(), pos, def.name, HORIZONTAL_ALIGNMENT_CENTER, 140, 14, Color(1, 1, 1, alpha))
 
 
+## The placeholder box's outline on the ground (raised by `lift`): a tile diamond, a bit smaller.
+static func _footprint(at: Vector2, lift := 0.0) -> PackedVector2Array:
+	var points := Iso.diamond_at(Vector2.ZERO)
+	for i in points.size():
+		points[i] = at + points[i] * FOOTPRINT - Vector2(0, lift)
+	return points
+
+
 ## PLACEHOLDER box, centred on `at`, for buildings that have no picture yet.
 static func draw_block(canvas: CanvasItem, at: Vector2, type_id: String, tint: Color) -> void:
 	var def: Dictionary = GameData.buildings[type_id]
 	var color: Color = CATEGORY_COLORS.get(def.category, Color.GRAY) * tint
-	var base := Iso.diamond_at(at)
-	var top := Iso.diamond_at(at, HEIGHT)
+	var base := _footprint(at)
+	var top := _footprint(at, HEIGHT)
 	# Sun from the upper left: the left wall is half-lit, the right wall faces away.
 	var left := PackedVector2Array([top[3], top[2], base[2], base[3]])
 	var right := PackedVector2Array([top[2], top[1], base[1], base[2]])

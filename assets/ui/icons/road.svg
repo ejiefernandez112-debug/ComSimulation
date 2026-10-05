@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <!-- A road going into the distance (roads). -->
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#8A929C"/><stop offset="1" stop-color="#4E5660"/></linearGradient>
+  </defs>
+  <path d="M50 12 L78 12 L118 116 L10 116 Z" fill="url(#g)" stroke="#1C2128" stroke-width="6" stroke-linejoin="round"/>
+  <path d="M64 20 L64 34 M64 48 L64 66 M64 82 L64 106" stroke="#FFD34D" stroke-width="7" stroke-linecap="round"/>
+  <path d="M52 18 L22 108" stroke="#fff" stroke-opacity="0.55" stroke-width="4" stroke-linecap="round"/>
+  <path d="M76 18 L106 108" stroke="#fff" stroke-opacity="0.55" stroke-width="4" stroke-linecap="round"/>
+</svg>

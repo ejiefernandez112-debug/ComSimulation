@@ -7,9 +7,14 @@ signal changed
 ## A water bill was just charged while playing (cents, m³). Bills charged while the game was
 ## closed are in offline_report instead (the Welcome back window).
 signal water_bill_paid(cost: int, m3: float)
+## A power bill was just charged while playing (cents, MWh). While closed: offline_report instead.
+signal power_bill_paid(cost: int, mwh: float)
 ## Supermarket shelves sold out while playing: `earned` = cents after tax, `sold` = {item: units}.
 ## Sales while the game was closed are in offline_report instead.
 signal shelves_sold(earned: int, sold: Dictionary)
+## People came or went while playing: `report` is the settle report, with "population" (moved
+## in), "born", "grew_up", "moved_away" (counts; missing = 0). While closed: offline_report instead.
+signal people_changed(report: Dictionary)
 
 const Simulation = preload("res://scripts/sim/simulation.gd")
 const SaveFormat = preload("res://scripts/sim/save_format.gd")
@@ -71,10 +76,17 @@ func tick() -> Dictionary:
 	if int(report.get("water", 0)) > 0 and not water_bills().is_empty():
 		water_bill_paid.emit(int(report.water), float(water_bills()[-1].m3))
 		_dirty = true  # save soon after a bill
+	if int(report.get("power", 0)) > 0 and not power_bills().is_empty():
+		power_bill_paid.emit(int(report.power), float(power_bills()[-1].mwh))
+		_dirty = true
 	var sold := sold_in(report)
 	if not sold.is_empty():
 		shelves_sold.emit(int(report.get("store_sales", 0)), sold)
 		_dirty = true
+	for key in ["population", "born", "grew_up", "moved_away"]:
+		if int(report.get(key, 0)) > 0:
+			people_changed.emit(report)
+			break
 	if _dirty:
 		save_game()  # once per second at most, so a burst of taps is one write
 	changed.emit()
@@ -166,24 +178,39 @@ func build(type_id: String, cell: Vector2i) -> Dictionary:
 	return _after(Simulation.build(state, data(), type_id, cell, TimeService.now()))
 
 
-func enqueue(building_id: String, recipe_id: String) -> Dictionary:
-	return _after(Simulation.enqueue(state, data(), building_id, recipe_id, TimeService.now()))
+## Start a production batch of `hours` with wage bonus `bonus` (plan.md §5.1): ingredients and
+## wages are paid now. Returns the batch's quote (see batch_quote) on success.
+func start_batch(building_id: String, recipe_id: String, hours: int, bonus: String) -> Dictionary:
+	return _after(Simulation.start_batch(state, data(), building_id, recipe_id, hours, bonus, TimeService.now()))
+
+
+## Cancel the running batch: hours already made are kept; part of the rest comes back
+## ({"refund", "money", "hours_left"}).
+func cancel_batch(building_id: String) -> Dictionary:
+	return _after(Simulation.cancel_batch(state, data(), building_id, TimeService.now()))
 
 
 func collect(building_id: String) -> Dictionary:
 	return _after(Simulation.collect(state, data(), building_id, TimeService.now()))
 
 
-func fill_queue(building_id: String, recipe_id: String) -> Dictionary:
-	return _after(Simulation.fill_queue(state, data(), building_id, recipe_id, TimeService.now()))
+## Collect from this building and every other one of its type ({"moved", "by_building", "left_over"}).
+func collect_group(building_id: String) -> Dictionary:
+	return _after(Simulation.collect_group(state, data(), building_id, TimeService.now()))
 
 
 func move(building_id: String, cell: Vector2i) -> Dictionary:
-	return _after(Simulation.move(state, building_id, cell))
+	return _after(Simulation.move(state, data(), building_id, cell, TimeService.now()))
 
 
-func cancel_job(building_id: String, index: int) -> Dictionary:
-	return _after(Simulation.cancel_job(state, data(), building_id, index, TimeService.now()))
+## Build road on these tiles (Vector2i), paid now (plan.md §5.20). {"cost", "new_cells"}.
+func build_roads(cells: Array) -> Dictionary:
+	return _after(Simulation.build_roads(state, data(), cells, TimeService.now()))
+
+
+## Remove the road on these tiles (free, nothing paid back). {"cells"}.
+func remove_roads(cells: Array) -> Dictionary:
+	return _after(Simulation.remove_roads(state, data(), cells, TimeService.now()))
 
 
 func demolish(building_id: String) -> Dictionary:
@@ -209,18 +236,67 @@ func is_suspended(building: Dictionary) -> bool:
 	return Simulation.is_suspended(building)
 
 
+## Start the building's next upgrade (buys its materials and pays its crew now; plan.md §5.15).
+func upgrade(building_id: String) -> Dictionary:
+	return _after(Simulation.upgrade(state, data(), building_id, TimeService.now()))
+
+
+## Whether it could be upgraded now ({"ok", "error", "level", "cost" (cents, today's prices),
+## "seconds", "lines" (what it needs, see build_quote)}).
+func can_upgrade(building_id: String) -> Dictionary:
+	return Simulation.can_upgrade(state, data(), building_id, TimeService.now())
+
+
+## What the building's next upgrade needs and costs at today's prices (see build_quote); {} at
+## the top level.
+func upgrade_quote(building: Dictionary) -> Dictionary:
+	var level := Simulation.building_level(building)
+	if level >= Simulation.max_level(data(), building.type):
+		return {}
+	return Simulation.construction_quote(data(), building.type, level + 1, TimeService.now())
+
+
+## The next level's entry in buildings.json (what changes); {} at the top.
+func next_upgrade(building: Dictionary) -> Dictionary:
+	return Simulation.next_upgrade(data(), building)
+
+
+## The building's level, and the highest its kind can reach.
+func building_level(building: Dictionary) -> int:
+	return Simulation.building_level(building)
+
+
+func max_level(type_id: String) -> int:
+	return Simulation.max_level(data(), type_id)
+
+
+func is_upgrading(building: Dictionary) -> bool:
+	return Simulation.is_upgrading(building, TimeService.now())
+
+
+## Seconds until its upgrade is done (0 when it isn't being upgraded).
+func upgrade_left(building: Dictionary) -> float:
+	return maxf(float(building.get("upgrade_done_at", 0.0)) - TimeService.now(), 0.0)
+
+
+## True when the building keeps working while it's upgraded (homes, warehouses).
+func stays_open_while_upgrading(building: Dictionary) -> bool:
+	return Simulation.stays_open_while_upgrading(data(), building)
+
+
+## A number from buildings.json at the building's level (max_workers, capacity, shelves,
+## households).
+func level_stat(building: Dictionary, key: String, default: Variant = 0) -> Variant:
+	return Simulation.level_stat(data(), building, key, default)
+
+
 ## The room this warehouse adds right now (fewer workers = less room); 0 for other buildings.
 func storage_capacity(building: Dictionary) -> int:
 	return Simulation.storage_capacity(state, data(), building)
 
 
-## Halted: storage full, so it makes nothing and pays no wages until collected.
-func is_halted(building: Dictionary) -> bool:
-	return Simulation.is_halted(data(), building)
-
-
-## Producing: has work and room for it (not halted, not an idle Mill/Bakery). Only then are
-## its workers working and paid.
+## Producing: has work to do (a batch being made, shelves to sell). Only then are its workers
+## working.
 func is_producing(building: Dictionary) -> bool:
 	return Simulation.is_producing(data(), building)
 
@@ -265,7 +341,8 @@ func set_staffing(building_id: String, level: String) -> Dictionary:
 	return _after(Simulation.set_staffing(state, data(), building_id, level, TimeService.now()))
 
 
-## level: "none", "small", "good" or "big" (see wage_bonuses in game_config.json).
+## The bonus offered for the next batch. level: "none", "small", "good" or "big" (see
+## wage_bonuses / bonus_output in game_config.json). Refused while a batch is under way.
 func set_bonus(building_id: String, level: String) -> Dictionary:
 	return _after(Simulation.set_bonus(state, data(), building_id, level, TimeService.now()))
 
@@ -326,9 +403,19 @@ func shop_products() -> Array[String]:
 	return Simulation.shop_products(data())
 
 
-## Where that item is on sale ({"building_id", "index"}), or {} if on no shelf.
+## Where that item is on sale ({"building_id", "index"} of the first store found), or {} if on no shelf.
 func shelf_selling(resource_id: String) -> Dictionary:
 	return Simulation.shelf_selling(state, resource_id)
+
+
+## True when this store already has that item on one of its shelves.
+func store_has_product(building_id: String, resource_id: String) -> bool:
+	return Simulation.store_has_product(Simulation.find_building(state, building_id), resource_id)
+
+
+## How many stores are selling each item right now: {item: stores} (they share its shoppers).
+func selling_counts() -> Dictionary:
+	return Simulation.selling_counts(state, data(), TimeService.now())
 
 
 ## {"item": units} sold out on shelves, from a settle report (its "sold:<item>" entries).
@@ -353,10 +440,27 @@ func unit_price(resource_id: String) -> int:
 	return Simulation.unit_price(data(), resource_id)
 
 
-## m³ of water per hour this building draws from the public supply right now (0 when not
-## producing).
+## m³ of water per hour this building draws right now (own plants first, then the public
+## supply; 0 when not producing).
 func water_use(building: Dictionary) -> float:
 	return Simulation.water_use(state, data(), building, TimeService.now())
+
+
+## What the water this building draws costs per hour right now (dollars): own plants' water at
+## its own price, the rest at the public price.
+func water_cost_per_hour(building: Dictionary) -> float:
+	return Simulation.water_cost_per_hour(state, data(), building, TimeService.now())
+
+
+## m³ of water per hour this Water Treatment Plant cleans right now (0 for other buildings).
+func water_supply(building: Dictionary) -> float:
+	return Simulation.water_supply(state, data(), building, TimeService.now())
+
+
+## The company's water right now (m³/h): {"own", "used", "from_own", "public", "spare",
+## "own_price" (dollars per own m³)}.
+func water_summary() -> Dictionary:
+	return Simulation.water_summary(state, data(), TimeService.now())
 
 
 ## The water bill building up this cycle: {"m3", "cost" (cents, heavy-user extra included),
@@ -370,10 +474,147 @@ func water_bills() -> Array:
 	return state.get("water_bills", [])
 
 
-## What one unit of this building's product costs to make right now, with the breakdown for its
-## window (see Simulation.cost_breakdown; amounts in cents). {} if it makes nothing.
-func cost_breakdown(building: Dictionary) -> Dictionary:
-	return Simulation.cost_breakdown(state, data(), building, TimeService.now())
+# --- Electricity (plan.md §5.5) ---
+
+## Whether this game has electricity (game_config.json has a "power" block).
+func power_on() -> bool:
+	return Simulation.power_on(data())
+
+
+## MW this building needs while it runs (0 = none).
+func power_need(building: Dictionary) -> float:
+	return Simulation.power_need(data(), building)
+
+
+## Why it has no power: "short" (not enough left), "no_grid" (outside the network), or "".
+func power_problem(building: Dictionary) -> String:
+	return Simulation.power_problem(building)
+
+
+## MW this power plant makes right now (0 for other buildings).
+func power_supply(building: Dictionary) -> float:
+	return Simulation.power_supply(state, data(), building, TimeService.now())
+
+
+## How many tiles around it its power reaches (0 = it carries none).
+func power_radius(building: Dictionary) -> float:
+	return Simulation.power_radius(data(), building)
+
+
+## The power right now: {"own", "grid", "used", "wanted", "from_own", "public", "spare", "left",
+## "own_price", "status"} (see Simulation.power_summary).
+func power_summary() -> Dictionary:
+	return Simulation.power_summary(state, data(), TimeService.now())
+
+
+## The power network: {"ids" (buildings joined), "areas" [[cell, radius]]}.
+func power_network() -> Dictionary:
+	return Simulation.power_network(state, data(), TimeService.now())
+
+
+## Whether `cell` is inside the power network's reach.
+func is_powered_cell(cell: Vector2i) -> bool:
+	return Simulation.is_powered_cell(power_network(), cell)
+
+
+## Every tile of the plot inside the power network's reach: Vector2i -> true (for the map).
+func powered_cells() -> Dictionary:
+	var network := power_network()
+	var cells := {}
+	var size: Array = state.plot.grid_size
+	for y in int(size[1]):
+		for x in int(size[0]):
+			if Simulation.is_powered_cell(network, Vector2i(x, y)):
+				cells[Vector2i(x, y)] = true
+	return cells
+
+
+## Whether a plant or substation reaching `radius` tiles would join the network standing on `cell`.
+func would_join_network(cell: Vector2i, radius: float) -> bool:
+	return Simulation.would_join_network(power_network(), cell, radius)
+
+
+## What this building's power costs per hour right now (dollars).
+func power_cost_per_hour(building: Dictionary) -> float:
+	return Simulation.power_cost_per_hour(state, data(), building, TimeService.now())
+
+
+## The power bill building up this cycle: {"mwh", "cost" (cents), "due_at"}.
+func power_bill() -> Dictionary:
+	return Simulation.bill_so_far(state, data(), "power", TimeService.now())
+
+
+## Past power bills, oldest first: [{"t", "mwh", "cost" (cents)}].
+func power_bills() -> Array:
+	return state.get("power_bills", [])
+
+
+## What a batch of `hours` with bonus `bonus` would make and cost, in cents: units, ingredients,
+## wages, water, total, cost per unit, finish time (see Simulation.batch_quote). {} if it makes
+## nothing.
+func batch_quote(building: Dictionary, recipe_id: String, hours: int, bonus: String) -> Dictionary:
+	return Simulation.batch_quote(state, data(), building, recipe_id, hours, bonus, TimeService.now())
+
+
+## Whether that batch could start now ({"ok", "error"} + the quote); changes nothing.
+func can_start_batch(building_id: String, recipe_id: String, hours: int, bonus: String) -> Dictionary:
+	return Simulation.can_start_batch(state, data(), building_id, recipe_id, hours, bonus, TimeService.now())
+
+
+## The longest batch that could start now, in hours (0 = none): limited by batch.max_hours, the
+## ingredients in the Warehouse and the cash for the wages.
+func batch_max_hours(building_id: String, recipe_id: String, bonus: String) -> int:
+	return Simulation.batch_max_hours(state, data(), building_id, recipe_id, bonus)
+
+
+## The longest batch allowed at all, and the length the panel offers first.
+func batch_hours_limit() -> int:
+	return Simulation.batch_hours_limit(data())
+
+
+func batch_default_hours() -> int:
+	return Simulation.batch_default_hours(data())
+
+
+## Extra share of units a bonus makes (0.1 = +10%).
+func bonus_output(bonus: String) -> float:
+	return Simulation.bonus_output(data(), bonus)
+
+
+## What cancelling the running batch would give back ({"ok", "error", "refund", "money",
+## "hours_left"}); changes nothing.
+func can_cancel_batch(building_id: String) -> Dictionary:
+	return Simulation.can_cancel_batch(state, data(), building_id)
+
+
+## Units the batch has made that wait to be collected: {res: qty}. Goods waiting of any kind
+## (a batch's units, or a suspended shop's leftovers): waiting_goods.
+func ready_units(building: Dictionary) -> Dictionary:
+	return Simulation.ready_units(building)
+
+
+func waiting_goods(building: Dictionary) -> Dictionary:
+	return Simulation.waiting_goods(building)
+
+
+## True while the building has a batch (being made, or made and waiting to be collected), and
+## while that batch still has hours to go.
+func has_batch(building: Dictionary) -> bool:
+	return Simulation.has_batch(building)
+
+
+func batch_running(building: Dictionary) -> bool:
+	return Simulation.batch_running(building)
+
+
+## True for buildings that make things in batches (Farm, Mill, Bakery).
+func makes_batches(building: Dictionary) -> bool:
+	return Simulation.makes_batches(data(), building)
+
+
+## When the running batch should be done at today's speed (unix time; INF with nobody working).
+func batch_finishes_at(building: Dictionary) -> float:
+	return Simulation.batch_finishes_at(state, data(), building, TimeService.now())
 
 
 ## Average cost tag (cents per unit) of this item in the warehouse: what it cost you to make or buy.
@@ -381,9 +622,21 @@ func average_cost(resource_id: String) -> float:
 	return Simulation.average_cost(state, resource_id)
 
 
-## A building type's price, in cents (buildings.json lists it in dollars).
+## What building this type costs at today's material prices, in cents (plan.md §5.15).
 func build_cost(type_id: String) -> int:
-	return Simulation.cents(float(GameData.buildings.get(type_id, {}).get("build_cost", 0)))
+	return int(build_quote(type_id).cost)
+
+
+## What building this type needs and costs at today's prices: {"cost" (cents), "seconds",
+## "lines": [{"id", "name", "unit", "amount", "price" (cents each), "cost"}]}; the crew's line has
+## id "labor", amount = workers and "hours".
+func build_quote(type_id: String) -> Dictionary:
+	return Simulation.construction_quote(data(), type_id, 1, TimeService.now())
+
+
+## Seconds until construction material prices change next.
+func price_change_in() -> float:
+	return maxf(Simulation.next_price_change_at(data(), TimeService.now()) - TimeService.now(), 0.0)
 
 
 func population() -> int:
@@ -411,10 +664,21 @@ func wealth_classes() -> Array:
 	return Simulation.wealth_classes(data())
 
 
-## Seconds until the next person moves in (INF when the homes are full or nobody is moving in).
+## Room for adults in finished real homes (huts left out).
+func adult_room() -> int:
+	return Simulation.adult_room(state, data(), TimeService.now())
+
+
+## Seconds until the next job seeker moves in (INF when no job is open, the homes are full or the
+## village is too unhappy).
 func next_arrival_in() -> float:
 	var now := TimeService.now()
 	return Simulation.next_arrival_at(state, data(), now) - now
+
+
+## How many job seekers the next group brings (0 when nobody is coming).
+func next_arrival_count() -> int:
+	return Simulation.next_arrival_count(state, data(), TimeService.now())
 
 
 ## Seconds until the next baby is born (INF when none is coming).
@@ -444,7 +708,9 @@ func people_stats() -> Dictionary:
 	return Simulation.people_stats(state)
 
 
-## Village happiness: {"score", "food", "jobs", "foods", "needs_count", "growth_speed"}
+## Village happiness: {"score", "food", "jobs", "foods", "needs_count", "growth_speed" (births),
+## "move_in_speed" (migrant workers), "homeless_penalty" (taken off for households in huts),
+## "leave_per_hour", ...}
 ## (see Simulation.happiness).
 func happiness() -> Dictionary:
 	return Simulation.happiness(state, data(), TimeService.now())
@@ -458,9 +724,10 @@ func warehouse_cap() -> int:
 	return Simulation.warehouse_cap(state, data())
 
 
-## Whether type_id could be built on cell right now ({"ok", "error"}); changes nothing.
+## Whether type_id could be built on cell right now ({"ok", "error", and the quote's "cost",
+## "seconds", "lines"}); changes nothing.
 func can_build(type_id: String, cell: Vector2i) -> Dictionary:
-	return Simulation.can_build(state, data(), type_id, cell)
+	return Simulation.can_build(state, data(), type_id, cell, TimeService.now())
 
 
 func building_at(cell: Vector2i) -> Dictionary:
@@ -472,24 +739,71 @@ func building(building_id: String) -> Dictionary:
 	return Simulation.find_building(state, building_id)
 
 
-## Whether a job could be queued right now ({"ok", "error"}); changes nothing.
-func can_enqueue(building_id: String, recipe_id: String) -> Dictionary:
-	return Simulation.can_enqueue(state, data(), building_id, recipe_id, TimeService.now())
-
-
-## How many batches "Fill queue" would add right now (0 = none).
-func batches_possible(building_id: String, recipe_id: String) -> int:
-	return Simulation.batches_possible(state, data(), building_id, recipe_id, TimeService.now())
-
-
 ## Whether the building could be moved to cell ({"ok", "error"}); changes nothing.
 func can_move(building_id: String, cell: Vector2i) -> Dictionary:
-	return Simulation.can_move(state, building_id, cell)
+	return Simulation.can_move(state, data(), building_id, cell)
 
 
-## What cancelling that queued job would refund ({"ok", "error", "refund", "in_progress"}); changes nothing.
-func can_cancel_job(building_id: String, index: int) -> Dictionary:
-	return Simulation.can_cancel_job(state, data(), building_id, index)
+# --- Roads (plan.md §5.20) ---
+
+## What road on these tiles would cost ({"ok", "error", "cost" (cents), "new_cells"}); changes nothing.
+func road_quote(cells: Array) -> Dictionary:
+	return Simulation.road_quote(state, data(), cells)
+
+
+## Whether the road on these tiles could be removed ({"ok", "error", "cells"}); changes nothing.
+func can_remove_roads(cells: Array) -> Dictionary:
+	return Simulation.can_remove_roads(state, data(), cells)
+
+
+## The price of one road tile, in cents.
+func road_price() -> int:
+	return Simulation.road_price(data())
+
+
+## Every road tile: Vector2i -> cents paid for it.
+func road_cells() -> Dictionary:
+	return Simulation.road_cells(state)
+
+
+## The road tiles linked to City Hall: Vector2i -> true.
+func linked_roads() -> Dictionary:
+	return Simulation.linked_roads(state, data())
+
+
+func is_road(cell: Vector2i) -> bool:
+	return Simulation.is_road(state, cell)
+
+
+## True when this building has workers and so needs a road to City Hall.
+func needs_road(building: Dictionary) -> bool:
+	return Simulation.needs_road(data(), building)
+
+
+## False when the building needs a road and has none (it gets no workers).
+func on_road(building: Dictionary) -> bool:
+	return Simulation.on_road(data(), building)
+
+
+# --- Construction workers (plan.md §5.15) ---
+
+## True for a Construction Office (its workers are the construction workers).
+func is_crew_office(building: Dictionary) -> bool:
+	return Simulation.is_crew_office(data(), building)
+
+
+## Construction workers: {"total", "busy", "free", "jobs": [{"building_id", "crew", "until"}]
+## soonest done first}.
+func crew() -> Dictionary:
+	var now := TimeService.now()
+	return {"total": Simulation.crew_total(state, data(), now), "busy": Simulation.crew_busy(state, data(), now),
+		"free": Simulation.crew_free(state, data(), now), "jobs": Simulation.crew_jobs(state, data(), now)}
+
+
+## Construction workers needed to build (level 1) or upgrade to `level`.
+func crew_needed(type_id: String, level := 1) -> int:
+	return int(Simulation.construction_needs(data(), type_id, level).crew)
+
 
 
 ## What demolishing would give back ({"ok", "error", "money", "goods"}); changes nothing.
@@ -497,6 +811,7 @@ func can_demolish(building_id: String) -> Dictionary:
 	return Simulation.can_demolish(state, data(), building_id)
 
 
+## 0.0 to 1.0 progress of the building's whole batch.
 func job_progress(building: Dictionary) -> float:
 	return Simulation.job_progress(state, building, data(), TimeService.now())
 
@@ -507,7 +822,7 @@ func building_speed(building: Dictionary) -> float:
 
 
 ## Share of the town's posts that are filled (0.0 to 1.0). Below 1 the town is short of people:
-## some buildings have open posts (the ones with the smallest bonuses fill last).
+## some buildings have open posts.
 func staffing() -> float:
 	return Simulation.staffing(state, data(), TimeService.now())
 
@@ -540,7 +855,7 @@ func is_built(building: Dictionary) -> bool:
 	return Simulation.is_built(building, TimeService.now())
 
 
-## 0.0 to 1.0 progress of construction (1.0 = finished).
+## 0.0 to 1.0 progress of construction or of an upgrade (1.0 = finished).
 func construction_progress(building: Dictionary) -> float:
 	return Simulation.construction_progress(building, data(), TimeService.now())
 
@@ -564,6 +879,21 @@ func employment() -> Dictionary:
 ## Money in and out over (up to) the last `window` seconds: {"income", "spending", "seconds"}.
 func cash_flow(window: float) -> Dictionary:
 	return Simulation.cash_flow(state, window, TimeService.now())
+
+
+## What the company owns and owes right now, in cents (see Simulation.balance_sheet).
+func balance_sheet() -> Dictionary:
+	return Simulation.balance_sheet(state, data(), TimeService.now())
+
+
+## Starting cash + money in − money out (+ dev tools) vs the cash now (see Simulation.cash_check).
+func cash_check() -> Dictionary:
+	return Simulation.cash_check(state)
+
+
+## Money in and out per 30-minute block, newest first (see Simulation.money_log).
+func money_log() -> Array:
+	return Simulation.money_log(state, TimeService.now())
 
 
 ## Seconds until construction ends (0 when finished).

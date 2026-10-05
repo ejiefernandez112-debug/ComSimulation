@@ -1,77 +1,201 @@
 {
-	"_note": "Timers in seconds. Build costs are PLACEHOLDERS. build_time = seconds of construction after placing (starting buildings are already built). max_workers = most workers it can employ at level 1; worker_type = which kind (wages in game_config.json). The player picks Low / Medium / High staffing (share of max_workers, game_config.json) and speed follows the workers actually working: 6 of 8 = 75% speed (plan.md 5.6). Batches/timers scaled for a ~1-2h offline window; per-minute rates match plan.md 5.4.",
+	"_note": "Timers in seconds. materials = what building it needs at Level 1 (Bricks, Cement, Steel, Construction materials; prices, the construction crew and how long it takes are in game_config.json construction). Starting buildings are already built. max_workers = most workers it can employ at level 1; worker_type = which kind (wages in game_config.json). The player picks Low / Medium / High staffing (share of max_workers, game_config.json) and speed follows the workers actually working: 6 of 8 = 75% speed (plan.md 5.6). Production (plan.md 5.1): a Farm, Mill or Bakery runs one batch of the hours the player picks (1 to batch.max_hours in game_config.json); each recipe is ONE HOUR of work (duration 3600), and each finished hour's share of the batch is collected into the Warehouse. Rates match plan.md 5.4.",
+	"_upgrades": "Building upgrades (plan.md 5.15). upgrades = Level 2, Level 3, ... in order: the numbers that change at that level (max_workers, capacity, shelves, households; anything left out stays as the level below). Each level needs twice the materials and crew of the level below, and takes the time in game_config.json construction. Speed counts against Level 1's max_workers, so a farm with 12 of 8 workers works 1.5x as fast (each batch costs the same wages). Farms, mills, bakeries and shops close while upgrading; homes and warehouses stay in use. All PLACEHOLDERS.",
+	"city_hall": {
+		"name": "City Hall", "category": "civic",
+		"description": "Your town's headquarters. Every road starts here, and so does your power: its link to the public grid supplies up to 10 MW.",
+		"buildable": false, "max_workers": 0, "road_hub": true,
+		"grid_mw": 10, "power_radius": 5
+	},
 	"construction_office": {
-		"name": "Construction Office", "category": "civic",
-		"description": "Your headquarters. Everything on the island is built from here.",
-		"build_cost": 0, "buildable": false, "build_time": 5, "max_workers": 0
+		"_comment": "Construction company (plan.md 5.15). construction_crew = its workers are the construction workers: building anything needs construction.crew of them (game_config.json; 1), each upgrade one more per level (crew_per_level), and they're busy until the work is done. Paid per project (the Labor line), never by the hour. Stays open while upgraded. Staffed first so the village can always build. Needs a road like any building with workers. The id was City Hall's until save version 11. All PLACEHOLDERS.",
+		"name": "Construction Office", "category": "construction", "menu_tab": "utilities",
+		"description": "Its construction workers build and upgrade everything (not roads). More workers = more building at once.",
+		"buildable": true, "max_workers": 4, "fixed_workers": true, "staffed_first": true, "fixed_wage": true, "worker_type": "low_skilled",
+		"construction_crew": true,
+		"materials": { "bricks": 400, "cement": 40, "steel": 10, "construction_materials": 20 },
+		"upgrades": [
+			{ "max_workers": 6 },
+			{ "max_workers": 8 },
+			{ "max_workers": 10 }
+		]
 	},
 	"_housing": "Homes (plan.md 5.18). households = how many households live there (a household = up to 2 adults + 2 children, game_config.json housing). wealth = the wealth classes allowed to live there (empty = anyone); each household takes the best home it may live in and can afford (highest housing_tier, then the oldest). rent_per_household = dollars an hour each household pays the player (0 = free). power_mw = power it uses while anyone lives there (none when empty; used once electricity exists, plan.md 5.5). hut = a Makeshift Hut: it appears by itself for each homeless household and goes when they get a real home. All PLACEHOLDERS. small_house keeps its id so saves keep their houses; it is shown as the Regular House.",
 	"makeshift_hut": {
 		"name": "Makeshift Hut", "category": "residential",
 		"description": "Put up by a homeless household. It goes by itself once they get a real home.",
-		"build_cost": 0, "buildable": false, "max_workers": 0,
+		"buildable": false, "max_workers": 0,
 		"households": 1, "housing_tier": 0, "hut": true, "rent_per_household": 0, "power_mw": 0
 	},
 	"public_housing": {
 		"name": "Public Housing", "category": "residential", "menu_tab": "housing",
 		"description": "Free homes for Broke and Poor households. You pay to build it; it earns no rent.",
-		"build_cost": 800, "buildable": true, "build_time": 5, "max_workers": 0,
-		"households": 6, "housing_tier": 1, "wealth": ["broke", "poor"], "rent_per_household": 0, "power_mw": 0.3
+		"buildable": true, "max_workers": 0,
+		"materials": { "bricks": 160, "cement": 16, "steel": 4, "construction_materials": 8 },
+		"households": 6, "housing_tier": 1, "wealth": ["broke", "poor"], "rent_per_household": 0, "power_mw": 0.3,
+		"upgrades": [
+			{ "households": 9 },
+			{ "households": 12 },
+			{ "households": 15 }
+		]
 	},
 	"small_house": {
 		"name": "Regular House", "category": "residential", "menu_tab": "housing",
 		"description": "Homes for working households. Each household pays you rent.",
-		"build_cost": 1000, "buildable": true, "build_time": 5, "max_workers": 0,
-		"households": 6, "housing_tier": 2, "wealth": ["poor", "well_off", "rich", "filthy_rich"], "rent_per_household": 1, "power_mw": 0.5
+		"buildable": true, "max_workers": 0,
+		"materials": { "bricks": 200, "cement": 20, "steel": 5, "construction_materials": 10 },
+		"households": 6, "housing_tier": 2, "wealth": ["poor", "well_off", "rich", "filthy_rich"], "rent_per_household": 1, "power_mw": 0.5,
+		"upgrades": [
+			{ "households": 9 },
+			{ "households": 12 },
+			{ "households": 15 }
+		]
 	},
 	"villa": {
 		"name": "Villa", "category": "residential", "menu_tab": "housing",
 		"description": "Luxury homes for Rich and Filthy rich households. High rent.",
-		"build_cost": 6000, "buildable": true, "build_time": 5, "max_workers": 0,
-		"households": 2, "housing_tier": 3, "wealth": ["rich", "filthy_rich"], "rent_per_household": 15, "power_mw": 1.0
+		"buildable": true, "max_workers": 0,
+		"materials": { "bricks": 1200, "cement": 120, "steel": 30, "construction_materials": 60 },
+		"households": 2, "housing_tier": 3, "wealth": ["rich", "filthy_rich"], "rent_per_household": 15, "power_mw": 1.0,
+		"upgrades": [
+			{ "households": 3 },
+			{ "households": 4 },
+			{ "households": 5 }
+		]
 	},
 	"warehouse": {
-		"_comment": "Storage: all warehouses together hold the company's goods (one shared stock). capacity = room with all its workers working; when the town is short of people it gets fewer and less room (2 of 4 = half). fixed_workers = no Low/Medium/High choice: it always asks for max_workers (more only by upgrading, Phase 2: level 2 doubles them). staffed_first = it gets free workers before every other building (whatever their bonus) and loses them last, so the room never shrinks while people are free. fixed_wage = always the minimum wage, no bonus choice. Always working, so always paid (plan.md 5.10).",
+		"_comment": "Storage: all warehouses together hold the company's goods (one shared stock). capacity = room with all its workers working; when the town is short of people it gets fewer and less room (2 of 4 = half). fixed_workers = no Low/Medium/High choice: it always asks for max_workers (more only by upgrading). staffed_first = it gets free workers before every other building (whatever their bonus) and loses them last, so the room never shrinks while people are free. fixed_wage = always the minimum wage, no bonus choice. Always working, so always paid (plan.md 5.10).",
 		"name": "Warehouse", "category": "storage", "menu_tab": "storage",
 		"description": "Stores your goods. Build more warehouses for more room.",
-		"build_cost": 3000, "buildable": true, "build_time": 5, "max_workers": 4, "fixed_workers": true, "staffed_first": true, "fixed_wage": true, "worker_type": "low_skilled",
-		"capacity": 10000
+		"buildable": true, "max_workers": 4, "fixed_workers": true, "staffed_first": true, "fixed_wage": true, "worker_type": "low_skilled",
+		"materials": { "bricks": 600, "cement": 60, "steel": 15, "construction_materials": 30 },
+		"capacity": 10000,
+		"upgrades": [
+			{ "max_workers": 8, "capacity": 20000 },
+			{ "max_workers": 12, "capacity": 30000 },
+			{ "max_workers": 16, "capacity": 40000 }
+		]
+	},
+	"water_treatment_plant": {
+		"_comment": "Utility (plan.md 5.13.1): cleans water_supply m³ an hour with all its workers working (2 of 4 = half). Your buildings use it first; only the rest comes from the public supply and its bill. Water nobody uses is wasted. It costs only its workers' wages, paid by the hour (always working unless suspended): 4 x $15 / 60 m³ = $1 a m³ against the public $2. Closes while upgrading (the public supply covers meanwhile). All PLACEHOLDERS.",
+		"name": "Water Treatment Plant", "category": "utility", "menu_tab": "utilities",
+		"description": "Cleans water for your farms. Your buildings use its water first, so you pay less for public water.",
+		"buildable": true, "max_workers": 4, "fixed_workers": true, "fixed_wage": true, "worker_type": "low_skilled",
+		"materials": { "bricks": 600, "cement": 60, "steel": 20, "construction_materials": 30 },
+		"water_supply": 60,
+		"upgrades": [
+			{ "max_workers": 6, "water_supply": 100 },
+			{ "max_workers": 8, "water_supply": 140 },
+			{ "max_workers": 10, "water_supply": 180 }
+		]
+	},
+	"_power": "Electricity (plan.md 5.5). power_mw = MW a building needs while it runs (a Mill or Bakery while making a batch, a home while anyone lives there). power_supply = MW a power plant makes (with workers: its share of them, 2 of 4 = half). power_radius = tiles around it that its power reaches; circles that overlap join one network, starting at City Hall (grid_mw = MW its public grid link can draw, billed like water: game_config.json power). Buildings outside the network get no power. When there isn't enough, buildings are served oldest first and one that doesn't fit gets none and stops. coming_soon = shown greyed out in the Build menu with this reason. All PLACEHOLDERS.",
+	"wind_turbine": {
+		"name": "Wind Turbine", "category": "power", "menu_tab": "power",
+		"description": "Makes 5 MW of free power, day and night, with no workers. Its power reaches 3 tiles around it.",
+		"buildable": true, "max_workers": 0,
+		"materials": { "bricks": 400, "cement": 100, "steel": 60, "construction_materials": 80 },
+		"power_supply": 5, "power_radius": 3,
+		"upgrades": [
+			{ "power_supply": 7 },
+			{ "power_supply": 9 },
+			{ "power_supply": 11 }
+		]
+	},
+	"electric_substation": {
+		"name": "Electric Substation", "category": "power", "menu_tab": "power",
+		"description": "Carries your power further: buildings within 6 tiles of it get power, if its circle touches your power network. Stays on while upgraded.",
+		"buildable": true, "max_workers": 0,
+		"materials": { "bricks": 300, "cement": 30, "steel": 20, "construction_materials": 20 },
+		"power_radius": 6,
+		"upgrades": [
+			{ "power_radius": 7 },
+			{ "power_radius": 8 },
+			{ "power_radius": 9 }
+		]
+	},
+	"solar_power_plant": {
+		"_comment": "Needs High School graduates (high_skilled), so it waits for schools (plan.md 5.7). Steady output for now; day and night later (plan.md 5.5.4).",
+		"name": "Solar Power Plant", "category": "power", "menu_tab": "power",
+		"description": "Makes 8 MW from the sun. Its workers must be High School graduates.",
+		"buildable": false, "coming_soon": "Needs High School graduates: schools are coming soon.",
+		"max_workers": 4, "fixed_workers": true, "fixed_wage": true, "worker_type": "high_skilled",
+		"materials": { "bricks": 500, "cement": 50, "steel": 120, "construction_materials": 150 },
+		"power_supply": 8, "power_radius": 3,
+		"upgrades": [
+			{ "power_supply": 11 },
+			{ "power_supply": 14 },
+			{ "power_supply": 17 }
+		]
+	},
+	"nuclear_power_plant": {
+		"_comment": "Planned: burns uranium from its own store (the fuel input is decided later). Needs College graduates (professional), so it waits for schools (plan.md 5.7).",
+		"name": "Nuclear Power Plant", "category": "power", "menu_tab": "power",
+		"description": "Huge, steady power from uranium kept in its own store. Its workers must be College graduates.",
+		"buildable": false, "coming_soon": "Needs College graduates and uranium: coming soon.",
+		"max_workers": 20, "fixed_workers": true, "fixed_wage": true, "worker_type": "professional",
+		"materials": { "bricks": 20000, "cement": 4000, "steel": 800, "construction_materials": 1000 },
+		"power_supply": 300, "power_radius": 5
 	},
 	"wheat_farm": {
-		"_comment": "Extractor: produces on its own until storage is full (900 = 90 min).",
+		"_comment": "Extractor: needs no ingredients. 60 wheat per hour of work, so a 24 h batch = 1,440 wheat.",
 		"name": "Wheat Farm", "category": "extractor", "menu_tab": "farming",
-		"description": "Grows wheat all by itself until its storage is full.",
-		"build_cost": 2000, "buildable": true, "build_time": 5, "max_workers": 8, "worker_type": "low_skilled",
-		"storage_cap": 900, "water_per_hour": 30,
+		"description": "Grows wheat in batches of the hours you choose.",
+		"buildable": true, "max_workers": 8, "worker_type": "low_skilled",
+		"materials": { "bricks": 400, "cement": 40, "steel": 10, "construction_materials": 20 },
+		"water_per_hour": 30,
 		"recipes": [
-			{ "id": "grow_wheat", "inputs": {}, "outputs": { "wheat": 10 }, "duration": 60 }
+			{ "id": "grow_wheat", "inputs": {}, "outputs": { "wheat": 60 }, "duration": 3600 }
+		],
+		"upgrades": [
+			{ "max_workers": 12 },
+			{ "max_workers": 16 },
+			{ "max_workers": 20 }
 		]
 	},
 	"flour_mill": {
-		"_comment": "8 queued jobs x 6 min = 48 min of work.",
+		"_comment": "40 wheat -> 32 flour per hour of work (one Farm feeds 1.5 Mills).",
 		"name": "Flour Mill", "category": "processor", "menu_tab": "industry",
-		"description": "Grinds wheat into flour, one batch at a time.",
-		"build_cost": 5000, "buildable": true, "build_time": 5, "max_workers": 8, "worker_type": "low_skilled",
-		"storage_cap": 256, "queue_size": 8,
+		"description": "Grinds wheat into flour in batches of the hours you choose.",
+		"buildable": true, "max_workers": 8, "worker_type": "low_skilled",
+		"materials": { "bricks": 1000, "cement": 100, "steel": 25, "construction_materials": 50 },
+		"power_mw": 3,
 		"recipes": [
-			{ "id": "mill_flour", "inputs": { "wheat": 40 }, "outputs": { "flour": 32 }, "duration": 360 }
+			{ "id": "mill_flour", "inputs": { "wheat": 40 }, "outputs": { "flour": 32 }, "duration": 3600 }
+		],
+		"upgrades": [
+			{ "max_workers": 12 },
+			{ "max_workers": 16 },
+			{ "max_workers": 20 }
 		]
 	},
 	"bakery": {
-		"_comment": "8 queued jobs x 10 min = 80 min of work.",
+		"_comment": "20 flour -> 15 bread per hour of work (one Mill feeds 1.6 Bakeries).",
 		"name": "Bakery", "category": "processor", "menu_tab": "industry",
 		"description": "Bakes flour into fresh bread that sells for more.",
-		"build_cost": 8000, "buildable": true, "build_time": 5, "max_workers": 8, "worker_type": "low_skilled",
-		"storage_cap": 192, "queue_size": 8,
+		"buildable": true, "max_workers": 8, "worker_type": "low_skilled",
+		"materials": { "bricks": 1600, "cement": 160, "steel": 40, "construction_materials": 80 },
+		"power_mw": 4,
 		"recipes": [
-			{ "id": "bake_bread", "inputs": { "flour": 32 }, "outputs": { "bread": 24 }, "duration": 600 }
+			{ "id": "bake_bread", "inputs": { "flour": 20 }, "outputs": { "bread": 15 }, "duration": 3600 }
+		],
+		"upgrades": [
+			{ "max_workers": 12 },
+			{ "max_workers": 16 },
+			{ "max_workers": 20 }
 		]
 	},
 	"supermarket": {
-		"_comment": "Retail (plan.md 5.16): sells finished food to the village, one product per shelf, several shelves at once. How fast a shelf sells comes from the village (population x the item's appetite in resources.json), its price tag and how many different products are on the shelves (game_config.json retail). fixed_workers + fixed_wage: always 4 workers at the minimum wage, no staffing or bonus choice (a choice changed nothing worth having: half the workers sell half as fast for the same total wages). Not staffed_first: it waits its turn for free people like production buildings, and short of people it sells slower (3 of 4 = 75%). Paid when a shelf sells out. Build cost is a PLACEHOLDER kept low enough that $10,000 starting cash covers a Wheat Farm + Flour Mill + Supermarket.",
+		"_comment": "Retail (plan.md 5.16): sells finished food to the village, one product per shelf, several shelves at once. How fast a shelf sells comes from the village (population x the item's appetite in resources.json), its price tag and how many different products are on the shelves (game_config.json retail). fixed_workers + fixed_wage: always 4 workers at the minimum wage, no staffing or bonus choice (a choice changed nothing worth having: half the workers sell half as fast for the same total wages). Not staffed_first: it waits its turn for free people like production buildings, and short of people it sells slower (3 of 4 = 75%). Paid when a shelf sells out. Materials kept low enough that starting cash covers a Wheat Farm + Flour Mill + Supermarket even at the highest prices.",
 		"name": "Supermarket", "category": "retail", "menu_tab": "shops",
 		"description": "Sells your food to the people of your village, several products at once. Pick a price tag for each shelf.",
-		"build_cost": 2500, "buildable": true, "build_time": 5, "max_workers": 4, "fixed_workers": true, "fixed_wage": true, "worker_type": "low_skilled",
-		"shelves": 4
+		"buildable": true, "max_workers": 4, "fixed_workers": true, "fixed_wage": true, "worker_type": "low_skilled",
+		"materials": { "bricks": 500, "cement": 50, "steel": 13, "construction_materials": 25 },
+		"shelves": 4,
+		"upgrades": [
+			{ "shelves": 5 },
+			{ "shelves": 6 },
+			{ "shelves": 7 }
+		]
 	}
 }

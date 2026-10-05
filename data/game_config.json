@@ -1,10 +1,13 @@
 {
 	"_note": "Global tuning values. PLACEHOLDERS (plan.md 5.1 / 5.6 / 5.8).",
-	"starting_cash": 10000,
-	"_population": "starting_population = adults a new game starts with (never more than the starting homes hold). population_growth_seconds = seconds between adults moving in from outside (immigration) at normal speed; 0 = nobody moves in (immigration is switched off for now, plan.md 5.6: the village grows through births).",
+	"starting_cash": 15000,
+	"_population": "starting_population = adults a new game starts with (never more than the starting homes hold). population_growth_seconds = seconds between groups of adults moving in from outside at normal move-in speed (happiness growth_speeds move_in); 0 = nobody moves in. move_in_group_size = most adults who arrive together each time (fewer when fewer jobs are open). move_in_only_for_jobs = newcomers are migrant workers: they only come while a post is open that nobody here can take (plan.md 5.6). move_in_needs_home = they also need room in a real home; false = they come anyway and live in Makeshift Huts until homes are built, which lowers the Housing need. The village also grows through births.",
 	"starting_population": 50,
-	"population_growth_seconds": 0,
-	"_life": "Births, children and deaths (plan.md 5.6). birth_rate_per_hour = babies per adult per hour (times the move-in speed from happiness; only while households in real homes have a free child place). Children don't work; they grow up into adults after grow_up_hours. Babies born in the same child_group_hours form one age group. death_rate_per_hour = share of adults and of children who die each hour. PLACEHOLDERS.",
+	"population_growth_seconds": 120,
+	"move_in_group_size": 5,
+	"move_in_only_for_jobs": true,
+	"move_in_needs_home": false,
+	"_life": "Births, children and deaths (plan.md 5.6). birth_rate_per_hour = babies per adult per hour (times the move-in speed from happiness; only while a family, in a house or a hut, has a free child place: children_per_household each). Children don't work; they grow up into adults after grow_up_hours. Babies born in the same child_group_hours form one age group. death_rate_per_hour = share of adults and of children who die each hour. PLACEHOLDERS.",
 	"_housing": "Households and wealth (plan.md 5.18). A household = up to adults_per_household adults + children_per_household children. wealth_classes, poorest first: an adult's class comes from their wage per hour (the highest from_wage it reaches; no job = 0 = Broke); a household's class is its adults' class. A household can afford a home when its rent is at most rent_share of the household's wages. PLACEHOLDERS.",
 	"housing": {
 		"adults_per_household": 2,
@@ -19,41 +22,73 @@
 		]
 	},
 	"life": {
-		"birth_rate_per_hour": 0.01,
+		"birth_rate_per_hour": 0.1,
 		"death_rate_per_hour": 0.005,
-		"grow_up_hours": 24,
+		"grow_up_hours": 6,
 		"child_group_hours": 1
 	},
-	"_happiness": "Village happiness (plan.md 5.6 'Needs & happiness'): Food, Jobs and Housing needs, mixed by weights (shares of their total) into one 0-1 score. food_scores = score for 0, 1, 2 or more different foods selling at a staffed Supermarket. Jobs = share of adults with a job. Housing = share of households with a real home (homeless households in huts lower it). Needs only count from needs_from_population people (below that, happiness is 100%) and after a new village's first grace_hours. growth_speeds: for each happiness band (from = lowest score of the band), speed = the move-in and birth speed (1 = normal, 0 = nobody moves in and no babies) and leave_per_hour = share of people (adults and children alike) who leave the island each hour. PLACEHOLDERS.",
+	"_happiness": "Village happiness (plan.md 5.6 'Needs & happiness'): Food, Jobs and Housing needs, mixed by weights (shares of their total) into one 0-1 score. food_scores = score for 0, 1, 2 or more different foods selling at a staffed Supermarket. Jobs = share of adults with a job. Housing = share of households with a real home (homeless households in huts lower it). homeless_penalty = on top of that, per_household is taken off the score for every household living in a hut, at most max (shares of 1). Needs only count from needs_from_population people (below that, happiness is 100%) and after a new village's first grace_hours. growth_speeds: for each happiness band (from = lowest score of the band), speed = the birth speed (1 = normal, 0 = no babies), move_in = the speed job seekers move in (1 = one group every population_growth_seconds, 0 = nobody comes; same as speed if left out) and leave_per_hour = share of people (adults and children alike) who leave the island each hour. leave_group_size = people leave in groups this big (adults and children each in their own groups). PLACEHOLDERS.",
 	"happiness": {
 		"needs_from_population": 10,
 		"grace_hours": 3,
 		"food_scores": [0.0, 0.7, 1.0],
 		"weights": { "food": 1, "jobs": 1, "housing": 1 },
+		"homeless_penalty": { "per_household": 0.02, "max": 0.3 },
+		"leave_group_size": 5,
 		"growth_speeds": [
-			{ "from": 0, "speed": 0.0, "leave_per_hour": 0.03 },
-			{ "from": 0.2, "speed": 0.5, "leave_per_hour": 0.01 },
-			{ "from": 0.5, "speed": 1.0, "leave_per_hour": 0.0 },
-			{ "from": 0.8, "speed": 1.5, "leave_per_hour": 0.0 }
+			{ "from": 0, "speed": 0.0, "move_in": 0.0, "leave_per_hour": 0.05 },
+			{ "from": 0.2, "speed": 0.5, "move_in": 0.0, "leave_per_hour": 0.02 },
+			{ "from": 0.5, "speed": 1.0, "move_in": 1.0, "leave_per_hour": 0.0 },
+			{ "from": 0.8, "speed": 1.5, "move_in": 1.5, "leave_per_hour": 0.0 }
 		]
 	},
 	"grid_size": [20, 20],
 	"_save": "The game saves to user://save.json every autosave_seconds, right after player actions, and when it closes or goes to the background (plan.md 8). The Welcome back window shows at start-up when the game was closed for at least welcome_back_after_seconds.",
 	"autosave_seconds": 30,
 	"welcome_back_after_seconds": 120,
-	"_refunds": "Share given back (0-1). cancel_refund_in_progress = cancelling the batch being made; cancel_refund_waiting = cancelling a batch still waiting in the queue; demolish_refund = share of the build cost back when demolishing.",
+	"_roads": "Roads (plan.md 5.20). price = dollars per road tile, paid at once, ready at once; removing is free, nothing paid back. Buildings with workers need a road linked to City Hall (road_hub in buildings.json) on one of the 4 tiles beside them, or they get no workers. starting_roads = road tiles a new game starts with [x, y]. PLACEHOLDERS.",
+	"roads": {
+		"price": 25,
+		"starting_roads": [
+			[6, 10], [7, 10], [8, 10], [9, 10], [10, 10], [11, 10], [12, 10], [13, 10], [14, 10], [15, 10], [16, 10], [17, 10], [18, 10],
+			[12, 11], [15, 11]
+		]
+	},
+	"_construction": "Building and upgrading (plan.md 5.15). Every building's materials (buildings.json) are its Level 1 amounts; each level needs level_growth times the level below (2 = doubles: Level 2 = 2x, Level 3 = 4x, Level 4 = 8x). The materials are bought from an in-game supplier when the work starts, at today's market price: the base price (dollars) plus or minus up to price_swing (0.2 = 20%), a new price every price_change_seconds. Labor = construction workers from your Construction Offices: crew of them to build anything with materials (a building can set its own crew), crew_per_level more for each upgrade level (1, then 2 for Level 2, 3 for Level 3, 4 for Level 4); they are busy until the work is done, so more offices or bigger ones let you build more at once. Paid once at the labor_worker_type's minimum wage for the hours the work takes. level_seconds = how long it takes: building (Level 1), then each upgrade (to Level 2, 3, 4, ...; levels past the list take the last time). All PLACEHOLDERS.",
+	"construction": {
+		"materials": {
+			"bricks": { "name": "Bricks", "unit": "brick", "price": 1 },
+			"cement": { "name": "Cement", "unit": "bag", "price": 10 },
+			"steel": { "name": "Steel", "unit": "beam", "price": 50 },
+			"construction_materials": { "name": "Construction materials", "unit": "crate", "price": 20 }
+		},
+		"labor_worker_type": "low_skilled",
+		"crew": 1,
+		"crew_per_level": 1,
+		"level_growth": 2,
+		"level_seconds": [3600, 3600, 7200, 10800],
+		"price_swing": 0.2,
+		"price_change_seconds": 3600
+	},
+	"_refunds": "Share given back (0-1). cancel_refund_in_progress = cancelling a running batch gives back this share of the ingredients and wages of the hours not finished yet (hours already made are kept); demolish_refund = share of the building's value (its materials and labor at base prices) back when demolishing.",
 	"cancel_refund_in_progress": 0.5,
-	"cancel_refund_waiting": 1.0,
 	"demolish_refund": 0.5,
+	"_batch": "Production batches (plan.md 5.1): the player picks how many hours a Farm, Mill or Bakery works, from 1 to max_hours (fewer if the Warehouse's ingredients or the cash for the wages run out). default_hours = what the panel offers first. All the ingredients and wages are paid when it starts. PLACEHOLDERS.",
+	"batch": { "max_hours": 48, "default_hours": 24 },
 	"_stats": "Statistics graphs: a point is recorded every stats_sample_seconds while playing (one point covers time spent away), keeping the latest stats_history_size points (360 x 60s = 6 hours).",
 	"stats_sample_seconds": 60,
 	"stats_history_size": 360,
-	"_workers": "staffing_levels = share of a building's max_workers the player can choose (8 at level 1 -> Low 4, Medium 6, High 8). New buildings start at default_staffing. worker_types: wage_per_hour = the MINIMUM wage, set by the game; each building adds its wage bonus on top (wage_bonuses: share of the minimum, chosen per building, new ones start at default_bonus; a bigger bonus gets free workers first, plan.md 5.6). Wages are paid for every worker actually working, including while the game is closed, and only while the building is producing (not when full or with no jobs queued); cash may go below 0 (debt). available = false types can't be hired yet (high-skilled = high school graduates, professional = college graduates; they arrive with schools). All PLACEHOLDERS.",
+	"_money_log": "Money log in the Statistics window (plan.md 5.19): money in and out is summed into one entry every money_log_minutes (time spent away = one entry), keeping the latest money_log_size entries (48 x 30 min = 24 hours).",
+	"money_log_minutes": 30,
+	"money_log_size": 48,
+	"_workers": "staffing_levels = share of a building's max_workers the player can choose (8 at level 1 -> Low 4, Medium 6, High 8). New buildings start at default_staffing. worker_types: wage_per_hour = the MINIMUM wage, set by the game. A Farm, Mill or Bakery adds a wage bonus on top, chosen per batch and locked in once it starts (wage_bonuses: share of the minimum; bonus_output: the extra share of units the batch makes; new buildings offer default_bonus; plan.md 5.6). A batch pays the full crew's wages for all its hours when it starts, whatever the staffing (fewer workers just take longer). Other buildings (warehouses, shops) pay their working workers as they go, including while the game is closed; cash may go below 0 (debt). available = false types can't be hired yet (high-skilled = high school graduates, professional = college graduates; they arrive with schools). All PLACEHOLDERS.",
 	"_tax": "Sales tax on Retailer sales (plan.md 5.9): progressive like income-tax brackets, on the company's sales over the last sales_tax_window_hours. Each part of a sale pays the rate of the bracket it falls in, so selling more never leaves you with less. market_fee = the Phase 4 player-market fee per trade, paid by the seller (not used yet). PLACEHOLDERS.",
-	"_pricing": "Retail prices are worked out from costs (plan.md 5.12): per batch, ingredients + max_workers at the minimum wage + water at its base price + build_cost / payback_hours, divided by the units made and by (1 - typical_tax_rate). payback_hours = hours of full-staff production for a building to pay for itself. PLACEHOLDERS.",
+	"_pricing": "Retail prices are worked out from costs (plan.md 5.12): per hour of work (one recipe), ingredients + max_workers at the minimum wage + water at its base price + the building's value (its Level 1 materials and labor at base prices) / payback_hours, divided by the units made and by (1 - typical_tax_rate). payback_hours = hours of full-staff production for a building to pay for itself. PLACEHOLDERS.",
 	"pricing": { "payback_hours": 12, "typical_tax_rate": 0.10 },
 	"_water": "The public water supply (plan.md 5.13): buildings with water_per_hour (m³) draw it while they produce; a meter records it at price_per_m3 (dollars) and the bill is charged every billing_hours (12 = one game day; unpaid = debt). tiers = extra share of the price for the part of a cycle's m³ above \"from\" (first 1,200 m³ per cycle normal). bill_history = past bills kept. Unlimited supply. PLACEHOLDERS.",
 	"water": { "price_per_m3": 2.0, "billing_hours": 12, "bill_history": 10, "tiers": [{ "from": 0, "extra": 0.0 }, { "from": 1200, "extra": 0.25 }] },
+	"_power": "The public power grid (plan.md 5.5): City Hall's link (grid_mw in buildings.json) adds what your own plants don't cover, up to its MW. A meter records the MWh drawn at price_per_mwh (dollars) and the bill is charged every billing_hours (12 = one game day; unpaid = debt). tiers = extra share of the price for the part of a cycle's MWh above \"from\". bill_history = past bills kept. PLACEHOLDERS.",
+	"power": { "price_per_mwh": 25, "billing_hours": 12, "bill_history": 10, "tiers": [{ "from": 0, "extra": 0.0 }] },
 	"sales_tax_window_hours": 24,
 	"sales_tax_brackets": [
 		{ "from": 0, "rate": 0.0 },
@@ -77,6 +112,7 @@
 	"staffing_levels": { "low": 0.5, "medium": 0.75, "high": 1.0 },
 	"default_staffing": "high",
 	"wage_bonuses": { "none": 0.0, "small": 0.2, "good": 0.4, "big": 0.6 },
+	"bonus_output": { "none": 0.0, "small": 0.1, "good": 0.2, "big": 0.3 },
 	"default_bonus": "none",
 	"worker_types": {
 		"low_skilled": { "name": "Low-skilled", "wage_per_hour": 15, "available": true },
@@ -93,12 +129,14 @@
 		"tree_density": 0.6
 	},
 	"starting_buildings": [
-		{ "type": "construction_office", "position": [9, 9] },
+		{ "type": "city_hall", "position": [9, 9] },
+		{ "type": "construction_office", "position": [9, 11] },
 		{ "type": "public_housing", "position": [12, 9] },
 		{ "type": "public_housing", "position": [15, 9] },
 		{ "type": "public_housing", "position": [18, 9] },
 		{ "type": "public_housing", "position": [12, 12] },
 		{ "type": "public_housing", "position": [15, 12] },
-		{ "type": "warehouse", "position": [6, 9] }
+		{ "type": "warehouse", "position": [6, 9] },
+		{ "type": "electric_substation", "position": [16, 11] }
 	]
 }
