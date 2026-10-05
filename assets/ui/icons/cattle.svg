@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <!-- A cow's head. -->
+  <defs>
+    <linearGradient id="hide" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFFFFF"/><stop offset="1" stop-color="#E2DCD2"/></linearGradient>
+  </defs>
+  <path d="M30 36 C18 34 10 40 8 48 C18 52 28 50 36 46 Z" fill="#F2E6DA" stroke="#2E2018" stroke-width="5" stroke-linejoin="round"/>
+  <path d="M98 36 C110 34 118 40 120 48 C110 52 100 50 92 46 Z" fill="#F2E6DA" stroke="#2E2018" stroke-width="5" stroke-linejoin="round"/>
+  <path d="M38 26 C34 16 36 8 42 6 C44 14 46 20 50 26 Z M90 26 C94 16 92 8 86 6 C84 14 82 20 78 26 Z" fill="#E8D8A8" stroke="#2E2018" stroke-width="4.5" stroke-linejoin="round"/>
+  <path d="M34 34 C34 20 48 16 64 16 C80 16 94 20 94 34 C94 56 90 74 84 86 L44 86 C38 74 34 56 34 34 Z" fill="url(#hide)" stroke="#2E2018" stroke-width="5.5" stroke-linejoin="round"/>
+  <path d="M38 30 C46 26 54 30 54 40 C54 50 44 54 38 50 Z" fill="#3A2A20"/>
+  <path d="M82 50 C90 52 92 62 88 70 C84 64 80 58 82 50 Z" fill="#3A2A20"/>
+  <circle cx="48" cy="54" r="5" fill="#1E140E"/><circle cx="80" cy="54" r="5" fill="#1E140E"/>
+  <circle cx="46.5" cy="52.5" r="1.6" fill="#fff"/><circle cx="78.5" cy="52.5" r="1.6" fill="#fff"/>
+  <path d="M40 82 C40 72 50 68 64 68 C78 68 88 72 88 82 C88 100 78 112 64 112 C50 112 40 100 40 82 Z" fill="#F5B8B0" stroke="#2E2018" stroke-width="5.5" stroke-linejoin="round"/>
+  <ellipse cx="54" cy="90" rx="5" ry="6" fill="#7A3A34"/><ellipse cx="74" cy="90" rx="5" ry="6" fill="#7A3A34"/>
+  <ellipse cx="56" cy="74" rx="8" ry="3" fill="#fff" fill-opacity="0.6"/>
+</svg>

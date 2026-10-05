@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <!-- A box of frozen fish fillets with a snowflake. -->
+  <defs>
+    <linearGradient id="box" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#9AD8F4"/><stop offset="1" stop-color="#4A9ACC"/></linearGradient>
+  </defs>
+  <path d="M16 40 L96 40 L112 28 L112 92 L96 106 Z" fill="#3A7AAA" stroke="#123048" stroke-width="5" stroke-linejoin="round"/>
+  <path d="M16 40 L32 28 L112 28 L96 40 Z" fill="#C8ECFA" stroke="#123048" stroke-width="5" stroke-linejoin="round"/>
+  <rect x="16" y="40" width="80" height="66" rx="3" fill="url(#box)" stroke="#123048" stroke-width="5.5" stroke-linejoin="round"/>
+  <path d="M30 74 C36 64 52 62 64 68 L76 60 L76 82 L64 76 C52 84 36 82 30 74 Z" fill="#F6E2C8" stroke="#6B4A1E" stroke-width="3.5" stroke-linejoin="round"/>
+  <g stroke="#FFFFFF" stroke-width="3.5" stroke-linecap="round">
+    <path d="M82 46 L82 62 M74 54 L90 54 M76 48 L88 60 M88 48 L76 60"/>
+  </g>
+  <rect x="22" y="46" width="5" height="54" rx="2.5" fill="#fff" fill-opacity="0.5"/>
+</svg>

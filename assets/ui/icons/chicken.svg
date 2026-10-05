@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <!-- A raw chicken drumstick. -->
+  <defs>
+    <radialGradient id="skin" cx="0.4" cy="0.35" r="0.75"><stop offset="0" stop-color="#FFE6D2"/><stop offset="1" stop-color="#F2B08A"/></radialGradient>
+  </defs>
+  <path d="M74 66 L104 98" stroke="#5A3A1E" stroke-width="16" stroke-linecap="round"/>
+  <path d="M74 66 L104 98" stroke="#FFF8F0" stroke-width="8" stroke-linecap="round"/>
+  <g fill="#FFF8F0" stroke="#5A3A1E" stroke-width="5">
+    <circle cx="104" cy="108" r="9"/>
+    <circle cx="114" cy="98" r="9"/>
+  </g>
+  <path d="M104 98 L108 102" stroke="#FFF8F0" stroke-width="8" stroke-linecap="round"/>
+  <path d="M20 54 C14 32 32 12 54 14 C78 16 92 36 84 60 C80 72 72 78 62 80 C46 82 26 74 20 54 Z" fill="url(#skin)" stroke="#5A3A1E" stroke-width="5.5" stroke-linejoin="round"/>
+  <g fill="#E8A07A"><circle cx="40" cy="44" r="1.8"/><circle cx="56" cy="36" r="1.8"/><circle cx="62" cy="56" r="1.8"/><circle cx="46" cy="62" r="1.8"/></g>
+  <ellipse cx="38" cy="30" rx="10" ry="5" fill="#fff" fill-opacity="0.6" transform="rotate(-30 38 30)"/>
+</svg>

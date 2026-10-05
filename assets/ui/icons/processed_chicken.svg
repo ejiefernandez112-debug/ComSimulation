@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <!-- A box of chicken nuggets. -->
+  <defs>
+    <linearGradient id="nugget" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFD27A"/><stop offset="1" stop-color="#D99030"/></linearGradient>
+  </defs>
+  <g fill="url(#nugget)" stroke="#6B3A0C" stroke-width="4.5" stroke-linejoin="round">
+    <path d="M28 46 C26 32 40 24 52 30 C62 34 64 46 56 54 C48 60 30 58 28 46 Z"/>
+    <path d="M56 38 C58 24 74 20 84 28 C92 36 88 50 76 52 C66 54 54 50 56 38 Z"/>
+    <path d="M80 46 C86 34 102 34 106 46 C108 56 98 62 88 60 C80 58 76 54 80 46 Z"/>
+  </g>
+  <path d="M18 52 L110 52 L100 116 C99 120 96 122 92 122 L36 122 C32 122 29 120 28 116 Z" fill="#E8322A" stroke="#4A0E08" stroke-width="5.5" stroke-linejoin="round"/>
+  <path d="M18 52 L110 52 L106 66 L22 66 Z" fill="#FFFFFF" stroke="#4A0E08" stroke-width="4.5" stroke-linejoin="round"/>
+  <path d="M50 82 C50 74 58 70 64 76 C70 70 78 74 78 82 C78 92 64 100 64 100 C64 100 50 92 50 82 Z" fill="#FFE27A" stroke="#4A0E08" stroke-width="3.5" stroke-linejoin="round"/>
+  <rect x="32" y="70" width="5" height="44" rx="2.5" fill="#fff" fill-opacity="0.45"/>
+</svg>

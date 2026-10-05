@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <!-- A raw steak. -->
+  <defs>
+    <radialGradient id="meat" cx="0.45" cy="0.4" r="0.7"><stop offset="0" stop-color="#F2706A"/><stop offset="1" stop-color="#B42A2A"/></radialGradient>
+  </defs>
+  <path d="M30 26 C54 12 96 16 112 40 C124 60 116 92 94 104 C78 112 70 104 56 110 C36 118 12 104 10 80 C8 58 14 36 30 26 Z" fill="#FFE8DA" stroke="#5A1414" stroke-width="5.5" stroke-linejoin="round"/>
+  <path d="M34 34 C54 22 90 26 102 44 C112 60 106 86 88 94 C76 100 68 94 56 100 C40 106 22 96 20 78 C18 60 22 42 34 34 Z" fill="url(#meat)"/>
+  <g fill="none" stroke="#FFC8C0" stroke-width="3" stroke-linecap="round" opacity="0.8">
+    <path d="M40 52 C50 46 60 50 66 44"/>
+    <path d="M70 64 C78 58 86 62 92 56"/>
+    <path d="M36 76 C44 72 52 78 60 74"/>
+  </g>
+  <circle cx="84" cy="80" r="8" fill="#FFF4EE" stroke="#C8A898" stroke-width="2.5"/>
+  <ellipse cx="44" cy="40" rx="10" ry="4" fill="#fff" fill-opacity="0.55" transform="rotate(-20 44 40)"/>
+</svg>

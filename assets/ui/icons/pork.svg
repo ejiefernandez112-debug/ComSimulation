@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <!-- A pork chop. -->
+  <defs>
+    <radialGradient id="meat" cx="0.45" cy="0.4" r="0.7"><stop offset="0" stop-color="#FFB8B0"/><stop offset="1" stop-color="#E07070"/></radialGradient>
+  </defs>
+  <path d="M86 22 C104 22 118 36 116 56 C114 80 94 102 66 108 C40 114 14 102 12 80 C10 62 24 50 40 48 C52 46 58 40 64 32 C70 26 76 22 86 22 Z" fill="#FFF0E8" stroke="#5A1E1E" stroke-width="5.5" stroke-linejoin="round"/>
+  <path d="M86 32 C100 32 108 42 106 58 C104 78 88 94 66 98 C46 102 26 94 24 78 C22 66 32 58 44 58 C56 58 64 50 70 42 C74 36 80 32 86 32 Z" fill="url(#meat)"/>
+  <path d="M22 84 L6 96 C4 104 12 110 18 104 L30 92" fill="#F6EEE6" stroke="#5A1E1E" stroke-width="5" stroke-linejoin="round"/>
+  <path d="M70 52 C76 60 76 72 68 80" fill="none" stroke="#FFE0DA" stroke-width="4" stroke-linecap="round"/>
+  <ellipse cx="88" cy="40" rx="9" ry="4" fill="#fff" fill-opacity="0.6" transform="rotate(10 88 40)"/>
+</svg>

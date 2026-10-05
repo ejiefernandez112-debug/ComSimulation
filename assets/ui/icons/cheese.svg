@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <!-- A wedge of cheese. -->
+  <defs>
+    <linearGradient id="front" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFE27A"/><stop offset="1" stop-color="#F2B630"/></linearGradient>
+  </defs>
+  <path d="M10 64 L86 26 L118 54 Z" fill="#FFF0A8" stroke="#7A4E0C" stroke-width="5.5" stroke-linejoin="round"/>
+  <path d="M10 64 L118 54 L118 100 L10 112 Z" fill="url(#front)" stroke="#7A4E0C" stroke-width="5.5" stroke-linejoin="round"/>
+  <g fill="#E0A020" stroke="#B8800E" stroke-width="2">
+    <ellipse cx="34" cy="84" rx="9" ry="7"/>
+    <ellipse cx="66" cy="78" rx="7" ry="6"/>
+    <ellipse cx="94" cy="88" rx="10" ry="8"/>
+    <ellipse cx="54" cy="98" rx="5" ry="4"/>
+  </g>
+  <ellipse cx="72" cy="44" rx="6" ry="4" fill="#F2C850" stroke="#B8800E" stroke-width="2"/>
+  <ellipse cx="40" cy="58" rx="12" ry="3" fill="#fff" fill-opacity="0.7" transform="rotate(-25 40 58)"/>
+</svg>

@@ -842,13 +842,13 @@ All numbers are PLACEHOLDERS, in the `roads` block of `game_config.json`.
 - `scripts/sim/simulation.gd` "Roads": `road_quote`, `build_roads`, `can_remove_roads`, `remove_roads`, `linked_roads`, `_update_road_links`, `needs_road`, `on_road`, `road_path_for` + `lay_roads_to_all` (only for the old-save upgrade).
 - Map and screens: `scenes/village/road_layer.gd` (drawing), `scenes/village/traffic.gd` (people and cars), Road Mode in `scenes/village/village.gd`.
 
-### 5.21 Production chains, in waves (decided 2026-10-05; Wave 1A built, on trial)
+### 5.21 Production chains, in waves (decided 2026-10-05; Wave 1 built, on trial)
 The user asked to add about 150 items in 15 groups of chains (agriculture, livestock, forestry, metals, minerals, energy, chemicals, construction materials, food, textiles, furniture, electronics, cars, medicine, luxury goods), all connected, extending the existing systems. Reviewed together, they chose to build it **in waves, food first**, each wave playable and tested before the next:
 
 | Wave | What | Status |
 |---|---|---|
 | **1A** | Plantation crops + plant foods: Grain Mill, Oil Press, Sugar Mill, Food Factory, Confectionery, Beverage Plant, Cannery | **built 2026-10-05, on trial** |
-| **1B** | Animals and fish: Feed Mill, Ranch, Fishery, Apiary, Dairy, Slaughterhouse, Meat Plant, Fish Plant, canned fish | planned |
+| **1B** | Animals and fish: Feed Mill, Ranch, Fishery, Apiary, Dairy, Slaughterhouse, Meat Plant, Fish Plant, canned fish | **built 2026-10-05, on trial** |
 | **2** | Construction materials and coal power: clay, limestone, sand, gravel, stone, iron ore, coal, timber → bricks, cement, glass, concrete, steel, lumber; **your own materials used by construction** (warehouse first, the supplier for the rest); a coal power plant that burns fuel by the batch (same power grid as today) | planned |
 | **3** | Textiles (cotton, wool → yarn → fabric → clothing), leather (hides from Wave 1B), furniture, paper; new store types | planned |
 | **4** | Oil and gas (gasoline, diesel, plastic, chemicals), fertilizer (+ phosphate, potash), electronics (copper, silicon, gold), rubber → tires → cars, medicine, jewelry and other luxury goods | planned; decide then: educated workers (schools, §5.7), whether fertilizer is a "boost" choice in the batch window |
@@ -877,7 +877,25 @@ The user asked to add about 150 items in 15 groups of chains (agriculture, lives
 | **Beverage Plant** | 40 Fruit → 40 Juice · 20 Fruit + 10 Sugar → 60 Soft Drinks · 15 Coffee Beans → 15 Coffee | uses 20 m³ water/h |
 | **Cannery** | 30 Fruit → 30 Canned Fruit | canned fish in 1B |
 
-Sold in Supermarkets (food): Potatoes, Vegetables, Fruit, Sugar, Pasta, Cereal, Packaged Rice, Chips, Packaged Food, Candy, Chocolate, Juice, Soft Drinks, Coffee, Canned Fruit (plus Flour and Bread). Crops and ingredients (Corn, Rice, Soybeans, Sugarcane, Coffee/Cocoa Beans, Cornmeal, Milled Rice, Cooking Oil, Soy Meal) go into other buildings, or to the Trading Post (§5.22). Example prices: Wheat $5.98, Coffee Beans $23.92, Cooking Oil $75.77, Soy Meal $13.47, Pasta $57.03, Coffee $70.31.
+**Wave 1B content** (PLACEHOLDERS):
+
+| Building | One hour of work | Notes |
+|---|---|---|
+| **Feed Mill** (Farming tab) | 40 Corn → 40 Animal Feed · 20 Soy Meal → 40 Animal Feed | soy meal from the Oil Press goes twice as far |
+| **Ranch** | 40 Feed → 4 Cattle · 30 Feed → 6 Pigs · 20 Feed → 30 Chickens · 30 Feed → 60 Milk · 20 Feed → 60 Eggs | one kind of animal at a time; switch fee 10% |
+| **Fishery** | 40 Fish · or 20 Shrimp | switch fee 10%; any tile for now |
+| **Apiary** | 10 Honey + 2 Beeswax | by-product: the wax carries 15% of the cost |
+| **Dairy** | 60 Milk → 10 Cheese · 60 Milk → 15 Butter · 40 Milk → 40 Yogurt | |
+| **Slaughterhouse** | 4 Cattle → 40 Beef + 4 Hides · 6 Pigs → 60 Pork · 30 Chickens → 45 Chicken | hides carry 10% of the cost; sold to the trader until leather (Wave 3) |
+| **Meat Plant** | 30 Beef → 30 Burgers · 30 Pork → 40 Sausages · 30 Chicken → 30 Chicken Nuggets | |
+| **Fish Plant** | 40 Fish → 40 Frozen Fish · 20 Shrimp → 20 Packaged Seafood | |
+| **Cannery** (+1) | 30 Fish → 30 Canned Fish | |
+
+The animal chain is the interconnection the user asked for: Plantation (corn or soybeans) → Oil Press / Feed Mill → Ranch → Slaughterhouse → Meat Plant → Supermarket. Example prices: Animal Feed $16.47, Cattle $286.82, Beef $42.44, Hide $47.16, Burgers $73.71, Cheese $168.29.
+
+Sold in Supermarkets (food): Potatoes, Vegetables, Fruit, Sugar, Pasta, Cereal, Packaged Rice, Chips, Packaged Food, Candy, Chocolate, Juice, Soft Drinks, Coffee, Canned Fruit, Milk, Eggs, Fish, Shrimp, Honey, Cheese, Butter, Yogurt, Beef, Pork, Chicken, Burgers, Sausages, Chicken Nuggets, Canned Fish, Frozen Fish, Packaged Seafood (plus Flour and Bread). Animals (Cattle, Pigs, Chickens), Animal Feed, Hides and Beeswax go into other buildings or to the trader.
+
+**Tested end to end** with the real data (`tests/test_simulation.gd`, "Whole production chains"): Corn + Sugarcane → Cereal; Soybeans → Oil + Soy Meal, Potatoes + Oil → Chips (meal to the trader); Corn → Feed → Cattle → Beef + Hides → Burgers (hides to the trader); and Coffee Beans bought from the trader → Coffee. Each sells out in a Supermarket for more than it cost to make. Crops and ingredients (Corn, Rice, Soybeans, Sugarcane, Coffee/Cocoa Beans, Cornmeal, Milled Rice, Cooking Oil, Soy Meal) go into other buildings, or to the Trading Post (§5.22). Example prices: Wheat $5.98, Coffee Beans $23.92, Cooking Oil $75.77, Soy Meal $13.47, Pasta $57.03, Coffee $70.31.
 
 **Open:** sprites for the new buildings; whether rice and coffee should need more water than wheat (water is per building now, not per crop); island geography (fishing on the coast, mines in the hills) is not a rule yet: any building goes on any tile.
 
@@ -1134,10 +1152,11 @@ Both are functional, self-contained HTML/JS artifacts used to validate the tradi
 
 ## 15. Revision Log
 
-**2026-10-05 (Production chains Wave 1A, Trading Post, on trial):**
+**2026-10-05 (Production chains Wave 1, Trading Post, on trial):**
 - The user asked to add ~150 items of interconnected production chains (15 groups) to the existing systems. Reviewed together: doable, but in waves; they chose food first, a simple Trading Post, product choice per building (one Plantation that switches crops for a fee; factories pick once, for good), real by-products, new store types for non-food goods later, generic Fruit, a separate Ranch, and a Food need that rewards variety.
 - Built (§5.21, §5.22): item categories and store `sells` lists; Food need counts only food (0/40/60/75/90/100%); by-products with `cost_share`; product choice and switch fees (save version 13: older buildings keep their product); the Trading Post; screens that cope with many goods; Wave 1A: the Wheat Farm becomes the Plantation (10 crops), the Flour Mill the Grain Mill (+ cornmeal, milled rice), and Oil Press, Sugar Mill, Food Factory, Confectionery, Beverage Plant, Cannery; 25 new item icons.
-- Waves 1B (animals, fish), 2 (construction materials, coal power), 3 (textiles, furniture, paper, stores) and 4 (oil, chemicals, electronics, cars, medicine, luxury) are planned in §5.21.
+- Wave 1B: Feed Mill, Ranch (switchable animals), Fishery (fish or shrimp), Apiary (honey + beeswax), Dairy, Slaughterhouse (beef + hides), Meat Plant, Fish Plant, canned fish; 23 more icons; four whole-chain tests on the real data.
+- Waves 2 (construction materials, coal power), 3 (textiles, furniture, paper, stores) and 4 (oil, chemicals, electronics, cars, medicine, luxury) are planned in §5.21.
 
 **2026-10-05 (Electricity: Wind Turbine, Substation, Solar + Nuclear coming soon, on trial):**
 - The user asked (Build menu, new Power tab) for a Wind Turbine (no workers, a smaller amount of power), a Solar Power Plant (needs High School graduates), a Nuclear Power Plant (uranium store, College; greyed out "soon") and an Electric Substation that expands the grid's coverage.

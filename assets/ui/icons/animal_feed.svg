@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <!-- Sack of animal feed pellets. -->
+  <defs>
+    <linearGradient id="sack" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#C8DC8A"/><stop offset="1" stop-color="#8AA84A"/></linearGradient>
+    <linearGradient id="pellet" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#D9B470"/><stop offset="1" stop-color="#9A6E30"/></linearGradient>
+  </defs>
+  <path d="M40 46 C30 62 22 86 26 104 C28 116 40 120 64 120 C88 120 100 116 102 104 C106 86 98 62 88 46 Z" fill="url(#sack)" stroke="#3F5A12" stroke-width="6" stroke-linejoin="round"/>
+  <path d="M42 48 C42 36 48 26 54 20 L74 20 C80 26 86 36 86 48 Z" fill="#B4CC72" stroke="#3F5A12" stroke-width="6" stroke-linejoin="round"/>
+  <rect x="38" y="40" width="52" height="11" rx="5.5" fill="#C9873E" stroke="#55402A" stroke-width="5"/>
+  <g fill="url(#pellet)" stroke="#5A3A16" stroke-width="2.5">
+    <rect x="50" y="8" width="8" height="14" rx="4" transform="rotate(-30 54 15)"/>
+    <rect x="62" y="6" width="8" height="14" rx="4" transform="rotate(20 66 13)"/>
+    <rect x="72" y="10" width="8" height="14" rx="4" transform="rotate(60 76 17)"/>
+  </g>
+  <g fill="url(#pellet)" stroke="#5A3A16" stroke-width="3">
+    <rect x="50" y="72" width="11" height="22" rx="5.5" transform="rotate(-25 55 83)"/>
+    <rect x="66" y="70" width="11" height="22" rx="5.5" transform="rotate(30 71 81)"/>
+    <rect x="58" y="88" width="11" height="22" rx="5.5" transform="rotate(80 63 99)"/>
+  </g>
+  <ellipse cx="44" cy="74" rx="6" ry="14" fill="#fff" fill-opacity="0.45" transform="rotate(12 44 74)"/>
+</svg>

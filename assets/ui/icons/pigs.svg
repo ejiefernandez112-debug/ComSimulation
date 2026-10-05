@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <!-- A pig's head. -->
+  <defs>
+    <radialGradient id="pink" cx="0.45" cy="0.35" r="0.75"><stop offset="0" stop-color="#FFD2DA"/><stop offset="1" stop-color="#EE8EA2"/></radialGradient>
+  </defs>
+  <path d="M26 44 L20 12 C34 14 44 22 48 32 Z" fill="#F2A0B2" stroke="#5A1E2A" stroke-width="5" stroke-linejoin="round"/>
+  <path d="M102 44 L108 12 C94 14 84 22 80 32 Z" fill="#F2A0B2" stroke="#5A1E2A" stroke-width="5" stroke-linejoin="round"/>
+  <circle cx="64" cy="66" r="46" fill="url(#pink)" stroke="#5A1E2A" stroke-width="5.5"/>
+  <circle cx="46" cy="54" r="5.5" fill="#1E140E"/><circle cx="82" cy="54" r="5.5" fill="#1E140E"/>
+  <circle cx="44.5" cy="52.5" r="1.8" fill="#fff"/><circle cx="80.5" cy="52.5" r="1.8" fill="#fff"/>
+  <ellipse cx="64" cy="82" rx="22" ry="16" fill="#F49AAE" stroke="#5A1E2A" stroke-width="5"/>
+  <ellipse cx="56" cy="82" rx="4.5" ry="6.5" fill="#8A2E44"/><ellipse cx="72" cy="82" rx="4.5" ry="6.5" fill="#8A2E44"/>
+  <ellipse cx="44" cy="34" rx="10" ry="5" fill="#fff" fill-opacity="0.6" transform="rotate(-25 44 34)"/>
+</svg>

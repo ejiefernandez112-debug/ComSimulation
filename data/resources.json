@@ -30,5 +30,30 @@
 	"juice": { "name": "Juice", "tier": 2, "category": "food", "appetite": 0.4 },
 	"soft_drinks": { "name": "Soft Drinks", "tier": 2, "category": "food", "appetite": 0.6 },
 	"coffee": { "name": "Coffee", "tier": 2, "category": "food", "appetite": 0.15 },
-	"canned_fruit": { "name": "Canned Fruit", "tier": 2, "category": "food", "appetite": 0.3 }
+	"canned_fruit": { "name": "Canned Fruit", "tier": 2, "category": "food", "appetite": 0.3 },
+
+	"animal_feed": { "name": "Animal Feed", "tier": 1, "category": "ingredient" },
+	"cattle": { "name": "Cattle", "tier": 1, "category": "animal" },
+	"pigs": { "name": "Pigs", "tier": 1, "category": "animal" },
+	"chickens": { "name": "Chickens", "tier": 1, "category": "animal" },
+	"milk": { "name": "Milk", "tier": 1, "category": "food", "appetite": 0.6 },
+	"eggs": { "name": "Eggs", "tier": 1, "category": "food", "appetite": 0.6 },
+	"fish": { "name": "Fish", "tier": 0, "category": "food", "appetite": 0.4 },
+	"shrimp": { "name": "Shrimp", "tier": 0, "category": "food", "appetite": 0.2 },
+	"honey": { "name": "Honey", "tier": 0, "category": "food", "appetite": 0.1 },
+	"beeswax": { "name": "Beeswax", "tier": 0, "category": "material" },
+	"hide": { "name": "Hide", "tier": 2, "category": "material" },
+
+	"cheese": { "name": "Cheese", "tier": 2, "category": "food", "appetite": 0.1 },
+	"butter": { "name": "Butter", "tier": 2, "category": "food", "appetite": 0.15 },
+	"yogurt": { "name": "Yogurt", "tier": 2, "category": "food", "appetite": 0.4 },
+	"beef": { "name": "Beef", "tier": 2, "category": "food", "appetite": 0.4 },
+	"pork": { "name": "Pork", "tier": 2, "category": "food", "appetite": 0.6 },
+	"chicken": { "name": "Chicken", "tier": 2, "category": "food", "appetite": 0.45 },
+	"processed_meat": { "name": "Burgers", "tier": 3, "category": "food", "appetite": 0.3 },
+	"sausage": { "name": "Sausages", "tier": 3, "category": "food", "appetite": 0.4 },
+	"processed_chicken": { "name": "Chicken Nuggets", "tier": 3, "category": "food", "appetite": 0.3 },
+	"canned_fish": { "name": "Canned Fish", "tier": 2, "category": "food", "appetite": 0.3 },
+	"frozen_fish": { "name": "Frozen Fish", "tier": 2, "category": "food", "appetite": 0.4 },
+	"packaged_seafood": { "name": "Packaged Seafood", "tier": 2, "category": "food", "appetite": 0.2 }
 }

@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <!-- A pack of burger patties. -->
+  <defs>
+    <radialGradient id="patty" cx="0.45" cy="0.4" r="0.7"><stop offset="0" stop-color="#B86A44"/><stop offset="1" stop-color="#6E3018"/></radialGradient>
+  </defs>
+  <path d="M10 66 L118 66 L110 108 C109 113 105 116 100 116 L28 116 C23 116 19 113 18 108 Z" fill="#F2F2F6" stroke="#2E3E5A" stroke-width="5.5" stroke-linejoin="round"/>
+  <g stroke="#3A160A" stroke-width="4.5">
+    <ellipse cx="64" cy="70" rx="40" ry="14" fill="#5A2410"/>
+    <ellipse cx="64" cy="60" rx="40" ry="14" fill="#7A3A1E"/>
+    <ellipse cx="64" cy="50" rx="40" ry="14" fill="url(#patty)"/>
+  </g>
+  <g fill="#4A1C0C"><circle cx="48" cy="48" r="2"/><circle cx="62" cy="44" r="2"/><circle cx="78" cy="50" r="2"/><circle cx="56" cy="54" r="2"/><circle cx="84" cy="44" r="1.6"/></g>
+  <path d="M10 66 L118 66" stroke="#2E3E5A" stroke-width="5.5" stroke-linecap="round"/>
+  <rect x="40" y="84" width="48" height="20" rx="4" fill="#C8302A" stroke="#2E3E5A" stroke-width="3.5"/>
+  <ellipse cx="48" cy="44" rx="10" ry="3" fill="#fff" fill-opacity="0.35"/>
+</svg>

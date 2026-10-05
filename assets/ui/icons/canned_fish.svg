@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <!-- A flat tin of fish. -->
+  <defs>
+    <linearGradient id="tin" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#E8EEF2"/><stop offset="0.5" stop-color="#B4C0CA"/><stop offset="1" stop-color="#7E8C98"/></linearGradient>
+  </defs>
+  <path d="M10 56 L10 84 C10 98 118 98 118 84 L118 56 Z" fill="url(#tin)" stroke="#2A343C" stroke-width="5.5" stroke-linejoin="round"/>
+  <path d="M10 62 L118 62 L118 82 C118 94 10 94 10 82 Z" fill="#2A6AB0" stroke="#2A343C" stroke-width="4" stroke-linejoin="round"/>
+  <ellipse cx="64" cy="56" rx="54" ry="18" fill="#D8E0E6" stroke="#2A343C" stroke-width="5"/>
+  <ellipse cx="64" cy="56" rx="44" ry="12" fill="none" stroke="#8E9AA4" stroke-width="3"/>
+  <path d="M92 46 C100 42 108 42 112 46 L104 52" fill="none" stroke="#2A343C" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M40 76 C46 68 60 66 70 72 L80 66 L80 82 L70 78 C60 84 46 82 40 76 Z" fill="#CFE6F2" stroke="#123048" stroke-width="3" stroke-linejoin="round"/>
+  <circle cx="47" cy="75" r="1.8" fill="#123048"/>
+  <ellipse cx="44" cy="50" rx="14" ry="3.5" fill="#fff" fill-opacity="0.8"/>
+</svg>

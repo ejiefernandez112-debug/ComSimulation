@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <!-- A string of sausages. -->
+  <defs>
+    <linearGradient id="skin" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#E8865A"/><stop offset="1" stop-color="#A84422"/></linearGradient>
+  </defs>
+  <g fill="url(#skin)" stroke="#4A1A08" stroke-width="5">
+    <path d="M14 46 C10 34 20 24 32 28 L58 36 C70 40 70 56 58 58 L28 58 C20 58 16 54 14 46 Z"/>
+    <path d="M60 50 C62 38 76 34 86 42 L106 62 C114 72 104 84 94 78 L68 66 C62 62 58 58 60 50 Z"/>
+    <path d="M90 84 C100 80 110 88 106 98 L98 112 C92 122 78 118 80 106 L84 94 C86 88 88 86 90 84 Z"/>
+  </g>
+  <g stroke="#E8D8B0" stroke-width="3" stroke-linecap="round"><path d="M60 46 L62 52 M88 74 L94 80"/></g>
+  <g fill="#fff" fill-opacity="0.55">
+    <ellipse cx="34" cy="36" rx="10" ry="3" transform="rotate(15 34 36)"/>
+    <ellipse cx="82" cy="50" rx="10" ry="3" transform="rotate(45 82 50)"/>
+    <ellipse cx="98" cy="94" rx="6" ry="2.5" transform="rotate(-60 98 94)"/>
+  </g>
+</svg>

@@ -1614,6 +1614,42 @@ func test_real_chain_soy_oil_to_chips() -> void:
 	_check(Sim.cash_check(state).ok, "real chain: cash check adds up")
 
 
+## Corn -> Animal Feed -> Cattle (a Ranch) -> Beef + Hides (a Slaughterhouse) -> Burgers (a Meat
+## Plant) sold in the Supermarket; the hides (a by-product) go to the trader.
+func test_real_chain_feed_to_burgers() -> void:
+	var town := _real_town()
+	var state: Dictionary = town[0]
+	var data: Dictionary = town[1]
+	var t := T0
+	_real_build(state, data, "wind_turbine", 7, t)
+	var corn := _real_build(state, data, "wheat_farm", 8, t)
+	var feed := _real_build(state, data, "feed_mill", 10, t)
+	var ranch := _real_build(state, data, "ranch", 11, t)
+	t += 3600.0
+	Sim.settle(state, data, t)
+	var slaughter := _real_build(state, data, "slaughterhouse", 13, t)
+	var meat := _real_build(state, data, "meat_plant", 14, t)
+	var market := _real_build(state, data, "supermarket", 16, t)
+	_real_build(state, data, "trading_post", 17, t)
+	t += 3600.0
+	Sim.settle(state, data, t)
+	t = _real_batch(state, data, corn, "grow_corn", 1, t)
+	t = _real_batch(state, data, feed, "feed_from_corn", 1, t)
+	_check(int(state.inventory.animal_feed) == 40, "real chain: 40 corn -> 40 animal feed")
+	t = _real_batch(state, data, ranch, "raise_cattle", 1, t)
+	_check(int(state.inventory.cattle) == 4, "real chain: 40 feed -> 4 cattle")
+	_check(Sim.is_switchable(data, "ranch") and Sim.can_switch_product(state, data, ranch.id, "milk_cows").ok, "real chain: the ranch could switch to dairy cows, for a fee")
+	t = _real_batch(state, data, slaughter, "slaughter_cattle", 1, t)
+	_check(int(state.inventory.beef) == 40 and int(state.inventory.hide) == 4, "real chain: 4 cattle -> 40 beef + 4 hides")
+	t = _real_batch(state, data, meat, "make_processed_meat", 1, t)
+	_check(int(state.inventory.processed_meat) == 30, "real chain: 30 beef -> 30 burgers")
+	var made_for := float(state.inventory_cost.processed_meat)
+	t = _real_sell_out(state, data, market, "processed_meat", t)
+	_check(int(Sim.stats(state).sales_by_item.processed_meat) > made_for, "real chain: burgers sell for more than they cost to make")
+	_check(Sim.trade_sell(state, data, "hide", 4, t).ok and not state.inventory.has("hide"), "real chain: the hides sold to the trader")
+	_check(Sim.cash_check(state).ok, "real chain: cash check adds up")
+
+
 ## Specialising: no plantation at all. Coffee beans bought from the trader, roasted in a
 ## Beverage Plant and sold in the Supermarket still earn more than they cost.
 func test_real_chain_bought_beans_to_coffee() -> void:

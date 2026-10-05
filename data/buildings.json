@@ -164,6 +164,76 @@
 			{ "max_workers": 20 }
 		]
 	},
+	"feed_mill": {
+		"_comment": "Animal feed for Ranches, from corn or (twice as far) from the Oil Press's soy meal. Corn first: it sets the price. PLACEHOLDERS.",
+		"name": "Feed Mill", "category": "processor", "menu_tab": "farming",
+		"description": "Makes animal feed for your ranches, from corn or from soy meal. Each mill keeps using the one it starts with.",
+		"buildable": true, "max_workers": 8, "worker_type": "low_skilled",
+		"materials": { "bricks": 600, "cement": 60, "steel": 15, "construction_materials": 30 },
+		"power_mw": 2,
+		"recipes": [
+			{ "id": "feed_from_corn", "inputs": { "corn": 40 }, "outputs": { "animal_feed": 40 }, "duration": 3600 },
+			{ "id": "feed_from_soy_meal", "inputs": { "soy_meal": 20 }, "outputs": { "animal_feed": 40 }, "duration": 3600 }
+		],
+		"upgrades": [
+			{ "max_workers": 12 },
+			{ "max_workers": 16 },
+			{ "max_workers": 20 }
+		]
+	},
+	"ranch": {
+		"_comment": "Raises one kind of animal at a time on animal feed (a processor: it has ingredients). Switching costs 10% of its value, like the Plantation. PLACEHOLDERS.",
+		"name": "Ranch", "category": "processor", "menu_tab": "farming",
+		"description": "Raises cattle, pigs or chickens, or keeps dairy cows for milk or hens for eggs, all on animal feed. Switching to other animals costs a fee.",
+		"buildable": true, "max_workers": 8, "worker_type": "low_skilled",
+		"materials": { "bricks": 600, "cement": 60, "steel": 15, "construction_materials": 30 },
+		"water_per_hour": 20,
+		"switch_fee": 0.1,
+		"recipes": [
+			{ "id": "raise_cattle", "inputs": { "animal_feed": 40 }, "outputs": { "cattle": 4 }, "duration": 3600 },
+			{ "id": "raise_pigs", "inputs": { "animal_feed": 30 }, "outputs": { "pigs": 6 }, "duration": 3600 },
+			{ "id": "raise_chickens", "inputs": { "animal_feed": 20 }, "outputs": { "chickens": 30 }, "duration": 3600 },
+			{ "id": "milk_cows", "inputs": { "animal_feed": 30 }, "outputs": { "milk": 60 }, "duration": 3600 },
+			{ "id": "keep_hens", "inputs": { "animal_feed": 20 }, "outputs": { "eggs": 60 }, "duration": 3600 }
+		],
+		"upgrades": [
+			{ "max_workers": 12 },
+			{ "max_workers": 16 },
+			{ "max_workers": 20 }
+		]
+	},
+	"fishery": {
+		"_comment": "Catches fish or farms shrimp, one at a time; switching costs 10% of its value. Any tile for now (no coast rule yet, plan.md 5.21). PLACEHOLDERS.",
+		"name": "Fishery", "category": "extractor", "menu_tab": "farming",
+		"description": "Catches fish or farms shrimp. Switching between them costs a fee.",
+		"buildable": true, "max_workers": 8, "worker_type": "low_skilled",
+		"materials": { "bricks": 500, "cement": 50, "steel": 13, "construction_materials": 25 },
+		"switch_fee": 0.1,
+		"recipes": [
+			{ "id": "catch_fish", "inputs": {}, "outputs": { "fish": 40 }, "duration": 3600 },
+			{ "id": "farm_shrimp", "inputs": {}, "outputs": { "shrimp": 20 }, "duration": 3600 }
+		],
+		"upgrades": [
+			{ "max_workers": 12 },
+			{ "max_workers": 16 },
+			{ "max_workers": 20 }
+		]
+	},
+	"apiary": {
+		"_comment": "Honey with beeswax as a by-product (the wax carries 15% of the cost). Beeswax sells to the Trading Post until a later wave uses it. PLACEHOLDERS.",
+		"name": "Apiary", "category": "extractor", "menu_tab": "farming",
+		"description": "Bees make honey, and beeswax as well.",
+		"buildable": true, "max_workers": 4, "worker_type": "low_skilled",
+		"materials": { "bricks": 300, "cement": 30, "steel": 8, "construction_materials": 15 },
+		"recipes": [
+			{ "id": "keep_bees", "inputs": {}, "outputs": { "honey": 10, "beeswax": 2 }, "cost_share": { "honey": 0.85, "beeswax": 0.15 }, "duration": 3600 }
+		],
+		"upgrades": [
+			{ "max_workers": 6 },
+			{ "max_workers": 8 },
+			{ "max_workers": 10 }
+		]
+	},
 	"flour_mill": {
 		"_comment": "The Mill (was the Flour Mill; the id stays). 40 wheat -> 32 flour per hour of work (one Plantation of wheat feeds 1.5 Mills). Corn and rice: PLACEHOLDERS. Each mill grinds one grain for good.",
 		"name": "Grain Mill", "category": "processor", "menu_tab": "food",
@@ -290,12 +360,84 @@
 	"cannery": {
 		"_comment": "Canned fruit (canned fish comes with fishing, Wave 1B). Cans themselves (tin, steel) come with mining in a later wave. PLACEHOLDERS.",
 		"name": "Cannery", "category": "processor", "menu_tab": "food",
-		"description": "Cans fruit so it keeps.",
+		"description": "Cans fruit or fish so it keeps. Each cannery keeps canning the one it starts with.",
 		"buildable": true, "max_workers": 8, "worker_type": "low_skilled",
 		"materials": { "bricks": 1000, "cement": 100, "steel": 25, "construction_materials": 50 },
 		"power_mw": 3,
 		"recipes": [
-			{ "id": "can_fruit", "inputs": { "fruit": 30 }, "outputs": { "canned_fruit": 30 }, "duration": 3600 }
+			{ "id": "can_fruit", "inputs": { "fruit": 30 }, "outputs": { "canned_fruit": 30 }, "duration": 3600 },
+			{ "id": "can_fish", "inputs": { "fish": 30 }, "outputs": { "canned_fish": 30 }, "duration": 3600 }
+		],
+		"upgrades": [
+			{ "max_workers": 12 },
+			{ "max_workers": 16 },
+			{ "max_workers": 20 }
+		]
+	},
+	"dairy": {
+		"_comment": "Milk from a Ranch's dairy cows into cheese, butter or yogurt (picked once). PLACEHOLDERS.",
+		"name": "Dairy", "category": "processor", "menu_tab": "food",
+		"description": "Turns milk into cheese, butter or yogurt. Each dairy keeps making the one it starts with.",
+		"buildable": true, "max_workers": 8, "worker_type": "low_skilled",
+		"materials": { "bricks": 1000, "cement": 100, "steel": 25, "construction_materials": 50 },
+		"power_mw": 3,
+		"recipes": [
+			{ "id": "make_cheese", "inputs": { "milk": 60 }, "outputs": { "cheese": 10 }, "duration": 3600 },
+			{ "id": "make_butter", "inputs": { "milk": 60 }, "outputs": { "butter": 15 }, "duration": 3600 },
+			{ "id": "make_yogurt", "inputs": { "milk": 40 }, "outputs": { "yogurt": 40 }, "duration": 3600 }
+		],
+		"upgrades": [
+			{ "max_workers": 12 },
+			{ "max_workers": 16 },
+			{ "max_workers": 20 }
+		]
+	},
+	"slaughterhouse": {
+		"_comment": "Cattle give beef AND hides (a by-product: hides carry 10% of the cost; leather comes in Wave 3, until then hides sell to the Trading Post). PLACEHOLDERS.",
+		"name": "Slaughterhouse", "category": "processor", "menu_tab": "food",
+		"description": "Turns cattle into beef and hides, pigs into pork, or chickens into chicken meat. Each one keeps working on the animal it starts with.",
+		"buildable": true, "max_workers": 8, "worker_type": "low_skilled",
+		"materials": { "bricks": 1000, "cement": 100, "steel": 25, "construction_materials": 50 },
+		"power_mw": 3,
+		"recipes": [
+			{ "id": "slaughter_cattle", "inputs": { "cattle": 4 }, "outputs": { "beef": 40, "hide": 4 }, "cost_share": { "beef": 0.9, "hide": 0.1 }, "duration": 3600 },
+			{ "id": "slaughter_pigs", "inputs": { "pigs": 6 }, "outputs": { "pork": 60 }, "duration": 3600 },
+			{ "id": "slaughter_chickens", "inputs": { "chickens": 30 }, "outputs": { "chicken": 45 }, "duration": 3600 }
+		],
+		"upgrades": [
+			{ "max_workers": 12 },
+			{ "max_workers": 16 },
+			{ "max_workers": 20 }
+		]
+	},
+	"meat_plant": {
+		"_comment": "Processed meat products (picked once). PLACEHOLDERS.",
+		"name": "Meat Plant", "category": "processor", "menu_tab": "food",
+		"description": "Makes burgers from beef, sausages from pork, or chicken nuggets from chicken. Each plant keeps making the one it starts with.",
+		"buildable": true, "max_workers": 8, "worker_type": "low_skilled",
+		"materials": { "bricks": 1400, "cement": 140, "steel": 35, "construction_materials": 70 },
+		"power_mw": 4,
+		"recipes": [
+			{ "id": "make_processed_meat", "inputs": { "beef": 30 }, "outputs": { "processed_meat": 30 }, "duration": 3600 },
+			{ "id": "make_sausage", "inputs": { "pork": 30 }, "outputs": { "sausage": 40 }, "duration": 3600 },
+			{ "id": "make_processed_chicken", "inputs": { "chicken": 30 }, "outputs": { "processed_chicken": 30 }, "duration": 3600 }
+		],
+		"upgrades": [
+			{ "max_workers": 12 },
+			{ "max_workers": 16 },
+			{ "max_workers": 20 }
+		]
+	},
+	"fish_plant": {
+		"_comment": "Frozen fish and packaged seafood (picked once; its freezers use power). Canned fish is the Cannery's. PLACEHOLDERS.",
+		"name": "Fish Plant", "category": "processor", "menu_tab": "food",
+		"description": "Freezes fish, or cleans and packs shrimp. Each plant keeps making the one it starts with.",
+		"buildable": true, "max_workers": 8, "worker_type": "low_skilled",
+		"materials": { "bricks": 1000, "cement": 100, "steel": 25, "construction_materials": 50 },
+		"power_mw": 4,
+		"recipes": [
+			{ "id": "freeze_fish", "inputs": { "fish": 40 }, "outputs": { "frozen_fish": 40 }, "duration": 3600 },
+			{ "id": "pack_seafood", "inputs": { "shrimp": 20 }, "outputs": { "packaged_seafood": 20 }, "duration": 3600 }
 		],
 		"upgrades": [
 			{ "max_workers": 12 },

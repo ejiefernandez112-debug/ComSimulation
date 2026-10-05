@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <!-- A block of butter on a dish. -->
+  <defs>
+    <linearGradient id="top" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFF6C0"/><stop offset="1" stop-color="#FFE68A"/></linearGradient>
+  </defs>
+  <ellipse cx="64" cy="96" rx="58" ry="20" fill="#E8EEF6" stroke="#2E3E5A" stroke-width="5.5"/>
+  <ellipse cx="64" cy="94" rx="44" ry="12" fill="none" stroke="#B4C0D2" stroke-width="3"/>
+  <path d="M22 62 L62 44 L106 60 L66 80 Z" fill="url(#top)" stroke="#7A5A10" stroke-width="5" stroke-linejoin="round"/>
+  <path d="M22 62 L22 84 L66 102 L66 80 Z" fill="#FFD84A" stroke="#7A5A10" stroke-width="5" stroke-linejoin="round"/>
+  <path d="M66 80 L106 60 L106 82 L66 102 Z" fill="#F2C430" stroke="#7A5A10" stroke-width="5" stroke-linejoin="round"/>
+  <path d="M46 58 C52 54 60 54 66 58" fill="none" stroke="#E8C24A" stroke-width="3" stroke-linecap="round"/>
+  <ellipse cx="74" cy="56" rx="10" ry="3" fill="#fff" fill-opacity="0.8" transform="rotate(15 74 56)"/>
+</svg>

@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <!-- A tray of shrimp under film. -->
+  <defs>
+    <linearGradient id="shell" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#FFB49A"/><stop offset="1" stop-color="#E8603A"/></linearGradient>
+  </defs>
+  <path d="M8 56 L120 56 L110 106 C109 112 104 116 98 116 L30 116 C24 116 19 112 18 106 Z" fill="#2E3E5A" stroke="#121A2A" stroke-width="5.5" stroke-linejoin="round"/>
+  <g fill="url(#shell)" stroke="#5E1E0A" stroke-width="3.5" stroke-linejoin="round">
+    <path d="M24 74 C30 60 50 58 60 68 C66 76 62 88 54 92 C58 84 56 76 48 74 C40 72 32 80 24 74 Z"/>
+    <path d="M58 72 C64 58 84 56 94 66 C100 74 96 86 88 90 C92 82 90 74 82 72 C74 70 66 78 58 72 Z"/>
+    <path d="M40 92 C46 80 64 78 74 86 C80 92 78 102 70 106 C74 98 72 92 64 90 C56 88 48 96 40 92 Z"/>
+  </g>
+  <path d="M8 56 C24 46 104 46 120 56" fill="#EAF6FF" fill-opacity="0.6" stroke="#121A2A" stroke-width="5" stroke-linejoin="round"/>
+  <rect x="72" y="94" width="40" height="16" rx="4" fill="#FFE27A" stroke="#121A2A" stroke-width="3.5"/>
+  <ellipse cx="34" cy="54" rx="12" ry="3" fill="#fff" fill-opacity="0.9"/>
+</svg>
