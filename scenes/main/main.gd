@@ -34,6 +34,7 @@ func _ready() -> void:
 	building_bar.move_requested.connect(_start_move)
 	building_panel.collect_requested.connect(_collect)
 	building_panel.start_batch_requested.connect(_ask_start_batch)
+	building_panel.switch_product_requested.connect(_ask_switch_product)
 	building_panel.cancel_batch_requested.connect(_ask_cancel_batch)
 	building_panel.closed.connect(_on_panel_closed)
 	building_panel.move_requested.connect(_start_move)
@@ -165,9 +166,8 @@ func _collect(building_id: String) -> void:
 
 ## Starting a batch pays its ingredients and wages at once and locks in its bonus (plan.md §5.1),
 ## so show the whole cost first and ask.
-func _ask_start_batch(building_id: String, hours: int, bonus: String) -> void:
+func _ask_start_batch(building_id: String, recipe_id: String, hours: int, bonus: String) -> void:
 	var b := Economy.building(building_id)
-	var recipe_id: String = BuildingInfo.recipe(b.type).id
 	var check := Economy.can_start_batch(building_id, recipe_id, hours, bonus)
 	if not check.ok:
 		hud.toast(check.error, true)
@@ -195,8 +195,35 @@ func _ask_start_batch(building_id: String, hours: int, bonus: String) -> void:
 	else:
 		lines.append("Total: %s → %s per %s (sells for %s)" % [UITheme.money(roundi(float(check.total))), UITheme.price(roundi(float(check.per_unit))), item, UITheme.price(int(check.price))])
 	lines.append("\nThe ingredients and wages are paid now; the bonus and the cost are locked in.")
+	# Its first batch chooses what it makes (plan.md §5.21): say so when that's for good.
+	if BuildingInfo.choosing(b):
+		if Economy.is_switchable(b.type):
+			lines.append("This chooses %s. Switching later costs %s." % [item, UITheme.money(Economy.switch_fee(b))])
+		else:
+			lines.append("This %s will make %s for good: build another one to make something else." % [GameData.buildings[b.type].name, item])
 	confirm_dialog.ask("Start this batch?", "\n".join(lines), 0, {}, "Start",
 		_start_batch.bind(building_id, recipe_id, hours, bonus), "Back", "GreenButton")
+
+
+## Switching a Plantation (or Ranch) to another product costs a fee (plan.md §5.21), so ask.
+func _ask_switch_product(building_id: String, recipe_id: String) -> void:
+	var check := Economy.can_switch_product(building_id, recipe_id)
+	if not check.ok:
+		hud.toast(check.error, true)
+		return
+	var b := Economy.building(building_id)
+	var item := BuildingInfo.resource_name(BuildingInfo.output_of(BuildingInfo.recipe_of({"type": b.type, "product": recipe_id})))
+	var now_item := BuildingInfo.resource_name(BuildingInfo.output_of(BuildingInfo.recipe_of(b)))
+	confirm_dialog.ask("Switch to %s?" % item, "This %s stops making %s and makes %s from its next batch.\nSwitching costs %s, paid now." % [GameData.buildings[b.type].name, now_item, item, UITheme.money(int(check.fee))],
+		0, {}, "Switch", _switch_product.bind(building_id, recipe_id), "Back", "GreenButton")
+
+
+func _switch_product(building_id: String, recipe_id: String) -> void:
+	var result := Economy.switch_product(building_id, recipe_id)
+	if not result.ok:
+		hud.toast(result.error, true)
+		return
+	hud.toast("Switched for %s." % UITheme.money(int(result.fee)))
 
 
 func _start_batch(building_id: String, recipe_id: String, hours: int, bonus: String) -> void:

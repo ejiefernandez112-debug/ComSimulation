@@ -26,7 +26,7 @@ const BUILDING_KEYS := ["name", "category", "description", "menu_tab", "build_co
 	"build_time", "max_workers", "worker_type", "fixed_workers", "staffed_first", "fixed_wage",
 	"households", "housing_tier", "hut", "wealth", "rent_per_household", "power_mw",
 	"capacity", "water_per_hour", "water_supply", "recipes", "shelves", "upgrades", "materials", "crew", "road_hub",
-	"construction_crew", "power_supply", "power_radius", "grid_mw", "coming_soon", "sells"]
+	"construction_crew", "power_supply", "power_radius", "grid_mw", "coming_soon", "sells", "switch_fee"]
 ## What a level in "upgrades" may change (plus an optional fixed "cost" and own "time"), and the
 ## least each may be.
 const UPGRADE_STATS := {"max_workers": 0, "capacity": 1, "shelves": 1, "households": 1, "water_supply": 1, "power_supply": 1, "power_radius": 1}
@@ -230,6 +230,11 @@ func _check_producer(data: Dictionary, _id: String, def: Dictionary, where: Stri
 		_fail("%s: makes things but has no recipes" % where)
 		return
 	_number_at_least(def, "water_per_hour", 0.0, where, false)
+	# Product choice (plan.md §5.21): switching costs a share of the building's value.
+	if def.has("switch_fee"):
+		_share(def.switch_fee, where + " switch_fee", true)
+		if recipes.size() < 2:
+			_note("%s: has a switch_fee but only one recipe, so there's nothing to switch to" % where)
 	if def.category == "extractor" and not recipes[0].get("inputs", {}).is_empty():
 		_note("%s: an extractor with ingredients works like a processor" % where)
 	var ids := {}

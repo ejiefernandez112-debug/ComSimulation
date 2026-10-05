@@ -177,6 +177,7 @@ func _cash_page() -> VBoxContainer:
 	_value_row(money_out, "Water", "out_water")
 	_value_row(money_out, "Power", "out_power")
 	_value_row(money_out, "Sales tax", "out_tax")
+	_value_row(money_out, "Switching products", "out_switch_fees")
 	_value_row(money_out, "Total", "out_total")
 	_money.build_cash_check(page)
 	_money.build_money_log(page)
@@ -553,6 +554,7 @@ func _refresh_cash() -> void:
 	_show("out_water", UITheme.money(int(st.spending.get("water", 0))))
 	_show("out_power", UITheme.money(int(st.spending.get("power", 0))))
 	_show("out_tax", UITheme.money(int(st.spending.get("tax", 0))))
+	_show("out_switch_fees", UITheme.money(int(st.spending.get("switch_fees", 0))))
 	var total_out := 0
 	for key in st.spending:
 		total_out += int(st.spending[key])

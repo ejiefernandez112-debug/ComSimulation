@@ -571,6 +571,31 @@ func batch_quote(building: Dictionary, recipe_id: String, hours: int, bonus: Str
 	return Simulation.batch_quote(state, data(), building, recipe_id, hours, bonus, TimeService.now())
 
 
+## The recipe this building is set up for, or "" while it hasn't chosen (its first batch chooses).
+func product_of(building: Dictionary) -> String:
+	return Simulation.product_of(data(), building)
+
+
+## True when this type of building can switch to another product later, for a fee.
+func is_switchable(type_id: String) -> bool:
+	return Simulation.is_switchable(data(), type_id)
+
+
+## What switching this building to another product costs (cents).
+func switch_fee(building: Dictionary) -> int:
+	return Simulation.switch_fee(data(), building)
+
+
+## Whether it could switch to that product now ({"ok", "error", "fee"}); changes nothing.
+func can_switch_product(building_id: String, recipe_id: String) -> Dictionary:
+	return Simulation.can_switch_product(state, data(), building_id, recipe_id)
+
+
+## Switch it to another product: the fee is paid now (plan.md §5.21).
+func switch_product(building_id: String, recipe_id: String) -> Dictionary:
+	return _after(Simulation.switch_product(state, data(), building_id, recipe_id, TimeService.now()))
+
+
 ## What one unit of that item from this batch cost to make (cents; by-products carry their share).
 func batch_unit_cost(batch: Dictionary, resource_id: String) -> float:
 	return Simulation.batch_unit_cost(batch, resource_id)

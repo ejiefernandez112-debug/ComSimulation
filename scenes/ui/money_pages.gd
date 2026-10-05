@@ -7,7 +7,8 @@ extends RefCounted
 ## same. Every number comes from Economy; this only shows them.
 
 const NAMES := {"rent": "Rent", "demolish": "Demolish refunds", "batch_refunds": "Cancelled batches",
-	"construction": "Construction", "roads": "Roads", "wages": "Wages", "water": "Water", "power": "Power", "tax": "Sales tax"}
+	"construction": "Construction", "roads": "Roads", "wages": "Wages", "water": "Water", "power": "Power", "tax": "Sales tax",
+	"switch_fees": "Switching products"}
 const NOTE_SIZE := 15
 
 var _panel  # the Statistics window (stats_panel.gd)

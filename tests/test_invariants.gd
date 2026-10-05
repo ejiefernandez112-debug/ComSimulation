@@ -180,10 +180,15 @@ func _random_action(rng: RandomNumberGenerator, state: Dictionary, now: float, e
 		var bonus: String = _pick(rng, _data.config.get("wage_bonuses", {}).keys() + ["nonsense"])
 		result = Sim.start_batch(state, _data, b.get("id", "none"), recipe, hours, bonus, now)
 		text = "start a %d-hour batch of %s at %s (bonus %s)" % [hours, recipe, _name(b), bonus]
-	elif roll < 50:
+	elif roll < 48:
 		var b := _some_building(rng, state, ["extractor", "processor"])
 		result = Sim.cancel_batch(state, _data, b.get("id", "none"), now)
 		text = "cancel the batch at %s" % _name(b)
+	elif roll < 50:
+		var b := _some_building(rng, state, ["extractor", "processor"])
+		var recipe: String = _pick(rng, _recipe_ids(b) + ["nonsense"])
+		result = Sim.switch_product(state, _data, b.get("id", "none"), recipe, now)
+		text = "switch %s to %s" % [_name(b), recipe]
 	elif roll < 53:
 		var b := _some_building(rng, state, [])
 		result = Sim.demolish(state, _data, b.get("id", "none"), now)
@@ -282,6 +287,10 @@ func _sensible_action(rng: RandomNumberGenerator, state: Dictionary, now: float)
 			options.append(func(): return ["upgrade %s" % _name(b), Sim.upgrade(state, _data, b.id, now)])
 		if rng.randf() < 0.1 and Sim.batch_running(b):
 			options.append(func(): return ["cancel the batch at %s" % _name(b), Sim.cancel_batch(state, _data, b.id, now)])
+		if rng.randf() < 0.1 and Sim.is_switchable(_data, b.type):  # a Plantation switches crops
+			var other: String = _pick(rng, _recipe_ids(b))
+			if Sim.can_switch_product(state, _data, b.id, other).ok:
+				options.append(func(): return ["switch %s to %s" % [_name(b), other], Sim.switch_product(state, _data, b.id, other, now)])
 		for recipe in _recipe_ids(b):
 			var bonus: String = _pick(rng, _data.config.get("wage_bonuses", {"none": 0.0}).keys())
 			var most := Sim.batch_max_hours(state, _data, b.id, recipe, bonus)
@@ -477,6 +486,12 @@ func _goods_ok(where: String, goods: Dictionary, costs: Dictionary) -> String:
 ## cost and wages aren't negative; and a finished batch with nothing left to collect is gone.
 func _batch_ok(b: Dictionary, def: Dictionary) -> String:
 	var name := _name(b)
+	# Product choice (plan.md §5.21): a product is one of its recipes, and a batch makes it.
+	var product := str(b.get("product", ""))
+	if product != "" and Sim._recipe(def, product).is_empty():
+		return "%s is set up for %s, which it can't make" % [name, product]
+	if Sim.has_batch(b) and product != str(b.batch.get("recipe_id", "")):
+		return "%s makes a batch of %s but is set up for '%s'" % [name, b.batch.get("recipe_id", ""), product]
 	if not Sim.has_batch(b):
 		return ""
 	if not Sim.makes_batches(_data, b):

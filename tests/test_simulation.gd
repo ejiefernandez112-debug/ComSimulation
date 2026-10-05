@@ -1560,6 +1560,102 @@ func test_old_batch_without_unit_cost() -> void:
 	_check(is_equal_approx(float(state.inventory_cost.beef), 900.0) and is_equal_approx(float(state.inventory_cost.hide), 100.0), "collected at the even split")
 
 
+# --- Product choice (plan.md §5.21) ----------------------------------------------
+
+## Test data with two buildings that make one of two products: a "plot" (switchable for 50% of
+## its $100 value) and a "kitchen" (no switch_fee: its first product is for good).
+func _choice_data() -> Dictionary:
+	var data := _data()
+	data.buildings["plot"] = {"category": "extractor", "build_cost": 100, "buildable": true, "switch_fee": 0.5,
+		"recipes": [{"id": "grow_wheat", "inputs": {}, "outputs": {"wheat": 10}, "duration": 60},
+			{"id": "grow_flour", "inputs": {}, "outputs": {"flour": 5}, "duration": 60}]}
+	data.buildings["kitchen"] = {"category": "processor", "build_cost": 0, "buildable": true,
+		"recipes": [{"id": "mill", "inputs": {"wheat": 10}, "outputs": {"flour": 8}, "duration": 60},
+			{"id": "toast", "inputs": {"wheat": 5}, "outputs": {"flour": 2}, "duration": 60}]}
+	return data
+
+
+## A new building hasn't chosen: its first batch chooses, and then it only makes that.
+func test_first_batch_sets_product() -> void:
+	var data := _choice_data()
+	var state := Sim.new_game(data, T0)
+	var plot := Sim.find_building(state, Sim.build(state, data, "plot", Vector2i(5, 5), T0).building_id)
+	_check(Sim.product_of(data, plot) == "", "a new plot hasn't chosen yet")
+	_check(Sim.batch_max_hours(state, data, plot.id, "grow_wheat", "none") > 0 and Sim.batch_max_hours(state, data, plot.id, "grow_flour", "none") > 0, "it could start either")
+	_check(Sim.start_batch(state, data, plot.id, "grow_flour", 1, "none", T0).ok and Sim.product_of(data, plot) == "grow_flour", "its first batch chooses flour, for free")
+	_check(state.profile.currency == 50000 - 10000, "only the plot itself was paid for")
+	Sim.settle(state, data, T0 + 60)
+	Sim.collect(state, data, plot.id, T0 + 60)
+	var refused := Sim.can_start_batch(state, data, plot.id, "grow_wheat", 1, "none", T0 + 60)
+	_check(not refused.ok and refused.error.contains("set up for Flour"), "now it only makes flour: wheat needs a switch")
+	_check(Sim.batch_max_hours(state, data, plot.id, "grow_wheat", "none") == 0, "and the longest wheat batch is 0 h")
+	_check(Sim.start_batch(state, data, plot.id, "grow_flour", 1, "none", T0 + 60).ok, "flour again is fine")
+
+
+## A switchable building pays its switch_fee to change product, only while it has no batch.
+func test_switch_product_fee() -> void:
+	var data := _choice_data()
+	var state := Sim.new_game(data, T0)
+	var plot := Sim.find_building(state, Sim.build(state, data, "plot", Vector2i(5, 5), T0).building_id)
+	_check(not Sim.can_switch_product(state, data, plot.id, "grow_flour").ok, "nothing chosen yet: nothing to switch")
+	Sim.start_batch(state, data, plot.id, "grow_wheat", 1, "none", T0)
+	var busy := Sim.switch_product(state, data, plot.id, "grow_flour", T0 + 10)
+	_check(not busy.ok and busy.error.contains("batch") and Sim.product_of(data, plot) == "grow_wheat", "not while it has a batch")
+	Sim.settle(state, data, T0 + 60)
+	Sim.collect(state, data, plot.id, T0 + 60)
+	_check(not Sim.can_switch_product(state, data, plot.id, "grow_wheat").ok, "switching to what it already makes is refused")
+	_check(not Sim.can_switch_product(state, data, plot.id, "grow_gold").ok, "an unknown product is refused")
+	_check(Sim.switch_fee(data, plot) == 5000, "the fee: 50% of its $100 value")
+	var cash: int = state.profile.currency
+	state.profile.currency = 4999
+	var poor := Sim.switch_product(state, data, plot.id, "grow_flour", T0 + 60)
+	_check(not poor.ok and poor.error.contains("$50") and state.profile.currency == 4999 and Sim.product_of(data, plot) == "grow_wheat", "short of cash: refused, and nothing changes")
+	state.profile.currency = cash
+	var switched := Sim.switch_product(state, data, plot.id, "grow_flour", T0 + 60)
+	_check(switched.ok and int(switched.fee) == 5000 and state.profile.currency == cash - 5000, "switched to flour for $50")
+	_check(Sim.product_of(data, plot) == "grow_flour" and int(Sim.stats(state).spending.switch_fees) == 5000, "it makes flour now; the fee is in the statistics")
+	_check(Sim.start_batch(state, data, plot.id, "grow_flour", 1, "none", T0 + 60).ok, "and a flour batch can start")
+	_check(Sim.cash_check(state).ok, "cash check adds up")
+
+
+## A building without a switch_fee keeps its first product for good.
+func test_fixed_product_cannot_switch() -> void:
+	var data := _choice_data()
+	var state := Sim.new_game(data, T0)
+	var kitchen := Sim.find_building(state, Sim.build(state, data, "kitchen", Vector2i(5, 5), T0).building_id)
+	state.inventory["wheat"] = 100
+	_check(Sim.start_batch(state, data, kitchen.id, "toast", 1, "none", T0).ok, "its first batch chooses toast")
+	Sim.settle(state, data, T0 + 60)
+	Sim.collect(state, data, kitchen.id, T0 + 60)
+	var refused := Sim.switch_product(state, data, kitchen.id, "mill", T0 + 60)
+	_check(not refused.ok and refused.error.contains("for good") and Sim.product_of(data, kitchen) == "toast", "it can't switch: build another kitchen")
+	_check(not Sim.can_start_batch(state, data, kitchen.id, "mill", 1, "none", T0 + 60).ok, "and can't start the other recipe")
+	_check(not Sim.is_switchable(data, "kitchen") and Sim.is_switchable(data, "plot"), "is_switchable reads switch_fee")
+
+
+## A version 12 save: every Farm, Mill and Bakery keeps what it was making (its running batch's
+## recipe, else its first recipe), so an old mill doesn't get a free choice.
+func test_old_save_gets_product() -> void:
+	var data := _choice_data()
+	var state := Sim.new_game(data, T0)
+	var idle := Sim.find_building(state, Sim.build(state, data, "kitchen", Vector2i(5, 5), T0).building_id)
+	var busy := Sim.find_building(state, Sim.build(state, data, "plot", Vector2i(6, 6), T0).building_id)
+	Sim.start_batch(state, data, busy.id, "grow_flour", 2, "none", T0)
+	var old := state.duplicate(true)
+	old.save_version = 12
+	for b in old.buildings:
+		b.erase("product")
+	var result := SaveFormat.from_text(JSON.stringify(old), data)
+	_check(result.ok and int(result.state.save_version) == Sim.SAVE_VERSION, "a version 12 save loads")
+	var loaded_idle := Sim.find_building(result.state, idle.id)
+	var loaded_busy := Sim.find_building(result.state, busy.id)
+	_check(Sim.product_of(data, loaded_idle) == "mill", "an idle building keeps its first recipe")
+	_check(Sim.product_of(data, loaded_busy) == "grow_flour", "a busy one keeps its batch's recipe")
+	_check(Sim.product_of(data, Sim.find_building(result.state, state.buildings[0].id)) == "", "buildings that make nothing get no product")
+	var round_trip := SaveFormat.from_text(SaveFormat.to_text(result.state, T0), data)
+	_check(Sim.product_of(data, Sim.find_building(round_trip.state, busy.id)) == "grow_flour", "the product is kept in the save")
+
+
 # --- Supermarket (plan.md §5.16) ------------------------------------------------
 
 ## Test data with a Supermarket ("market": 2 shelves, 2 workers at $36/hour). Flour and bread

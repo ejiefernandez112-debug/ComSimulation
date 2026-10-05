@@ -13,14 +13,15 @@ extends RefCounted
 ## Time model: buildings store when their current batch started (`job_started_at`).
 ## "Settling" turns elapsed time into finished output in one calculation, never tick-by-tick.
 
-const SAVE_VERSION := 12  # 2: warehouses are buildings; 3: buildings keep their own hired workers;
+const SAVE_VERSION := 13  # 2: warehouses are buildings; 3: buildings keep their own hired workers;
 # 4: money is stored in cents; 5: stock carries cost tags; 6: children, births and deaths;
 # 7: housing types (old free Small Houses become Public Housing); 8: balance sheet (buildings
 # keep what was paid for them, starting capital, money log); 9: production batches (a Farm,
 # Mill or Bakery runs one batch of chosen hours instead of a job queue and its own storage);
 # 10: roads (state.roads; buildings with workers need a road link to the Construction Office);
 # 11: the old headquarters is City Hall; a new Construction Office's workers build everything;
-# 12: electricity (power meter and bills; Mills and Bakeries need power from the grid)
+# 12: electricity (power meter and bills; Mills and Bakeries need power from the grid);
+# 13: each producer keeps its product (b.product): older ones keep what they were making
 ## Used when game_config.json has no staffing_levels: share of max_workers per level.
 const DEFAULT_STAFFING_LEVELS := {"low": 0.5, "medium": 0.75, "high": 1.0}
 
@@ -1475,6 +1476,8 @@ static func batch_max_hours(state: Dictionary, data: Dictionary, building_id: St
 	var recipe := _recipe(data.buildings.get(b.type, {}), recipe_id)
 	if recipe.is_empty():
 		return 0
+	if product_of(data, b) != "" and product_of(data, b) != recipe_id:
+		return 0  # set up for another product (can_start_batch says the same)
 	var most := batch_hours_limit(data)
 	for res in recipe.get("inputs", {}):
 		if int(recipe.inputs[res]) > 0:
@@ -1510,6 +1513,11 @@ static func can_start_batch(state: Dictionary, data: Dictionary, building_id: St
 	var quote := batch_quote(state, data, b, recipe_id, hours, level, now)
 	if quote.is_empty():
 		return _fail("Unknown recipe.")
+	var chosen := product_of(data, b)  # once chosen, it only makes that (plan.md §5.21)
+	if chosen != "" and chosen != recipe_id:
+		if is_switchable(data, b.type):
+			return _fail("It's set up for %s. Switch it to %s first (%s)." % [_product_name(data, b.type, chosen), _product_name(data, b.type, recipe_id), _money_text(switch_fee(data, b))])
+		return _fail("A %s makes %s for good. Build another one to make %s." % [data.buildings[b.type].get("name", "building"), _product_name(data, b.type, chosen), _product_name(data, b.type, recipe_id)])
 	for item in quote.ingredients:
 		if int(state.inventory.get(item.res, 0)) < int(item.qty):
 			return _fail("Not enough %s for %d hours." % [_resource_name(data, item.res), hours])
@@ -1539,6 +1547,7 @@ static func start_batch(state: Dictionary, data: Dictionary, building_id: String
 	for res in input_cost:
 		cost += float(input_cost[res])
 	b["bonus"] = level  # also the choice offered for the next batch
+	b["product"] = recipe_id  # the first batch chooses what it makes (plan.md §5.21)
 	b["batch"] = {"recipe_id": recipe_id, "hours": hours, "bonus": level, "units": check.units,
 		"cost": cost, "wages": wages, "inputs": inputs, "input_cost": input_cost,
 		"unit_cost": _unit_costs(_recipe(data.buildings[b.type], recipe_id), check.units, cost),
@@ -1676,6 +1685,82 @@ static func cancel_batch(state: Dictionary, data: Dictionary, building_id: Strin
 	if made == 0:
 		b.batch = {}
 	_end_batch_if_done(b)
+	return check
+
+
+# --- Product choice (plan.md §5.21) -----------------------------------------------
+# A building with several recipes (a Plantation's crops, a Dairy's cheese / butter / yogurt) is
+# set up for ONE of them: its product (b.product, a recipe id). Its first batch chooses it, for
+# free. A building with "switch_fee" in buildings.json (Plantation, Ranch, Fishery) can switch to
+# another product later, for that share of its value, while it has no batch; any other building
+# keeps its product for good: build another one to make something else.
+
+## The recipe this building is set up for, or "" while it hasn't chosen yet (its first batch
+## chooses, for free). A product the data no longer has counts as not chosen.
+static func product_of(data: Dictionary, b: Dictionary) -> String:
+	var id := str(b.get("product", ""))
+	if id != "" and not _recipe(data.buildings.get(b.type, {}), id).is_empty():
+		return id
+	return ""
+
+
+## True when this type of building can switch to another product later (it has a switch_fee).
+static func is_switchable(data: Dictionary, type_id: String) -> bool:
+	return data.buildings.get(type_id, {}).has("switch_fee")
+
+
+## What switching costs, in cents: switch_fee (a share) of what the building is worth at base
+## prices (building it plus its upgrades so far).
+static func switch_fee(data: Dictionary, b: Dictionary) -> int:
+	var share := float(data.buildings.get(b.type, {}).get("switch_fee", 0.0))
+	return roundi(construction_value(data, b.type, building_level(b)) * share)
+
+
+## The name of what a recipe makes (its main product): "Corn".
+static func _product_name(data: Dictionary, type_id: String, recipe_id: String) -> String:
+	var outputs: Dictionary = _recipe(data.buildings.get(type_id, {}), recipe_id).get("outputs", {})
+	return _resource_name(data, str(outputs.keys()[0])) if not outputs.is_empty() else recipe_id
+
+
+## Whether this building could switch to `recipe_id` now (changes nothing): {"ok", "error",
+## "fee" (cents)}. The UI uses it to grey out its buttons, and switch_product uses it too.
+static func can_switch_product(state: Dictionary, data: Dictionary, building_id: String, recipe_id: String) -> Dictionary:
+	var b := find_building(state, building_id)
+	if b.is_empty():
+		return _fail("Building not found.")
+	if not makes_batches(data, b):
+		return _fail("This building doesn't make anything.")
+	var def: Dictionary = data.buildings.get(b.type, {})
+	if _recipe(def, recipe_id).is_empty():
+		return _fail("It can't make that.")
+	var current := product_of(data, b)
+	if current == "":
+		return _fail("Nothing chosen yet: the first batch chooses what it makes, for free.")
+	if current == recipe_id:
+		return _fail("It already makes %s." % _product_name(data, b.type, recipe_id))
+	if not is_switchable(data, b.type):
+		return _fail("A %s makes %s for good. Build another one to make %s." % [def.get("name", "building"), _product_name(data, b.type, current), _product_name(data, b.type, recipe_id)])
+	if has_batch(b):
+		return _fail("Finish (or cancel) its batch and collect it first.")
+	var fee := switch_fee(data, b)
+	if int(state.profile.currency) < fee:
+		return _fail("Not enough money: switching costs %s." % _money_text(fee))
+	return _ok({"fee": fee})
+
+
+## Switch the building to another product (see can_switch_product): the fee is paid now, and
+## its next batch makes the new product.
+static func switch_product(state: Dictionary, data: Dictionary, building_id: String, recipe_id: String, now: float) -> Dictionary:
+	if not find_building(state, building_id).is_empty():
+		settle(state, data, now)  # its batch may have just been collected or finished
+	var check := can_switch_product(state, data, building_id, recipe_id)
+	if not check.ok:
+		return check
+	var fee := int(check.fee)
+	state.profile.currency -= fee
+	var spending: Dictionary = stats(state).spending
+	spending["switch_fees"] = int(spending.get("switch_fees", 0)) + fee
+	find_building(state, building_id)["product"] = recipe_id
 	return check
 
 
@@ -4031,6 +4116,17 @@ static func _recipe(def: Dictionary, recipe_id: String) -> Dictionary:
 		if r.id == recipe_id:
 			return r
 	return {}
+
+
+## Cents as whole dollars for a message: 123456 -> "$1,235".
+static func _money_text(amount: int) -> String:
+	var digits := str(absi(roundi(amount / 100.0)))
+	var grouped := ""
+	for i in digits.length():
+		if i > 0 and (digits.length() - i) % 3 == 0:
+			grouped += ","
+		grouped += digits[i]
+	return ("-$" if amount < 0 else "$") + grouped
 
 
 static func _resource_name(data: Dictionary, resource_id: String) -> String:

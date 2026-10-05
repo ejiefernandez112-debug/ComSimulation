@@ -9,6 +9,24 @@ static func recipe(type_id: String) -> Dictionary:
 	return recipes[0] if not recipes.is_empty() else {}
 
 
+## The recipe this building is working on or set up for (plan.md §5.21): its batch's, else its
+## product, else its first recipe (a new building that hasn't chosen yet). {} if it makes nothing.
+static func recipe_of(b: Dictionary) -> Dictionary:
+	var recipes: Array = GameData.buildings[b.type].get("recipes", [])
+	var id := str(b.get("batch", {}).get("recipe_id", ""))
+	if id == "":
+		id = Economy.product_of(b)
+	for r in recipes:
+		if r.id == id:
+			return r
+	return recipes[0] if not recipes.is_empty() else {}
+
+
+## True when a building makes one of several products and hasn't chosen yet.
+static func choosing(b: Dictionary) -> bool:
+	return GameData.buildings[b.type].get("recipes", []).size() > 1 and Economy.product_of(b) == ""
+
+
 ## The first resource a recipe makes, e.g. "flour".
 static func output_of(r: Dictionary) -> String:
 	return r.outputs.keys()[0] if not r.is_empty() else ""
@@ -119,6 +137,8 @@ static func _batch_status(b: Dictionary, r: Dictionary) -> Dictionary:
 	var item := resource_name(output_of(r))
 	var waiting := stored(b)
 	if not Economy.has_batch(b):
+		if choosing(b):
+			return {"text": "Idle: choose what it makes and start a batch", "progress": -1.0, "good": false}
 		return {"text": "Idle: start a batch to make %s" % item, "progress": -1.0, "good": false}
 	if not Economy.batch_running(b):
 		return {"text": "Batch done: collect %s %s" % [UITheme.number(waiting), item], "progress": 1.0, "good": true}
@@ -144,7 +164,7 @@ static func status(b: Dictionary) -> Dictionary:
 
 static func _status_now(b: Dictionary) -> Dictionary:
 	var def: Dictionary = GameData.buildings[b.type]
-	var r := recipe(b.type)
+	var r := recipe_of(b)
 	if Economy.is_upgrading(b) and not Economy.is_built(b):
 		return {"text": "Closed for its upgrade to Level %d · %s left. No workers, no wages; work in progress waits" % [Economy.building_level(b) + 1, UITheme.duration(Economy.upgrade_left(b))], "progress": Economy.construction_progress(b), "good": true}
 	if not Economy.is_built(b):

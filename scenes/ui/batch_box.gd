@@ -5,9 +5,13 @@ extends VBoxContainer
 ## time an hour at a time, or All (as long as the ingredients and cash allow). The lines under it
 ## show what the batch makes and costs before the player starts it.
 ## With a batch: how far along it is, what's ready to collect, what's locked in, and Cancel.
+## A building with several products (a Plantation's crops, a Dairy's cheese / butter / yogurt;
+## plan.md §5.21) shows them first: pick one for the first batch; later a Plantation can switch
+## (for a fee) and a factory keeps its product for good.
 ## Shows numbers from Economy only; its buttons ask (signals) and main.gd acts.
 
-signal start_requested(building_id: String, hours: int, bonus: String)
+signal start_requested(building_id: String, recipe_id: String, hours: int, bonus: String)
+signal switch_requested(building_id: String, recipe_id: String)
 signal collect_requested(building_id: String)
 signal cancel_requested(building_id: String)
 
@@ -17,10 +21,13 @@ const TITLES := {"units": "Makes:", "ingredients": "Ingredients:", "labor": "Lab
 var building_id := ""
 var _hours := 0  # the length chosen for the next batch (0 = not chosen yet: offer the default)
 var _bonus := "none"  # the bonus chosen for the next batch
+var _choice := ""  # the product picked for the first batch, before the building has one
 var _width := 400.0
 
 # Idle: setting up the next batch.
 var _setup: VBoxContainer
+var _product_buttons := {}  # recipe id -> its Button (only for buildings with several products)
+var _product_note: Label
 var _bonus_buttons := {}  # bonus level -> its Button
 var _finish_text: Label
 var _lines := {}  # TITLES key -> its value Label
@@ -51,6 +58,26 @@ func _build_setup() -> void:
 	_setup = VBoxContainer.new()
 	_setup.add_theme_constant_override("separation", 6)
 	add_child(_setup)
+	# What it makes, when it can make several things (plan.md §5.21).
+	var recipes: Array = GameData.buildings[Economy.building(building_id).type].get("recipes", [])
+	if recipes.size() > 1:
+		var products := HFlowContainer.new()
+		products.add_theme_constant_override("h_separation", 6)
+		products.add_theme_constant_override("v_separation", 6)
+		_setup.add_child(products)
+		for r in recipes:
+			var out := BuildingInfo.output_of(r)
+			var button := Button.new()
+			button.icon = UITheme.icon(out)
+			button.expand_icon = true
+			button.text = BuildingInfo.resource_name(out)
+			button.custom_minimum_size = Vector2(130, 44)
+			button.add_theme_font_size_override("font_size", 16)
+			button.pressed.connect(_on_product_pressed.bind(str(r.id)))
+			products.add_child(button)
+			_product_buttons[str(r.id)] = button
+		_product_note = _wrapped("", 15)
+		_setup.add_child(_product_note)
 	# Bonus: paid on top of the minimum wage for the whole batch, for more units. Locked in once
 	# the batch starts.
 	var row := HBoxContainer.new()
@@ -102,7 +129,7 @@ func _build_setup() -> void:
 	_start.custom_minimum_size = Vector2(300, 56)
 	_start.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	# Greyed when it can't start, but still tappable, so the player is told why.
-	_start.pressed.connect(func(): start_requested.emit(building_id, _hours, _bonus))
+	_start.pressed.connect(func(): start_requested.emit(building_id, _recipe_id(Economy.building(building_id)), _hours, _bonus))
 	_setup.add_child(_start)
 
 
@@ -162,8 +189,29 @@ func showing_batch() -> bool:
 	return _running.visible
 
 
+## The recipe the next batch makes: the building's product, or (before it has one) the pick.
 func _recipe_id(b: Dictionary) -> String:
-	return str(BuildingInfo.recipe(b.type).get("id", ""))
+	if Economy.product_of(b) == "" and _choice != "":
+		return _choice
+	return str(BuildingInfo.recipe_of(b).get("id", ""))
+
+
+## The recipe shown: the batch's while it has one, else the next batch's.
+func current_recipe_id() -> String:
+	return _recipe_id(Economy.building(building_id))
+
+
+## A product button: before the first batch it's just the pick; after, a Plantation asks to
+## switch (main.gd shows the fee, or why not), and a factory explains it can't.
+func _on_product_pressed(recipe_id: String) -> void:
+	var b := Economy.building(building_id)
+	var current := Economy.product_of(b)
+	if current == "":
+		_choice = recipe_id
+		_hours = 0  # offer the usual length again for the new product
+		refresh()
+	elif recipe_id != current:
+		switch_requested.emit(building_id, recipe_id)
 
 
 func _most_hours() -> int:
@@ -172,6 +220,8 @@ func _most_hours() -> int:
 
 
 func _refresh_setup(b: Dictionary) -> void:
+	if not _product_buttons.is_empty():
+		_refresh_products(b)
 	var most := _most_hours()
 	var limit := Economy.batch_hours_limit()
 	if _hours <= 0:  # first look: the usual length, or less if the stock and cash run out sooner
@@ -212,6 +262,30 @@ func _refresh_setup(b: Dictionary) -> void:
 	_start.text = "Start %s h batch" % _amount(real_hours)
 	_start.theme_type_variation = "YellowButton" if check.ok else "GreyButton"
 	_start.tooltip_text = "Pays the ingredients and wages now" if check.ok else str(check.error)
+
+
+## The product buttons: the one it makes (or the pick) in yellow; and what choosing means here.
+func _refresh_products(b: Dictionary) -> void:
+	var current := Economy.product_of(b)
+	var shown := _recipe_id(b)
+	var switchable := Economy.is_switchable(b.type)
+	for id in _product_buttons:
+		var variation := "BlueButton"
+		if id == shown:
+			variation = "YellowButton"
+		elif current != "" and not switchable:
+			variation = "GreyButton"  # a factory's product is for good
+		_product_buttons[id].theme_type_variation = variation
+	var kind: String = GameData.buildings[b.type].name
+	var item := BuildingInfo.resource_name(BuildingInfo.output_of(BuildingInfo.recipe_of(b)))
+	if current == "" and switchable:
+		_product_note.text = "Pick what it grows. Its first batch chooses for free; switching later costs %s." % UITheme.money(Economy.switch_fee(b))
+	elif current == "":
+		_product_note.text = "Pick what it makes. Once its first batch starts, this %s makes it for good: build another one for something else." % kind
+	elif switchable:
+		_product_note.text = "Makes %s. Tap another to switch (%s)." % [item, UITheme.money(Economy.switch_fee(b))]
+	else:
+		_product_note.text = "Makes %s for good. Build another %s to make something else." % [item, kind]
 
 
 func _refresh_running(b: Dictionary) -> void:

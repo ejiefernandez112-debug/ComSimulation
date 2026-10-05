@@ -408,7 +408,17 @@ func _show_details(type_id: String) -> void:
 		_makes.remove_child(child)
 		child.queue_free()
 	var r := BuildingInfo.recipe(type_id) if type_id != ROAD else {}
-	match def.category:
+	var recipes: Array = def.get("recipes", [])
+	if recipes.size() > 1:
+		# Several products (plan.md §5.21): each building makes one; a Plantation can switch.
+		_makes.add_child(_body("Grows one of" if def.category == "extractor" else "Makes one of"))
+		for each in recipes:
+			_makes.add_child(_icon(BuildingInfo.output_of(each), 26))
+		_makes.add_child(_body("(switch for a fee)" if Economy.is_switchable(type_id) else "(picked once)"))
+		if Economy.power_on() and float(def.get("power_mw", 0.0)) > 0.0:
+			_makes.add_child(_icon("power", 24))
+			_makes.add_child(_body(BuildingInfo.mw(float(def.power_mw))))
+	match "" if recipes.size() > 1 else def.category:
 		"extractor":
 			_makes.add_child(_body("Grows"))
 			_add_amounts(r.outputs)

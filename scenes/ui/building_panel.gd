@@ -5,7 +5,8 @@ extends ModalWindow
 ## (§5.16). Shows numbers from Economy only; the buttons ask main.gd to act (signals).
 
 signal collect_requested(building_id: String)
-signal start_batch_requested(building_id: String, hours: int, bonus: String)
+signal start_batch_requested(building_id: String, recipe_id: String, hours: int, bonus: String)
+signal switch_product_requested(building_id: String, recipe_id: String)
 signal cancel_batch_requested(building_id: String)
 signal move_requested(building_id: String)
 signal demolish_requested(building_id: String)
@@ -28,6 +29,8 @@ var _power_text: Label  # buildings that use power: how much and what it costs
 var _status: Label  # "Now" (buildings without batches)
 var _progress: ProgressBar
 var _batch_box: BatchBox  # a Farm, Mill or Bakery's batch (plan.md §5.1)
+var _recipe_row: HBoxContainer  # what one hour of work makes, for the product shown
+var _shown_recipe := ""  # the recipe the row shows, so it's only refilled when that changes
 var _staff_buttons := {}  # staffing level -> its button
 var _wage_each_text: Label
 var _water_text: Label  # buildings that draw water from the public supply (plan.md §5.13)
@@ -98,7 +101,8 @@ func _build_rows(b: Dictionary, def: Dictionary) -> void:
 	about.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	about.custom_minimum_size.x = WIDTH - 70  # wrapped text needs a width, or it measures one word per line
 	content.add_child(about)
-	var r := BuildingInfo.recipe(b.type)
+	var r := BuildingInfo.recipe_of(b)
+	_recipe_row = null
 	_road_box = null
 	if Economy.needs_road(b):
 		_road_box = _section("No road")
@@ -114,24 +118,16 @@ func _build_rows(b: Dictionary, def: Dictionary) -> void:
 
 	if def.category in ["extractor", "processor"]:
 		# What one hour of work makes (plan.md §5.1), then the batch: set one up, or watch it run.
+		# The row follows the product shown in the batch box (a Plantation's crop, plan.md §5.21).
 		var box := _section("Production")
-		var row := HBoxContainer.new()
-		row.add_theme_constant_override("separation", 10)
-		box.add_child(row)
-		for res in r.inputs:
-			row.add_child(_item(res, int(r.inputs[res])))
-		if not r.inputs.is_empty():
-			row.add_child(_icon("arrow", 34))
-		for res in r.outputs:
-			row.add_child(_item(res, int(r.outputs[res])))
-		var spacer := Control.new()
-		spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		row.add_child(spacer)
-		row.add_child(_icon("clock", 30))
-		row.add_child(_body("per %s of work" % ("hour" if is_equal_approx(float(r.duration), 3600.0) else UITheme.duration(float(r.duration)))))
+		_recipe_row = HBoxContainer.new()
+		_recipe_row.add_theme_constant_override("separation", 10)
+		box.add_child(_recipe_row)
+		_fill_recipe_row(r)
 		_batch_box = BatchBox.new()
 		_batch_box.setup(building_id, WIDTH - 70)
-		_batch_box.start_requested.connect(func(id, hours, bonus): start_batch_requested.emit(id, hours, bonus))
+		_batch_box.start_requested.connect(func(id, recipe_id, hours, bonus): start_batch_requested.emit(id, recipe_id, hours, bonus))
+		_batch_box.switch_requested.connect(func(id, recipe_id): switch_product_requested.emit(id, recipe_id))
 		_batch_box.collect_requested.connect(func(id): collect_requested.emit(id))
 		_batch_box.cancel_requested.connect(func(id): cancel_batch_requested.emit(id))
 		box.add_child(_batch_box)
@@ -399,7 +395,7 @@ func _refresh_workers(b: Dictionary, def: Dictionary) -> void:
 	elif def.category == "retail":
 		note += " while a shelf is selling · short of people = shelves sell slower"
 	else:
-		var r := BuildingInfo.recipe(b.type)
+		var r := BuildingInfo.recipe_of(b)
 		var per_hour := 0.0
 		for res in r.outputs:
 			per_hour += int(r.outputs[res]) * 3600.0 / float(r.duration) * speed
@@ -460,6 +456,10 @@ func _refresh() -> void:
 		_batch_box.refresh()
 		if had_batch != _batch_box.showing_batch():
 			_layout.call_deferred()  # set-up and running look differ in height
+		if _batch_box.current_recipe_id() != _shown_recipe:  # a crop was picked or switched
+			for r in def.get("recipes", []):
+				if r.id == _batch_box.current_recipe_id():
+					_fill_recipe_row(r)
 	if _workers_text:
 		_refresh_workers(b, def)
 	if _suspend:
@@ -743,6 +743,25 @@ func _section(title: String) -> VBoxContainer:
 
 
 ## An item icon with its amount, e.g. [wheat] 40.
+## "[wheat] 40 → [flour] 32 · per hour of work": what one hour of this recipe makes.
+func _fill_recipe_row(r: Dictionary) -> void:
+	for child in _recipe_row.get_children():
+		_recipe_row.remove_child(child)
+		child.queue_free()
+	_shown_recipe = str(r.get("id", ""))
+	for res in r.get("inputs", {}):
+		_recipe_row.add_child(_item(res, int(r.inputs[res])))
+	if not r.get("inputs", {}).is_empty():
+		_recipe_row.add_child(_icon("arrow", 34))
+	for res in r.get("outputs", {}):
+		_recipe_row.add_child(_item(res, int(r.outputs[res])))
+	var spacer := Control.new()
+	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_recipe_row.add_child(spacer)
+	_recipe_row.add_child(_icon("clock", 30))
+	_recipe_row.add_child(_body("per %s of work" % ("hour" if is_equal_approx(float(r.get("duration", 3600.0)), 3600.0) else UITheme.duration(float(r.duration)))))
+
+
 func _item(resource_id: String, amount: int) -> HBoxContainer:
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 2)

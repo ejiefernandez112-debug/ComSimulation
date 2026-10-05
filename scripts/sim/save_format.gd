@@ -129,7 +129,27 @@ static func _migrate(state: Dictionary, version: int, data: Dictionary) -> void:
 		Simulation.cover_all_with_power(state, data)
 		Simulation._hire(state, data, at)
 		version = 12
+	if version < 13:
+		# Version 13: product choice (plan.md §5.21). A building with several recipes is set up for
+		# one product, chosen by its first batch. Farms, Mills and Bakeries in an older save have
+		# already made theirs, so they keep it: their batch's recipe, else their first recipe (an
+		# old Flour Mill stays a flour mill even though mills can now grind corn and rice).
+		_products_from_batches(state, data)
+		version = 13
 	state["save_version"] = version
+
+
+## For a version 12 save: every building that makes batches gets its product (see _migrate).
+static func _products_from_batches(state: Dictionary, data: Dictionary) -> void:
+	for b in state.buildings:
+		if not Simulation.makes_batches(data, b) or Simulation.product_of(data, b) != "":
+			continue
+		var recipes: Array = data.buildings.get(b.type, {}).get("recipes", [])
+		var running := str(b.get("batch", {}).get("recipe_id", ""))
+		if running != "" and not Simulation._recipe(data.buildings[b.type], running).is_empty():
+			b["product"] = running
+		elif not recipes.is_empty():
+			b["product"] = str(recipes[0].id)
 
 
 ## Saves before version 11 called the headquarters "construction_office"; it is City Hall now.
@@ -308,6 +328,8 @@ static func _check_shape(state: Dictionary, version: int) -> String:
 			return "a building with a broken queue"
 		if version >= 9 and not _batch_ok(b.get("batch")):
 			return "a building with a broken batch"
+		if b.has("product") and typeof(b.product) != TYPE_STRING:
+			return "a building with a broken product"
 	if version >= 10:
 		if typeof(state.get("roads")) != TYPE_ARRAY:
 			return "no roads"

@@ -105,7 +105,7 @@ func _refresh() -> void:
 	# Produce opens the building window, where the batch's length and bonus are chosen.
 	_produce.visible = Economy.makes_batches(b) and not Economy.has_batch(b)
 	if _produce.visible:
-		var r := BuildingInfo.recipe(b.type)
+		var r := BuildingInfo.recipe_of(b)
 		_produce.set_icon(BuildingInfo.output_of(r))
 		_produce.set_caption("New batch")
 		_produce.set_color("yellow" if Economy.batch_max_hours(building_id, r.id, Economy.workers(b).bonus) > 0 else "grey")
