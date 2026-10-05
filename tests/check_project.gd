@@ -26,17 +26,18 @@ const BUILDING_KEYS := ["name", "category", "description", "menu_tab", "build_co
 	"build_time", "max_workers", "worker_type", "fixed_workers", "staffed_first", "fixed_wage",
 	"households", "housing_tier", "hut", "wealth", "rent_per_household", "power_mw",
 	"capacity", "water_per_hour", "water_supply", "recipes", "shelves", "upgrades", "materials", "crew", "road_hub",
-	"construction_crew", "power_supply", "power_radius", "grid_mw", "coming_soon"]
+	"construction_crew", "power_supply", "power_radius", "grid_mw", "coming_soon", "sells"]
 ## What a level in "upgrades" may change (plus an optional fixed "cost" and own "time"), and the
 ## least each may be.
 const UPGRADE_STATS := {"max_workers": 0, "capacity": 1, "shelves": 1, "households": 1, "water_supply": 1, "power_supply": 1, "power_radius": 1}
 const RECIPE_KEYS := ["id", "inputs", "outputs", "duration"]
-const RESOURCE_KEYS := ["name", "tier", "appetite", "price"]
+const RESOURCE_KEYS := ["name", "tier", "appetite", "price", "category"]
 const CONFIG_KEYS := ["starting_cash", "starting_population", "population_growth_seconds", "move_in_group_size", "move_in_only_for_jobs", "move_in_needs_home", "life", "housing", "happiness", "grid_size", "autosave_seconds",
 	"welcome_back_after_seconds", "cancel_refund_in_progress", "demolish_refund", "batch",
 	"stats_sample_seconds", "stats_history_size", "money_log_minutes", "money_log_size", "pricing", "water", "sales_tax_window_hours",
 	"sales_tax_brackets", "market_fee", "retail", "staffing_levels", "default_staffing", "wage_bonuses",
-	"bonus_output", "default_bonus", "worker_types", "island", "starting_buildings", "construction", "roads", "power"]
+	"bonus_output", "default_bonus", "worker_types", "island", "starting_buildings", "construction", "roads", "power",
+	"item_categories"]
 ## A production recipe is one hour of work: the batch length the player picks is counted in them.
 const BATCH_HOUR := 3600.0
 
@@ -151,6 +152,13 @@ func _check_buildings(data: Dictionary, tabs: Dictionary) -> void:
 				_whole_at_least(def, "capacity", 1, where, true)
 			"retail":
 				_whole_at_least(def, "shelves", 1, where, true)
+				# What it sells: categories from game_config.json item_categories.
+				if typeof(def.get("sells", [])) != TYPE_ARRAY:
+					_fail("%s: 'sells' must be a list of item categories" % where)
+				else:
+					for kind in def.get("sells", []):
+						if not config.get("item_categories", {}).has(kind):
+							_fail("%s sells: '%s' isn't in game_config.json item_categories" % [where, kind])
 			"utility":
 				_whole_at_least(def, "water_supply", 1, where, true)
 			"construction":
@@ -269,12 +277,32 @@ func _check_resources(data: Dictionary) -> void:
 		if not made.has(res) and not used.has(res) and float(def.get("appetite", 0.0)) <= 0.0:
 			_note("%s: nothing makes, uses or buys it" % where)
 		_icon_exists(res, where)
+		# Its category (plan.md §5.16): a known one, food is something people buy, and whatever
+		# people buy must be sold by some store, or nobody could ever buy it.
+		var categories: Dictionary = data.config.get("item_categories", {})
+		if not def.has("category"):
+			_note("%s: has no category" % where)
+		elif not categories.is_empty() and not categories.has(str(def.category)):
+			_fail("%s: category '%s' isn't in game_config.json item_categories" % [where, def.category])
+		if str(def.get("category", "")) == "food" and float(def.get("appetite", 0.0)) <= 0.0:
+			_fail("%s: food needs an appetite (how much people buy), or no store could sell it" % where)
+		if float(def.get("appetite", 0.0)) > 0.0:
+			var sold := false
+			for type_id in data.buildings:
+				if data.buildings[type_id].get("category", "") == "retail" and data.buildings[type_id].get("buildable", false):
+					sold = sold or Simulation.store_sells(data, type_id, res)
+			if not sold:
+				_fail("%s: people buy it (appetite) but no store you can build sells its category" % where)
 
 
 func _check_config(data: Dictionary) -> void:
 	var c: Dictionary = data.config
 	var where := "game_config.json"
 	_unknown_keys(c, CONFIG_KEYS, where)
+	for kind in c.get("item_categories", {}):
+		_unknown_keys(c.item_categories[kind], ["name"], where + " item_categories '%s'" % kind)
+		if str(c.item_categories[kind].get("name", "")) == "":
+			_fail("%s item_categories '%s': needs a name to show" % [where, kind])
 	_number_at_least(c, "starting_cash", 0.0, where, true)
 	_number_at_least(c, "population_growth_seconds", 0.0, where, true)  # 0 = nobody moves in
 	_whole_at_least(c, "move_in_group_size", 1, where, false)  # adults arriving together

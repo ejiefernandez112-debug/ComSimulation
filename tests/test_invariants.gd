@@ -289,7 +289,7 @@ func _sensible_action(rng: RandomNumberGenerator, state: Dictionary, now: float)
 				var hours := rng.randi_range(1, most)
 				options.append(func(): return ["start a %d-hour batch of %s at %s (bonus %s)" % [hours, recipe, _name(b), bonus], Sim.start_batch(state, _data, b.id, recipe, hours, bonus, now)])
 		if _data.buildings[b.type].get("category", "") == "retail":
-			for res in Sim.shop_products(_data):
+			for res in Sim.store_products(_data, b.type):
 				var qty := int(state.inventory.get(res, 0))
 				if qty > 0 and not Sim.store_has_product(b, res):
 					var tag: String = _pick(rng, Sim.price_tags(_data).keys())
@@ -391,8 +391,8 @@ func _invariants(state: Dictionary, now: float, before: Dictionary, baseline: in
 		for shelf in shelves:
 			if shelf.is_empty():
 				continue
-			if Sim.appetite(_data, shelf.res) <= 0.0:
-				return "%s sells %s, which shops can't sell" % [name, shelf.res]
+			if not Sim.store_sells(_data, b.type, shelf.res):
+				return "%s sells %s, which this store can't sell" % [name, shelf.res]
 			# Several stores may sell the same product, but each store has it on one shelf at most.
 			if on_shelves.has("%s|%s" % [b.id, shelf.res]):
 				return "%s is on two shelves of %s" % [shelf.res, name]

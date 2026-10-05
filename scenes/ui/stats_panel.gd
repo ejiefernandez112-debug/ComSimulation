@@ -358,6 +358,10 @@ func _refresh_people() -> void:
 	_happiness_bar.value = 100.0 * float(happy.score)
 	var foods := int(happy.foods)
 	var food_text := "%d%% · %d food%s selling" % [roundi(100.0 * float(happy.food)), foods, "" if foods == 1 else "s"]
+	# More different foods count for more (happiness.food_scores): say what the next one brings.
+	var scores: Array = GameData.config.get("happiness", {}).get("food_scores", [])
+	if foods + 1 < scores.size():
+		food_text += " · 1 more food: %d%%" % roundi(100.0 * float(scores[foods + 1]))
 	_show("need_food", food_text, DOWN if float(happy.food) < 1.0 else LineChart.INK)
 	_show("need_jobs", "%d%% · %d of %d adults have a job" % [roundi(100.0 * float(happy.jobs)), e.employed, e.adults], DOWN if float(happy.jobs) < 1.0 else LineChart.INK)
 	var housed := int(happy.households) - int(happy.homeless)

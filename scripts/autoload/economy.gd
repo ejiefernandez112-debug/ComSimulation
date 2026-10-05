@@ -398,9 +398,24 @@ func shoppers(building: Dictionary) -> float:
 	return Simulation.shoppers(data(), building)
 
 
-## The goods shops can sell (finished food), in resources.json order.
+## The goods shops can sell (finished goods people buy), in resources.json order.
 func shop_products() -> Array[String]:
 	return Simulation.shop_products(data())
+
+
+## The goods a store of this type sells (its "sells" categories), in resources.json order.
+func store_products(type_id: String) -> Array[String]:
+	return Simulation.store_products(data(), type_id)
+
+
+## An item's category id ("food", "crop", ...; "" if it has none).
+func item_category(resource_id: String) -> String:
+	return Simulation.item_category(data(), resource_id)
+
+
+## A category's name for the screen ("Food"), from game_config.json item_categories.
+func category_name(category_id: String) -> String:
+	return str(GameData.config.get("item_categories", {}).get(category_id, {}).get("name", category_id.capitalize()))
 
 
 ## Where that item is on sale ({"building_id", "index"} of the first store found), or {} if on no shelf.

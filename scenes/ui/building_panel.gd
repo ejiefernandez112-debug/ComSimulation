@@ -547,19 +547,21 @@ func _build_shelves(b: Dictionary) -> void:
 		_shelf_rows.append({"icon": icon, "title": title, "bar": bar, "detail": detail, "take_down": take_down})
 
 
-## "Put on a shelf": choose the food, how much (a slider, or All) and its price tag. The lines
+## "Put on a shelf": choose the item, how much (a slider, or All) and its price tag. The lines
 ## under it show what that would bring before the player commits: the price, how fast the
-## village would buy it, how long it takes, and the profit.
+## village would buy it, how long it takes, and the profit. Only what this store sells is listed
+## (its "sells" categories), and only what's in stock or on its shelves is shown.
 func _build_stock_form() -> void:
 	var box := _section("Put on a shelf")
-	var items := HBoxContainer.new()
-	items.add_theme_constant_override("separation", 6)
+	var items := HFlowContainer.new()  # wraps onto more rows when the store sells many goods
+	items.add_theme_constant_override("h_separation", 6)
+	items.add_theme_constant_override("v_separation", 6)
 	box.add_child(items)
-	for res in Economy.shop_products():
+	for res in Economy.store_products(Economy.building(building_id).type):
 		var button := Button.new()
 		button.icon = UITheme.icon(res)
 		button.expand_icon = true
-		button.custom_minimum_size = Vector2(0, 48)
+		button.custom_minimum_size = Vector2(150, 48)
 		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		button.add_theme_font_size_override("font_size", 17)
 		button.pressed.connect(func(): _choose_item(res))
@@ -628,10 +630,10 @@ func _build_stock_form() -> void:
 	box.add_child(_stock_button)
 
 
-## The form's starting choice: the first food in stock that isn't on this store's shelves yet
+## The form's starting choice: the first item in stock that isn't on this store's shelves yet
 ## (else the first one), all of it, at the default price tag.
 func choose_defaults() -> void:
-	var products := Economy.shop_products()
+	var products := Economy.store_products(Economy.building(building_id).type)
 	_chosen_item = products[0] if not products.is_empty() else ""
 	for res in products:
 		if int(Economy.state.inventory.get(res, 0)) > 0 and not Economy.store_has_product(building_id, res):
@@ -682,6 +684,8 @@ func _refresh_stock_form() -> void:
 	for res in _item_buttons:
 		var have := int(stock.get(res, 0))
 		var on_shelf := Economy.store_has_product(building_id, res)
+		# Many goods: show only those you have, are selling here, or have picked.
+		_item_buttons[res].visible = have > 0 or on_shelf or res == _chosen_item
 		_item_buttons[res].text = "%s  %s" % [BuildingInfo.resource_name(res), "on a shelf" if on_shelf else UITheme.number(have)]
 		if res == _chosen_item:
 			_item_buttons[res].theme_type_variation = "YellowButton"

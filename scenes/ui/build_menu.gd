@@ -462,9 +462,14 @@ func _show_details(type_id: String) -> void:
 			_makes.add_child(_icon("road", 26))
 			_makes.add_child(_body("%s a tile · ready at once · removing is free" % UITheme.money(Economy.road_price())))
 		"retail":
-			_makes.add_child(_body("Sells"))
-			for res in Economy.shop_products():
-				_makes.add_child(_icon(res, 26))
+			# "Sells Food on 4 shelves" (its "sells" categories), or the goods' icons if it has no list.
+			var kinds: Array[String] = []
+			for kind in def.get("sells", []):
+				kinds.append(Economy.category_name(str(kind)))
+			_makes.add_child(_body("Sells " + ", ".join(kinds) if not kinds.is_empty() else "Sells"))
+			if kinds.is_empty():
+				for res in Economy.store_products(type_id):
+					_makes.add_child(_icon(res, 26))
 			_makes.add_child(_body("on %d shelves (%d workers)" % [int(def.get("shelves", 0)), int(def.get("max_workers", 0))]))
 	if def.get("category", "") in ["extractor", "processor"]:
 		var spacer := Control.new()

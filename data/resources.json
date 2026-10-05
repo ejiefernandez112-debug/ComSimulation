@@ -1,6 +1,6 @@
 {
-	"_note": "No prices here: the game works out each item's Retail price live from what it costs to make (plan.md 5.12; pricing in game_config.json). An item no building makes can have a fixed \"price\" in dollars. appetite = how many of it one villager buys per hour at the Normal price in a Supermarket (plan.md 5.16). Only finished food has one, so raw goods like Wheat can't be sold in shops. Appetites are PLACEHOLDERS, tuned so about 40 people buy what one Farm + Mill + Bakery make (not realistic amounts: the game only shows village totals).",
-	"wheat": { "name": "Wheat", "tier": 0 },
-	"flour": { "name": "Flour", "tier": 1, "appetite": 0.32 },
-	"bread": { "name": "Bread", "tier": 2, "appetite": 0.36 }
+	"_note": "No prices here: the game works out each item's Retail price live from what it costs to make (plan.md 5.12; pricing in game_config.json). An item no building makes can have a fixed \"price\" in dollars. appetite = how many of it one villager buys per hour at the Normal price in a store (plan.md 5.16). Only finished goods have one, so raw goods like Wheat can't be sold in shops. category = what kind of item it is (names in game_config.json item_categories): stores sell the categories in their \"sells\" list, and the Food need counts only \"food\". Appetites are PLACEHOLDERS, tuned so about 40 people buy what one Farm + Mill + Bakery make (not realistic amounts: the game only shows village totals).",
+	"wheat": { "name": "Wheat", "tier": 0, "category": "crop" },
+	"flour": { "name": "Flour", "tier": 1, "category": "food", "appetite": 0.32 },
+	"bread": { "name": "Bread", "tier": 2, "category": "food", "appetite": 0.36 }
 }

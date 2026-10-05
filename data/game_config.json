@@ -27,11 +27,19 @@
 		"grow_up_hours": 6,
 		"child_group_hours": 1
 	},
-	"_happiness": "Village happiness (plan.md 5.6 'Needs & happiness'): Food, Jobs and Housing needs, mixed by weights (shares of their total) into one 0-1 score. food_scores = score for 0, 1, 2 or more different foods selling at a staffed Supermarket. Jobs = share of adults with a job. Housing = share of households with a real home (homeless households in huts lower it). homeless_penalty = on top of that, per_household is taken off the score for every household living in a hut, at most max (shares of 1). Needs only count from needs_from_population people (below that, happiness is 100%) and after a new village's first grace_hours. growth_speeds: for each happiness band (from = lowest score of the band), speed = the birth speed (1 = normal, 0 = no babies), move_in = the speed job seekers move in (1 = one group every population_growth_seconds, 0 = nobody comes; same as speed if left out) and leave_per_hour = share of people (adults and children alike) who leave the island each hour. leave_group_size = people leave in groups this big (adults and children each in their own groups). PLACEHOLDERS.",
+	"_items": "item_categories = the kinds of items (resources.json \"category\") and their names on screen. Stores sell the categories in their \"sells\" list (buildings.json); the Food need counts only food.",
+	"item_categories": {
+		"food": { "name": "Food" },
+		"crop": { "name": "Crops" },
+		"animal": { "name": "Animals" },
+		"ingredient": { "name": "Ingredients" },
+		"material": { "name": "Materials" }
+	},
+	"_happiness": "Village happiness (plan.md 5.6 'Needs & happiness'): Food, Jobs and Housing needs, mixed by weights (shares of their total) into one 0-1 score. food_scores = score for 0, 1, 2, ... or more different foods selling at a staffed store (the last number = that many or more; variety counts, plan.md 5.21). Jobs = share of adults with a job. Housing = share of households with a real home (homeless households in huts lower it). homeless_penalty = on top of that, per_household is taken off the score for every household living in a hut, at most max (shares of 1). Needs only count from needs_from_population people (below that, happiness is 100%) and after a new village's first grace_hours. growth_speeds: for each happiness band (from = lowest score of the band), speed = the birth speed (1 = normal, 0 = no babies), move_in = the speed job seekers move in (1 = one group every population_growth_seconds, 0 = nobody comes; same as speed if left out) and leave_per_hour = share of people (adults and children alike) who leave the island each hour. leave_group_size = people leave in groups this big (adults and children each in their own groups). PLACEHOLDERS.",
 	"happiness": {
 		"needs_from_population": 10,
 		"grace_hours": 3,
-		"food_scores": [0.0, 0.7, 1.0],
+		"food_scores": [0.0, 0.4, 0.6, 0.75, 0.9, 1.0],
 		"weights": { "food": 1, "jobs": 1, "housing": 1 },
 		"homeless_penalty": { "per_household": 0.02, "max": 0.3 },
 		"leave_group_size": 5,

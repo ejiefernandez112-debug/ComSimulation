@@ -1847,6 +1847,56 @@ func test_happiness_score() -> void:
 	_check(Sim.foods_selling(state, data, T0) == 0, "no workers at the store: no food selling")
 
 
+## Stores sell the item categories in their "sells" list (plan.md §5.16); a store without that
+## list sells anything people buy. Items without a category but with an appetite count as food.
+func test_store_sells_only_its_categories() -> void:
+	var town := _shop_town()
+	var state: Dictionary = town[0]
+	var data: Dictionary = town[1]
+	var market: Dictionary = town[2]
+	data.resources["shirt"] = {"name": "Shirt", "price": 20, "appetite": 1.0, "category": "clothing"}
+	data.buildings["grocer"] = data.buildings.market.duplicate()
+	data.buildings.grocer["sells"] = ["food"]
+	state.inventory["shirt"] = 50
+	_check(Sim.item_category(data, "flour") == "food" and Sim.item_category(data, "wheat") == "" and Sim.item_category(data, "shirt") == "clothing", "flour (bought, no category) is food; wheat has no category")
+	_check(Sim.store_sells(data, "grocer", "flour") and not Sim.store_sells(data, "grocer", "shirt"), "a grocer selling food sells flour, not shirts")
+	_check(not Sim.store_sells(data, "grocer", "wheat") and not Sim.store_sells(data, "market", "wheat"), "nobody buys wheat, whatever the store")
+	_check(Sim.store_sells(data, "market", "shirt"), "a store with no 'sells' list sells anything people buy")
+	_check(Sim.store_products(data, "grocer") == ["flour", "bread", "cake"], "the grocer's products, in data order")
+	var grocer := Sim.find_building(state, Sim.build(state, data, "grocer", Vector2i(6, 6), T0).building_id)
+	Sim._hire(state, data, T0)
+	var refused := Sim.stock_shelf(state, data, grocer.id, "shirt", 10, "normal", T0)
+	_check(not refused.ok and refused.error.contains("doesn't sell") and int(state.inventory.shirt) == 50, "shirts can't go on the grocer's shelves, and nothing changes")
+	_check(Sim.stock_shelf(state, data, market.id, "shirt", 10, "normal", T0).ok, "they can in the market")
+
+
+## The Food need counts only food on shelves, and more different foods count for more
+## (happiness.food_scores, the last number for that many or more).
+func test_food_need_counts_only_food() -> void:
+	var data := _needs_data()
+	data.config.happiness["food_scores"] = [0.0, 0.4, 0.6, 1.0]
+	data.buildings.market["shelves"] = 5
+	data.resources["shirt"] = {"name": "Shirt", "price": 20, "appetite": 1.0, "category": "clothing"}
+	data.resources["pie"] = {"name": "Pie", "price": 7, "appetite": 1.0, "category": "food"}
+	var state := Sim.new_game(data, T0)
+	state.population.current = 10
+	var market := Sim.find_building(state, Sim.build(state, data, "market", Vector2i(5, 5), T0).building_id)
+	for res in ["flour", "bread", "cake", "pie", "shirt"]:
+		state.inventory[res] = 100
+	Sim._hire(state, data, T0)
+	Sim.stock_shelf(state, data, market.id, "shirt", 100, "normal", T0)
+	_check(Sim.foods_selling(state, data, T0) == 0 and Sim.happiness(state, data, T0).food == 0.0, "shirts on a shelf feed nobody: 0 foods")
+	_check(Sim.selling_counts(state, data, T0).has("shirt"), "but they are selling (they still share shoppers)")
+	Sim.stock_shelf(state, data, market.id, "flour", 100, "normal", T0)
+	_check(Sim.foods_selling(state, data, T0) == 1 and is_equal_approx(Sim.happiness(state, data, T0).food, 0.4), "1 food: 40%")
+	Sim.stock_shelf(state, data, market.id, "bread", 100, "normal", T0)
+	_check(is_equal_approx(Sim.happiness(state, data, T0).food, 0.6), "2 foods: 60%")
+	Sim.stock_shelf(state, data, market.id, "cake", 100, "normal", T0)
+	_check(is_equal_approx(Sim.happiness(state, data, T0).food, 1.0), "3 foods: 100%")
+	Sim.stock_shelf(state, data, market.id, "pie", 100, "normal", T0)
+	_check(Sim.foods_selling(state, data, T0) == 4 and is_equal_approx(Sim.happiness(state, data, T0).food, 1.0), "4 foods: still 100% (the last score is for that many or more)")
+
+
 ## Happiness changes how fast people move in, and settling follows it exactly while away.
 func test_happiness_move_in_speed() -> void:
 	var data := _needs_data()

@@ -384,10 +384,15 @@ static func happiness(state: Dictionary, data: Dictionary, now: float) -> Dictio
 		"leave_per_hour": float(band.get("leave_per_hour", 0.0))}
 
 
-## Different foods on sale right now: on a shelf of a Supermarket that is selling (built, not
-## suspended, with at least one worker). A store with nobody working feeds nobody.
+## Different foods on sale right now: on a shelf of a store that is selling (built, not
+## suspended, with at least one worker). A store with nobody working feeds nobody. Only food
+## counts (is_food): clothes or furniture on a shelf don't feed anyone.
 static func foods_selling(state: Dictionary, data: Dictionary, now: float) -> int:
-	return selling_counts(state, data, now).size()
+	var foods := 0
+	for res in selling_counts(state, data, now):
+		if is_food(data, res):
+			foods += 1
+	return foods
 
 
 ## How many stores are selling each product right now: {resource_id: stores}. Only stores that
@@ -2275,11 +2280,45 @@ static func appetite(data: Dictionary, resource_id: String) -> float:
 	return float(data.resources.get(resource_id, {}).get("appetite", 0.0))
 
 
-## The items shops can sell (finished food: they have an appetite), in resources.json order.
+## The items shops can sell (finished goods: they have an appetite), in resources.json order.
 static func shop_products(data: Dictionary) -> Array[String]:
 	var out: Array[String] = []
 	for res in data.resources:
 		if appetite(data, res) > 0.0:
+			out.append(res)
+	return out
+
+
+## An item's category ("category" in resources.json: food, crop, ingredient, ...; their names are
+## in game_config.json item_categories). An item people buy with no category counts as food, so
+## older data keeps working; anything else without one has "".
+static func item_category(data: Dictionary, resource_id: String) -> String:
+	var def: Dictionary = data.resources.get(resource_id, {})
+	if def.has("category"):
+		return str(def.category)
+	return "food" if appetite(data, resource_id) > 0.0 else ""
+
+
+## True for food people buy: what the Food need counts (plan.md §5.6).
+static func is_food(data: Dictionary, resource_id: String) -> bool:
+	return appetite(data, resource_id) > 0.0 and item_category(data, resource_id) == "food"
+
+
+## Whether a store of `type_id` can sell `resource_id`: people must buy it (an appetite), and the
+## store must sell its category ("sells" in buildings.json; a store without that list sells
+## anything people buy).
+static func store_sells(data: Dictionary, type_id: String, resource_id: String) -> bool:
+	if appetite(data, resource_id) <= 0.0:
+		return false
+	var sells: Array = data.buildings.get(type_id, {}).get("sells", [])
+	return sells.is_empty() or sells.has(item_category(data, resource_id))
+
+
+## The items a store of `type_id` can sell, in resources.json order.
+static func store_products(data: Dictionary, type_id: String) -> Array[String]:
+	var out: Array[String] = []
+	for res in data.resources:
+		if store_sells(data, type_id, res):
 			out.append(res)
 	return out
 
@@ -2356,6 +2395,8 @@ static func can_stock_shelf(state: Dictionary, data: Dictionary, building_id: St
 		return _fail("It's suspended. Resume it first.")
 	if appetite(data, resource_id) <= 0.0:
 		return _fail("Shops don't sell %s: people only buy finished food." % _resource_name(data, resource_id))
+	if not store_sells(data, b.type, resource_id):
+		return _fail("A %s doesn't sell %s." % [data.buildings.get(b.type, {}).get("name", "store"), _resource_name(data, resource_id)])
 	if not price_tags(data).has(tag):
 		return _fail("Unknown price tag.")
 	if qty <= 0:

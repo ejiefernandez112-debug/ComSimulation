@@ -190,6 +190,7 @@
 		"name": "Supermarket", "category": "retail", "menu_tab": "shops",
 		"description": "Sells your food to the people of your village, several products at once. Pick a price tag for each shelf.",
 		"buildable": true, "max_workers": 4, "fixed_workers": true, "fixed_wage": true, "worker_type": "low_skilled",
+		"sells": ["food"],
 		"materials": { "bricks": 500, "cement": 50, "steel": 13, "construction_materials": 25 },
 		"shelves": 4,
 		"upgrades": [
