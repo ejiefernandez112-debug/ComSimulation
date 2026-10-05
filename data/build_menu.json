@@ -2,6 +2,7 @@
 	"_note": "Build Menu tabs, top to bottom down the right edge of the menu. A building shows under the tab named by \"menu_tab\" in buildings.json (no menu_tab = never in the menu). Buildings with buildable=false show as locked. Tabs with no buildings are hidden. icon = a file in assets/ui/icons/.",
 	"tabs": [
 		{ "id": "farming", "name": "Farming", "icon": "wheat" },
+		{ "id": "food", "name": "Food", "icon": "bread" },
 		{ "id": "industry", "name": "Industry", "icon": "tab_industry" },
 		{ "id": "shops", "name": "Shops", "icon": "market" },
 		{ "id": "storage", "name": "Storage", "icon": "warehouse" },

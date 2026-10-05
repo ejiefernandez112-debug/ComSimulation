@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <!-- A bag of potato chips. -->
+  <defs>
+    <linearGradient id="bag" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#FF5A48"/><stop offset="1" stop-color="#C2231A"/></linearGradient>
+    <linearGradient id="chip" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFE48A"/><stop offset="1" stop-color="#E0A43A"/></linearGradient>
+  </defs>
+  <path d="M26 16 L102 16 C98 30 98 44 104 60 C110 78 106 100 100 116 L28 116 C22 100 18 78 24 60 C30 44 30 30 26 16 Z" fill="url(#bag)" stroke="#4A0E08" stroke-width="5.5" stroke-linejoin="round"/>
+  <path d="M22 10 L106 10 L102 22 L26 22 Z" fill="#E8C24A" stroke="#4A0E08" stroke-width="5" stroke-linejoin="round"/>
+  <path d="M24 112 L104 112 L106 122 L22 122 Z" fill="#E8C24A" stroke="#4A0E08" stroke-width="5" stroke-linejoin="round"/>
+  <g fill="url(#chip)" stroke="#8A5410" stroke-width="3.5" stroke-linejoin="round">
+    <path d="M38 62 C46 48 64 46 70 58 C74 70 62 82 48 80 C38 78 34 70 38 62 Z"/>
+    <path d="M60 78 C70 66 88 68 92 80 C94 92 80 100 68 98 C60 96 56 86 60 78 Z"/>
+  </g>
+  <g fill="#C98A28"><circle cx="50" cy="64" r="2"/><circle cx="58" cy="72" r="2"/><circle cx="76" cy="82" r="2"/><circle cx="82" cy="88" r="2"/></g>
+  <rect x="32" y="30" width="6" height="22" rx="3" fill="#fff" fill-opacity="0.55"/>
+</svg>

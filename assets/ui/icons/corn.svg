@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <!-- Ear of corn in its husk. -->
+  <defs>
+    <linearGradient id="cob" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#FFE77E"/><stop offset="1" stop-color="#E7A322"/></linearGradient>
+  </defs>
+  <g transform="translate(64 64) rotate(28) scale(0.9) translate(-64 -64)">
+    <ellipse cx="64" cy="52" rx="21" ry="44" fill="url(#cob)" stroke="#6B470C" stroke-width="5.5"/>
+    <g stroke="#C98A1C" stroke-width="2.5" fill="none" stroke-linecap="round">
+      <path d="M50 26 L78 26 M46 39 L82 39 M44 52 L84 52 M46 65 L82 65 M50 78 L78 78"/>
+      <path d="M57 13 L55 92 M64 9 L64 96 M71 13 L73 92"/>
+    </g>
+    <ellipse cx="54" cy="38" rx="4" ry="12" fill="#fff" fill-opacity="0.6"/>
+    <path d="M64 122 C40 114 32 92 38 60 C46 80 55 92 64 100 Z" fill="#8CC34A" stroke="#3F5A12" stroke-width="5" stroke-linejoin="round"/>
+    <path d="M64 122 C88 114 96 92 90 60 C82 80 73 92 64 100 Z" fill="#6AA837" stroke="#3F5A12" stroke-width="5" stroke-linejoin="round"/>
+  </g>
+</svg>

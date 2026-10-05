@@ -1,6 +1,6 @@
 # Project Plan: Island Village Builder (production chains + player market)
 
-_Last updated: 2026-10-04 (pitch rewritten as a village builder; earlier: 2026-10-01 review pass, see Section 15)_
+_Last updated: 2026-10-05 (production chains in waves, §5.21; Trading Post, §5.22; earlier: pitch rewritten as a village builder, 2026-10-04; see Section 15)_
 
 ## 1. Pitch
 
@@ -262,7 +262,7 @@ Everything stays **one calculation**, never a replay. Anything that changes powe
   - **Warehouses get no bonus** (decided 2026-10-02; `fixed_wage` in `buildings.json`): they always pay the minimum wage, since they're staffed first anyway
   - Offline catch-up stays one calculation: each person moving in takes the best open post at that moment
 - **Needs & happiness (planned and built 2026-10-03, on trial):** people get two **needs**, combined into one **village happiness** score that changes only **how fast people move in**. Inspired by Tropico's needs, kept much simpler. All numbers are PLACEHOLDERS (a `happiness` block in `game_config.json`)
-  - **Food:** met by the Supermarket (§5.16), reusing village demand: people buying food *is* people eating, so there is no separate "eating" stockpile. Score from how many **different foods are selling** on shelves (shelf stocked and the store has at least 1 worker): **0 foods → 0%, 1 food → 70%, 2 or more → 100%** (`happiness.food_scores`)
+  - **Food:** met by the Supermarket (§5.16), reusing village demand: people buying food *is* people eating, so there is no separate "eating" stockpile. Score from how many **different foods are selling** on shelves (shelf stocked and the store has at least 1 worker): ~~0 foods → 0%, 1 food → 70%, 2 or more → 100%~~ **0 / 1 / 2 / 3 / 4 / 5+ foods → 0 / 40 / 60 / 75 / 90 / 100%** since 2026-10-05, when more foods arrived (§5.21); only items of category food count (`happiness.food_scores`)
   - **Jobs:** the share of **adults** with a job (uses `Simulation.employment()`; 100% when there are no adults)
   - **Housing (added 2026-10-03, §5.18):** the share of households with a real home, `1 − homeless ÷ households` (100% when everyone has a home). Homeless households in Makeshift Huts lower it
   - **Village happiness** = Food, Jobs and Housing mixed equally (`happiness.weights` 1 / 1 / 1, as shares of their total), shown as one **0–100%**
@@ -682,7 +682,7 @@ If you sold the flour instead: 32 × $2.75 = $88 → baking earns $135 more
 
 The Retail building (selling to the village) is the **Supermarket** (`supermarket` in `buildings.json`, category `retail`, Build Menu tab "Shops"). It replaced the temporary Sell test buttons. **On trial:** built in its own Git commit so it can be undone if the design doesn't feel right.
 - **The player builds it** (not pre-built). About $2,270 of materials and crew (PLACEHOLDER, §5.15), so the $12,000 start covers a Wheat Farm + Flour Mill + Supermarket even at the highest material prices (§5.8)
-- **Sells finished food only:** Flour and Bread now; fruits later (§5.17). **Raw Wheat can't be sold** (decided 2026-10-02): only items with an `appetite` in `resources.json` go on shelves
+- **Sells finished food only:** Flour and Bread, and since 2026-10-05 the Wave 1 foods (§5.21). **Raw Wheat can't be sold** (decided 2026-10-02): only items with an `appetite` in `resources.json` go on shelves, and only of a category in the store's `sells` list (the Supermarket: food; other store types later). The Trading Post buys anything (§5.22)
 - **Shelves:** 4 per store (`shelves`). Each shelf sells one product; **several shelves sell at once**. **Each store sells on its own (changed 2026-10-04):** a product can be on only one shelf *per store*, but several stores can sell the same product at once. The village still has one appetite for it, so the stores **share its shoppers**: 2 stores selling flour each sell it half as fast, and total flour sold per hour stays the same (`Simulation.selling_counts`; only stores that are selling count: built, not suspended, with workers). When one sells out, the others speed up at that moment (a split point already). Before, a product could be on only one shelf in the whole village, which blocked a second Supermarket from selling flour at all. The same food in two stores still counts as one food for happiness
 - **Putting food on a shelf:** choose the food, the amount (slider or All) and a **price tag**. The goods leave the warehouse at once (with their cost tags, §5.14); the window first shows the price, how many the village buys per hour, the time to sell out, sales, cost to make, sales tax and profit
 - **Price tags** (our own idea instead of typing a price; `retail.price_tags` in `game_config.json`, PLACEHOLDERS from a demand curve speed = 1 ÷ price³):
@@ -704,7 +704,9 @@ The Retail building (selling to the village) is the **Supermarket** (`supermarke
 - **More store types later** (decided 2026-10-02), each selling its own category, e.g. a **Hardware Store** for Planks, Bricks and Cement once construction materials exist
 - Rules: `Simulation.can_stock_shelf`, `stock_shelf`, `can_clear_shelf`, `clear_shelf`, `stock_preview`, `_settle_retail`; window: `building_panel.gd` (Shelves + "Put on a shelf"). The Retailer's instant `sell` stays in the rules (tests use it) but no screen calls it
 
-### 5.17 Plantation & Fruits (planned 2026-10-02, later; not built)
+### 5.17 Plantation & Fruits (planned 2026-10-02; a single Plantation with generic Fruit built 2026-10-05, §5.21)
+
+> **2026-10-05:** the Wheat Farm became the **Plantation**: one building that grows one crop at a time (wheat, corn, rice, soybeans, sugarcane, potatoes, vegetables, fruit, coffee and cocoa beans) and switches for a fee (§5.21). Fruit is one generic item for now; the island fruits below may replace it later.
 
 - **Plantation**: an extractor like the Wheat Farm, where the **player chooses the crop** per building: **Banana, Mango, Lemon, Pineapple, Papaya, Coconut** (that's all for now). Each fruit has its own timer, batch and price in the data files
 - **Fresh fruit is a finished product:** sold straight to customers at the Supermarket (§5.16) for local consumption. **Processing is optional, never forced** (decided 2026-10-02); unlike raw Wheat, fruit doesn't need a processor to earn money
@@ -839,6 +841,55 @@ All numbers are PLACEHOLDERS, in the `roads` block of `game_config.json`.
 **Code**
 - `scripts/sim/simulation.gd` "Roads": `road_quote`, `build_roads`, `can_remove_roads`, `remove_roads`, `linked_roads`, `_update_road_links`, `needs_road`, `on_road`, `road_path_for` + `lay_roads_to_all` (only for the old-save upgrade).
 - Map and screens: `scenes/village/road_layer.gd` (drawing), `scenes/village/traffic.gd` (people and cars), Road Mode in `scenes/village/village.gd`.
+
+### 5.21 Production chains, in waves (decided 2026-10-05; Wave 1A built, on trial)
+The user asked to add about 150 items in 15 groups of chains (agriculture, livestock, forestry, metals, minerals, energy, chemicals, construction materials, food, textiles, furniture, electronics, cars, medicine, luxury goods), all connected, extending the existing systems. Reviewed together, they chose to build it **in waves, food first**, each wave playable and tested before the next:
+
+| Wave | What | Status |
+|---|---|---|
+| **1A** | Plantation crops + plant foods: Grain Mill, Oil Press, Sugar Mill, Food Factory, Confectionery, Beverage Plant, Cannery | **built 2026-10-05, on trial** |
+| **1B** | Animals and fish: Feed Mill, Ranch, Fishery, Apiary, Dairy, Slaughterhouse, Meat Plant, Fish Plant, canned fish | planned |
+| **2** | Construction materials and coal power: clay, limestone, sand, gravel, stone, iron ore, coal, timber → bricks, cement, glass, concrete, steel, lumber; **your own materials used by construction** (warehouse first, the supplier for the rest); a coal power plant that burns fuel by the batch (same power grid as today) | planned |
+| **3** | Textiles (cotton, wool → yarn → fabric → clothing), leather (hides from Wave 1B), furniture, paper; new store types | planned |
+| **4** | Oil and gas (gasoline, diesel, plastic, chemicals), fertilizer (+ phosphate, potash), electronics (copper, silicon, gold), rubber → tires → cars, medicine, jewelry and other luxury goods | planned; decide then: educated workers (schools, §5.7), whether fertilizer is a "boost" choice in the batch window |
+
+**Trimmed on purpose** (the user's list, kept out unless asked; "not every chain needs all four stages"): raw sugar, juice concentrate, cocoa products, potato products and processed vegetables (one step instead of two), packaged eggs and honey, processed fish/seafood steps; tin, zinc, nickel, stainless steel, lead, lithium and batteries, bauxite/aluminium, gypsum/drywall, goats, diamonds, hydro power. Corn oil and soy oil are one item, **Cooking Oil**. Fruit is one generic item for now (the island fruits of §5.17 may replace it).
+
+**Engine changes for Wave 1 (built 2026-10-05):**
+- **Product choice.** A building with several recipes makes **one product**: its first batch chooses it, for free (`b.product`). The **Plantation** (the old Wheat Farm, same id), and later the Ranch and Fishery, can **switch** for a fee: `switch_fee` = 10% of the building's value, instant, only while it has no batch (the user's choice: "1 plantation, the player can switch it but there's a cost"). Factories keep their product **for good**: build another to make something else (the user's choice: "no switching"). The batch window shows the products as buttons with a note on what choosing means; the Start dialog warns when the choice is for good; switching asks with the fee. Old saves (version 12 → 13) keep what each building was making. Rules: `product_of`, `is_switchable`, `switch_fee`, `can_switch_product` / `switch_product`
+- **By-products.** A recipe can make several things (soybeans → cooking oil **and** soy meal; later cattle → beef and hide). `cost_share` splits the batch's cost between them (soy: oil 60%, meal 40%), so a by-product isn't priced like the main product. Prices (§5.12), standard costs, cost tags (§5.14), cancelling and the balance sheet all use it; a batch locks in its `unit_cost` when it starts. Rules: `output_shares`, `batch_unit_cost`
+- **Item categories and store types.** Every item has a `category` (food, crop, animal, ingredient, material; names in `game_config.json` `item_categories`). A store sells the categories in its `sells` list (Supermarket: food), so clothing or furniture stores can come as data in Wave 3
+- **Food need rewards variety** (the user's choice): 0 / 1 / 2 / 3 / 4 / 5+ different foods selling = **0 / 40 / 60 / 75 / 90 / 100%** (`happiness.food_scores`; before: 2 foods = 100%). Only food counts. Statistics → People says what one more food would bring
+- **Screens for many goods:** the Build menu's tabs scroll; the HUD shows a chip only for goods in stock; Statistics and the balance sheet list only goods in play; the shelf form lists only what the store sells, in a wrapping grid
+- **Demand stays per item** (people × appetite), with smaller appetites for the new foods (one building's output feeds about 100 villagers, against about 40 for flour and bread). A shared food budget, where more kinds of food don't mean more eating, is an option if the money grows too fast
+- **Icons:** one hand-drawn SVG per new item (same style as wheat/flour/bread). **Buildings** are placeholder boxes until their Blender models are made
+
+**Wave 1A content** (all numbers PLACEHOLDERS, from the price formula §5.12; live in `data/*.json`):
+
+| Building | One hour of work | Notes |
+|---|---|---|
+| **Plantation** (was Wheat Farm) | 60 Wheat / 60 Corn / 50 Rice / 40 Soybeans / 80 Sugarcane / 70 Potatoes / 50 Vegetables / 40 Fruit / 15 Coffee Beans / 15 Cocoa Beans | one crop at a time; switch fee 10% |
+| **Grain Mill** (was Flour Mill) | 40 Wheat → 32 Flour · 40 Corn → 32 Cornmeal · 40 Rice → 30 Milled Rice | existing mills stay flour mills |
+| **Oil Press** | 40 Soybeans → 8 Cooking Oil + 30 Soy Meal · 40 Corn → 8 Cooking Oil | soy meal feeds animals in 1B |
+| **Sugar Mill** | 60 Sugarcane → 30 Sugar | |
+| **Food Factory** | 30 Flour → 30 Pasta · 20 Cornmeal + 5 Sugar → 25 Cereal · 30 Milled Rice → 30 Packaged Rice · 30 Potatoes + 3 Oil → 30 Chips · 30 Vegetables + 3 Oil → 30 Packaged Food | |
+| **Confectionery** | 15 Sugar → 30 Candy · 10 Cocoa Beans + 5 Sugar → 20 Chocolate | |
+| **Beverage Plant** | 40 Fruit → 40 Juice · 20 Fruit + 10 Sugar → 60 Soft Drinks · 15 Coffee Beans → 15 Coffee | uses 20 m³ water/h |
+| **Cannery** | 30 Fruit → 30 Canned Fruit | canned fish in 1B |
+
+Sold in Supermarkets (food): Potatoes, Vegetables, Fruit, Sugar, Pasta, Cereal, Packaged Rice, Chips, Packaged Food, Candy, Chocolate, Juice, Soft Drinks, Coffee, Canned Fruit (plus Flour and Bread). Crops and ingredients (Corn, Rice, Soybeans, Sugarcane, Coffee/Cocoa Beans, Cornmeal, Milled Rice, Cooking Oil, Soy Meal) go into other buildings, or to the Trading Post (§5.22). Example prices: Wheat $5.98, Coffee Beans $23.92, Cooking Oil $75.77, Soy Meal $13.47, Pasta $57.03, Coffee $70.31.
+
+**Open:** sprites for the new buildings; whether rice and coffee should need more water than wheat (water is per building now, not per crop); island geography (fishing on the coast, mines in the hills) is not a rule yet: any building goes on any tile.
+
+### 5.22 Trading Post (built 2026-10-05, on trial)
+Before it, nothing could be bought and only finished food could be sold, so a half-finished chain earned nothing and players couldn't specialise. The user chose a simple trader in its own building:
+- **Trading Post** (Build → Shops): one per village (`max_count`), no workers (so no road needed), about $3,400 to build. Placeholder until the Dock (§5.11) takes over
+- **Sell anything** (raw, half-made or finished) at **60%** of its normal price (§5.12), at once, no demand limit. Pays sales tax like any sale (§5.9) and counts as sales in Statistics
+- **Buy anything** at **150%** of its normal price, needs the cash (no buying into debt) and room in the Warehouse. Bought goods carry what was paid as their cost tag (§5.14); counted as "Trading Post purchases" under money out
+- Both shares in `game_config.json` `trade` (PLACEHOLDERS). The trader always pays less than it charges, so buying and selling back loses money
+- Its window: Sell / Buy, a filter by kind (Food, Crops, …), the item, the amount (slider or All) and what it brings or costs before you commit
+- Rules: `has_trading_post`, `trade_price`, `can_trade_sell` / `trade_sell`, `can_trade_buy` / `trade_buy`, `at_build_limit`; window `scenes/ui/trade_box.gd`
+- **Later:** prices that move with what's been sold or bought (a sell glut lowers the price), daily limits, contracts with in-game buyers at the Dock (§5.11)
 
 ## 6. UI/UX Screens
 
@@ -1082,6 +1133,11 @@ A hidden dev menu (key combo on PC, secret tap sequence on mobile) for testing t
 Both are functional, self-contained HTML/JS artifacts used to validate the trading-mechanic math and UX before porting logic into Godot.
 
 ## 15. Revision Log
+
+**2026-10-05 (Production chains Wave 1A, Trading Post, on trial):**
+- The user asked to add ~150 items of interconnected production chains (15 groups) to the existing systems. Reviewed together: doable, but in waves; they chose food first, a simple Trading Post, product choice per building (one Plantation that switches crops for a fee; factories pick once, for good), real by-products, new store types for non-food goods later, generic Fruit, a separate Ranch, and a Food need that rewards variety.
+- Built (§5.21, §5.22): item categories and store `sells` lists; Food need counts only food (0/40/60/75/90/100%); by-products with `cost_share`; product choice and switch fees (save version 13: older buildings keep their product); the Trading Post; screens that cope with many goods; Wave 1A: the Wheat Farm becomes the Plantation (10 crops), the Flour Mill the Grain Mill (+ cornmeal, milled rice), and Oil Press, Sugar Mill, Food Factory, Confectionery, Beverage Plant, Cannery; 25 new item icons.
+- Waves 1B (animals, fish), 2 (construction materials, coal power), 3 (textiles, furniture, paper, stores) and 4 (oil, chemicals, electronics, cars, medicine, luxury) are planned in §5.21.
 
 **2026-10-05 (Electricity: Wind Turbine, Substation, Solar + Nuclear coming soon, on trial):**
 - The user asked (Build menu, new Power tab) for a Wind Turbine (no workers, a smaller amount of power), a Solar Power Plant (needs High School graduates), a Nuclear Power Plant (uranium store, College; greyed out "soon") and an Electric Substation that expands the grid's coverage.

@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <!-- Rice plant with a drooping head of grain. -->
+  <defs>
+    <linearGradient id="grain" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFEFA8"/><stop offset="1" stop-color="#D9A93A"/></linearGradient>
+  </defs>
+  <path d="M40 122 C44 88 54 56 76 26" fill="none" stroke="#3F5A12" stroke-width="11" stroke-linecap="round"/>
+  <path d="M40 122 C44 88 54 56 76 26" fill="none" stroke="#8CC34A" stroke-width="5" stroke-linecap="round"/>
+  <path d="M46 98 C30 90 22 74 22 56 C38 64 46 78 46 98 Z" fill="#9CCB4E" stroke="#3F5A12" stroke-width="4.5" stroke-linejoin="round"/>
+  <path d="M76 26 C94 36 102 56 98 84" fill="none" stroke="#6B470C" stroke-width="8" stroke-linecap="round"/>
+  <path d="M76 26 C94 36 102 56 98 84" fill="none" stroke="#C9A042" stroke-width="3.5" stroke-linecap="round"/>
+  <g fill="url(#grain)" stroke="#6B470C" stroke-width="3.5">
+    <ellipse cx="86" cy="38" rx="5.5" ry="9.5" transform="rotate(-45 86 38)"/>
+    <ellipse cx="97" cy="46" rx="5.5" ry="9.5" transform="rotate(-25 97 46)"/>
+    <ellipse cx="84" cy="54" rx="5.5" ry="9.5" transform="rotate(25 84 54)"/>
+    <ellipse cx="102" cy="62" rx="5.5" ry="9.5" transform="rotate(-10 102 62)"/>
+    <ellipse cx="88" cy="70" rx="5.5" ry="9.5" transform="rotate(20 88 70)"/>
+    <ellipse cx="101" cy="80" rx="5.5" ry="9.5" transform="rotate(-5 101 80)"/>
+    <ellipse cx="90" cy="88" rx="5.5" ry="9.5" transform="rotate(15 90 88)"/>
+  </g>
+  <g fill="#fff" fill-opacity="0.6">
+    <ellipse cx="83" cy="35" rx="2" ry="4" transform="rotate(-45 83 35)"/>
+    <ellipse cx="99" cy="59" rx="2" ry="4"/>
+  </g>
+</svg>

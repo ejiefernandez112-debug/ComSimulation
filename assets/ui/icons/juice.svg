@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <!-- A carton of fruit juice. -->
+  <defs>
+    <linearGradient id="front" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#FFC24A"/><stop offset="1" stop-color="#F08A18"/></linearGradient>
+  </defs>
+  <path d="M84 30 L104 22 L104 112 L84 122 Z" fill="#C8680E" stroke="#5A2A06" stroke-width="5" stroke-linejoin="round"/>
+  <path d="M30 30 L44 10 L94 10 L104 22 L84 30 Z" fill="#FFE29A" stroke="#5A2A06" stroke-width="5" stroke-linejoin="round"/>
+  <rect x="26" y="30" width="58" height="92" rx="3" fill="url(#front)" stroke="#5A2A06" stroke-width="5.5" stroke-linejoin="round"/>
+  <path d="M44 10 L44 4 L58 4 L58 10" fill="#FFFFFF" stroke="#5A2A06" stroke-width="4" stroke-linejoin="round"/>
+  <circle cx="55" cy="80" r="18" fill="#FFB43A" stroke="#6E3A08" stroke-width="4"/>
+  <g stroke="#FFE7A8" stroke-width="3" stroke-linecap="round"><path d="M55 64 L55 96 M39 80 L71 80 M44 69 L66 91 M66 69 L44 91"/></g>
+  <path d="M60 58 C64 50 72 48 78 50 C74 56 68 58 60 58 Z" fill="#6AA837" stroke="#3F5A12" stroke-width="3" stroke-linejoin="round"/>
+  <rect x="32" y="38" width="6" height="30" rx="3" fill="#fff" fill-opacity="0.55"/>
+</svg>

@@ -1492,6 +1492,152 @@ func test_real_data_files() -> void:
 	_check(state.buildings.size() == config.starting_buildings.size(), "real data starts a game")
 
 
+# --- Whole production chains with the real data (plan.md §5.21) -----------------
+# Raw goods to the shop shelf, with the real data/*.json: buildings need a road, power and a
+# construction worker, like in the game. Test buildings stand beside the starting road (y = 10),
+# inside the power network around City Hall, with a Wind Turbine for extra power.
+
+## A new game with the real data and $1,000,000 more cash (a developer top-up, so the cash check
+## still adds up). Returns [state, data].
+func _real_town() -> Array:
+	var data := {"resources": GameDataScript.load_json("res://data/resources.json"),
+		"buildings": GameDataScript.load_json("res://data/buildings.json"),
+		"config": GameDataScript.load_json("res://data/game_config.json")}
+	var state := Sim.new_game(data, T0)
+	Sim.dev_add_cash(state, 100000000)
+	return [state, data]
+
+
+## Builds `type_id` at `x` beside the starting road (y = 9, above it). Returns the building.
+func _real_build(state: Dictionary, data: Dictionary, type_id: String, x: int, now: float) -> Dictionary:
+	var result := Sim.build(state, data, type_id, Vector2i(x, 9), now)
+	_check(result.ok, "real chain: build %s (%s)" % [type_id, result.get("error", "")])
+	return Sim.find_building(state, str(result.get("building_id", "")))
+
+
+## Runs a batch of `hours` of `recipe_id`, waits (an hour at a time) until it's made, and
+## collects it. Returns the time it was collected.
+func _real_batch(state: Dictionary, data: Dictionary, b: Dictionary, recipe_id: String, hours: int, now: float) -> float:
+	var started := Sim.start_batch(state, data, b.id, recipe_id, hours, "none", now)
+	_check(started.ok, "real chain: %s starts %s (%s)" % [b.type, recipe_id, started.get("error", "")])
+	var t := now
+	while Sim.batch_running(b) and t < now + 7 * 86400.0:
+		t += 3600.0
+		Sim.settle(state, data, t)
+	_check(not Sim.batch_running(b) and Sim.collect(state, data, b.id, t).ok, "real chain: %s made and collected its %s" % [b.type, recipe_id])
+	return t
+
+
+## Puts all of `res` on a shelf and waits until it has sold out. Returns the time.
+func _real_sell_out(state: Dictionary, data: Dictionary, market: Dictionary, res: String, now: float) -> float:
+	var qty := int(state.inventory.get(res, 0))
+	var stocked := Sim.stock_shelf(state, data, market.id, res, qty, "normal", now)
+	_check(stocked.ok, "real chain: %d %s go on a shelf (%s)" % [qty, res, stocked.get("error", "")])
+	var t := now
+	while Sim.store_has_product(market, res) and t < now + 7 * 86400.0:
+		t += 3600.0
+		Sim.settle(state, data, t)
+	_check(int(Sim.stats(state).sold.get(res, 0)) == qty, "real chain: all %d %s sold to the village" % [qty, res])
+	return t
+
+
+## Corn -> Cornmeal, Sugarcane -> Sugar, then Cornmeal + Sugar -> Cereal, sold in the Supermarket
+## for more than it cost to make.
+func test_real_chain_corn_to_cereal() -> void:
+	var town := _real_town()
+	var state: Dictionary = town[0]
+	var data: Dictionary = town[1]
+	var t := T0
+	_real_build(state, data, "wind_turbine", 7, t)
+	var corn := _real_build(state, data, "wheat_farm", 8, t)
+	var cane := _real_build(state, data, "wheat_farm", 10, t)
+	var mill := _real_build(state, data, "flour_mill", 11, t)
+	t += 3600.0  # a Construction Office has 4 workers: 4 buildings at a time, an hour each
+	Sim.settle(state, data, t)
+	var sugar_mill := _real_build(state, data, "sugar_mill", 13, t)
+	var factory := _real_build(state, data, "food_factory", 14, t)
+	var market := _real_build(state, data, "supermarket", 16, t)
+	t += 3600.0
+	Sim.settle(state, data, t)
+	t = _real_batch(state, data, corn, "grow_corn", 2, t)
+	t = _real_batch(state, data, cane, "grow_sugarcane", 1, t)
+	_check(int(state.inventory.corn) == 120 and int(state.inventory.sugarcane) == 80, "real chain: 120 corn and 80 sugarcane grown")
+	t = _real_batch(state, data, mill, "mill_cornmeal", 2, t)
+	t = _real_batch(state, data, sugar_mill, "make_sugar", 1, t)
+	_check(int(state.inventory.cornmeal) == 64 and int(state.inventory.sugar) == 30, "real chain: 64 cornmeal and 30 sugar")
+	_check(Sim.product_of(data, mill) == "mill_cornmeal" and not Sim.can_start_batch(state, data, mill.id, "mill_flour", 1, "none", t).ok, "real chain: this mill grinds corn for good")
+	t = _real_batch(state, data, factory, "make_cereal", 2, t)
+	_check(int(state.inventory.cereal) == 50, "real chain: 40 cornmeal + 10 sugar -> 50 cereal")
+	var made_for := float(state.inventory_cost.cereal)
+	t = _real_sell_out(state, data, market, "cereal", t)
+	_check(int(Sim.stats(state).sales_by_item.cereal) > made_for, "real chain: cereal sells for more than it cost to make ($%d > $%d)" % [int(Sim.stats(state).sales_by_item.cereal) / 100, int(made_for) / 100])
+	_check(Sim.cash_check(state).ok, "real chain: cash check adds up")
+
+
+## Soybeans -> Cooking Oil + Soy Meal (a by-product), Potatoes + Oil -> Chips for the Supermarket,
+## and the Soy Meal sold to the Trading Post's trader.
+func test_real_chain_soy_oil_to_chips() -> void:
+	var town := _real_town()
+	var state: Dictionary = town[0]
+	var data: Dictionary = town[1]
+	var t := T0
+	_real_build(state, data, "wind_turbine", 7, t)
+	var soy := _real_build(state, data, "wheat_farm", 8, t)
+	var spuds := _real_build(state, data, "wheat_farm", 10, t)
+	var press := _real_build(state, data, "oil_press", 11, t)
+	t += 3600.0
+	Sim.settle(state, data, t)
+	var factory := _real_build(state, data, "food_factory", 13, t)
+	var market := _real_build(state, data, "supermarket", 14, t)
+	_real_build(state, data, "trading_post", 16, t)
+	t += 3600.0
+	Sim.settle(state, data, t)
+	t = _real_batch(state, data, soy, "grow_soybeans", 1, t)
+	t = _real_batch(state, data, spuds, "grow_potatoes", 1, t)
+	var started := Sim.start_batch(state, data, press.id, "press_soybeans", 1, "none", t)
+	var batch_cost := float(press.batch.cost)
+	_check(started.ok and int(started.units.vegetable_oil) == 8 and int(started.units.soy_meal) == 30, "real chain: 40 soybeans -> 8 oil + 30 soy meal")
+	while Sim.batch_running(press):
+		t += 3600.0
+		Sim.settle(state, data, t)
+	Sim.collect(state, data, press.id, t)
+	var oil_cost := float(state.inventory_cost.vegetable_oil)
+	var meal_cost := float(state.inventory_cost.soy_meal)
+	_check(absf(oil_cost + meal_cost - batch_cost) < 1.0 and absf(oil_cost - batch_cost * 0.6) < 1.0, "real chain: the oil carries 60% of the batch's cost, the meal 40%")
+	t = _real_batch(state, data, factory, "make_chips", 2, t)
+	_check(int(state.inventory.chips) == 60 and int(state.inventory.vegetable_oil) == 2, "real chain: 60 potatoes + 6 oil -> 60 chips")
+	var made_for := float(state.inventory_cost.chips)
+	t = _real_sell_out(state, data, market, "chips", t)
+	_check(int(Sim.stats(state).sales_by_item.chips) > made_for, "real chain: chips sell for more than they cost to make")
+	var sold := Sim.trade_sell(state, data, "soy_meal", 30, t)
+	_check(sold.ok and int(sold.gross) == 30 * Sim.trade_price(data, "soy_meal", "sell") and not state.inventory.has("soy_meal"), "real chain: the soy meal sold to the trader")
+	_check(Sim.cash_check(state).ok, "real chain: cash check adds up")
+
+
+## Specialising: no plantation at all. Coffee beans bought from the trader, roasted in a
+## Beverage Plant and sold in the Supermarket still earn more than they cost.
+func test_real_chain_bought_beans_to_coffee() -> void:
+	var town := _real_town()
+	var state: Dictionary = town[0]
+	var data: Dictionary = town[1]
+	var t := T0
+	_real_build(state, data, "wind_turbine", 7, t)
+	_real_build(state, data, "trading_post", 8, t)
+	var plant := _real_build(state, data, "beverage_plant", 10, t)
+	var market := _real_build(state, data, "supermarket", 11, t)
+	t += 3600.0
+	Sim.settle(state, data, t)
+	var bought := Sim.trade_buy(state, data, "coffee_beans", 30, t)
+	_check(bought.ok and int(bought.cost) == 30 * Sim.trade_price(data, "coffee_beans", "buy"), "real chain: 30 coffee beans bought from the trader at 150%")
+	t = _real_batch(state, data, plant, "roast_coffee", 2, t)
+	_check(int(state.inventory.coffee) == 30, "real chain: 30 beans -> 30 coffee")
+	var made_for := float(state.inventory_cost.coffee)
+	_check(made_for / 30.0 < Sim.unit_price(data, "coffee"), "real chain: even with bought beans, a coffee costs less to make than it sells for")
+	t = _real_sell_out(state, data, market, "coffee", t)
+	_check(int(Sim.stats(state).sales_by_item.coffee) > made_for, "real chain: the coffee earns more than it cost")
+	_check(Sim.cash_check(state).ok, "real chain: cash check adds up")
+
+
 # --- By-products (plan.md §5.14) -------------------------------------------------
 
 ## Test data with a butcher: 1 cattle ($9, bought) -> 9 beef + 1 hide an "hour" (60 s), the hide

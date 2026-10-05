@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <!-- Sack of cornmeal (yellow flour) with a corn mark. -->
+  <defs>
+    <linearGradient id="sack" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFF6D6"/><stop offset="1" stop-color="#E6CF92"/></linearGradient>
+  </defs>
+  <path d="M40 46 C30 62 22 86 26 104 C28 116 40 120 64 120 C88 120 100 116 102 104 C106 86 98 62 88 46 Z" fill="url(#sack)" stroke="#55402A" stroke-width="6" stroke-linejoin="round"/>
+  <path d="M42 48 C42 36 48 26 54 20 L74 20 C80 26 86 36 86 48 Z" fill="#F7E7B0" stroke="#55402A" stroke-width="6" stroke-linejoin="round"/>
+  <rect x="38" y="40" width="52" height="11" rx="5.5" fill="#C9873E" stroke="#55402A" stroke-width="5"/>
+  <circle cx="58" cy="15" r="8" fill="#FFE27A" stroke="#D9B44A" stroke-width="2"/>
+  <circle cx="70" cy="13" r="7" fill="#FFE27A" stroke="#D9B44A" stroke-width="2"/>
+  <ellipse cx="66" cy="84" rx="11" ry="20" fill="#FFD84A" stroke="#B77E1E" stroke-width="3.5"/>
+  <path d="M60 70 L72 70 M57 80 L75 80 M57 90 L75 90 M60 100 L72 100 M66 65 L66 103" stroke="#D9A62A" stroke-width="2" fill="none"/>
+  <ellipse cx="44" cy="74" rx="6" ry="14" fill="#fff" fill-opacity="0.7" transform="rotate(12 44 74)"/>
+</svg>

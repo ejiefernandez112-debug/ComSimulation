@@ -137,15 +137,26 @@
 		"materials": { "bricks": 20000, "cement": 4000, "steel": 800, "construction_materials": 1000 },
 		"power_supply": 300, "power_radius": 5
 	},
+	"_chains": "Production chains, Wave 1 (plan.md 5.21). A building with several recipes makes ONE product: its first batch chooses it for free. switch_fee = share of its value paid to switch later (Plantation, Ranch, Fishery); without it the choice is for good. A recipe's first output is its main product; cost_share splits the cost between by-products. The selling price of an item comes from the FIRST recipe in this file that makes it (plan.md 5.12), so keep the usual recipe first. Outputs per hour and appetites (resources.json) are PLACEHOLDERS: one building's output is sized for about 100 villagers.",
 	"wheat_farm": {
-		"_comment": "Extractor: needs no ingredients. 60 wheat per hour of work, so a 24 h batch = 1,440 wheat.",
-		"name": "Wheat Farm", "category": "extractor", "menu_tab": "farming",
-		"description": "Grows wheat in batches of the hours you choose.",
+		"_comment": "The Plantation (was the Wheat Farm; the id stays so saves keep their farms). Extractor: needs no ingredients. Grows one crop at a time; wheat stays first, so its price and old saves don't change. 60 wheat per hour of work, so a 24 h batch = 1,440 wheat. Other crops: PLACEHOLDERS (fewer units for dearer crops: the cost per hour is the same).",
+		"name": "Plantation", "category": "extractor", "menu_tab": "farming",
+		"description": "Grows one crop at a time (wheat, corn, rice, fruit, coffee and more) in batches of the hours you choose. Switching to another crop costs a fee.",
 		"buildable": true, "max_workers": 8, "worker_type": "low_skilled",
 		"materials": { "bricks": 400, "cement": 40, "steel": 10, "construction_materials": 20 },
 		"water_per_hour": 30,
+		"switch_fee": 0.1,
 		"recipes": [
-			{ "id": "grow_wheat", "inputs": {}, "outputs": { "wheat": 60 }, "duration": 3600 }
+			{ "id": "grow_wheat", "inputs": {}, "outputs": { "wheat": 60 }, "duration": 3600 },
+			{ "id": "grow_corn", "inputs": {}, "outputs": { "corn": 60 }, "duration": 3600 },
+			{ "id": "grow_rice", "inputs": {}, "outputs": { "rice": 50 }, "duration": 3600 },
+			{ "id": "grow_soybeans", "inputs": {}, "outputs": { "soybeans": 40 }, "duration": 3600 },
+			{ "id": "grow_sugarcane", "inputs": {}, "outputs": { "sugarcane": 80 }, "duration": 3600 },
+			{ "id": "grow_potatoes", "inputs": {}, "outputs": { "potatoes": 70 }, "duration": 3600 },
+			{ "id": "grow_vegetables", "inputs": {}, "outputs": { "vegetables": 50 }, "duration": 3600 },
+			{ "id": "grow_fruit", "inputs": {}, "outputs": { "fruit": 40 }, "duration": 3600 },
+			{ "id": "grow_coffee", "inputs": {}, "outputs": { "coffee_beans": 15 }, "duration": 3600 },
+			{ "id": "grow_cocoa", "inputs": {}, "outputs": { "cocoa_beans": 15 }, "duration": 3600 }
 		],
 		"upgrades": [
 			{ "max_workers": 12 },
@@ -154,14 +165,16 @@
 		]
 	},
 	"flour_mill": {
-		"_comment": "40 wheat -> 32 flour per hour of work (one Farm feeds 1.5 Mills).",
-		"name": "Flour Mill", "category": "processor", "menu_tab": "industry",
-		"description": "Grinds wheat into flour in batches of the hours you choose.",
+		"_comment": "The Mill (was the Flour Mill; the id stays). 40 wheat -> 32 flour per hour of work (one Plantation of wheat feeds 1.5 Mills). Corn and rice: PLACEHOLDERS. Each mill grinds one grain for good.",
+		"name": "Grain Mill", "category": "processor", "menu_tab": "food",
+		"description": "Grinds grain: wheat into flour, corn into cornmeal or rice into milled rice. Each mill keeps grinding the one it starts with.",
 		"buildable": true, "max_workers": 8, "worker_type": "low_skilled",
 		"materials": { "bricks": 1000, "cement": 100, "steel": 25, "construction_materials": 50 },
 		"power_mw": 3,
 		"recipes": [
-			{ "id": "mill_flour", "inputs": { "wheat": 40 }, "outputs": { "flour": 32 }, "duration": 3600 }
+			{ "id": "mill_flour", "inputs": { "wheat": 40 }, "outputs": { "flour": 32 }, "duration": 3600 },
+			{ "id": "mill_cornmeal", "inputs": { "corn": 40 }, "outputs": { "cornmeal": 32 }, "duration": 3600 },
+			{ "id": "mill_rice", "inputs": { "rice": 40 }, "outputs": { "milled_rice": 30 }, "duration": 3600 }
 		],
 		"upgrades": [
 			{ "max_workers": 12 },
@@ -171,13 +184,118 @@
 	},
 	"bakery": {
 		"_comment": "20 flour -> 15 bread per hour of work (one Mill feeds 1.6 Bakeries).",
-		"name": "Bakery", "category": "processor", "menu_tab": "industry",
+		"name": "Bakery", "category": "processor", "menu_tab": "food",
 		"description": "Bakes flour into fresh bread that sells for more.",
 		"buildable": true, "max_workers": 8, "worker_type": "low_skilled",
 		"materials": { "bricks": 1600, "cement": 160, "steel": 40, "construction_materials": 80 },
 		"power_mw": 4,
 		"recipes": [
 			{ "id": "bake_bread", "inputs": { "flour": 20 }, "outputs": { "bread": 15 }, "duration": 3600 }
+		],
+		"upgrades": [
+			{ "max_workers": 12 },
+			{ "max_workers": 16 },
+			{ "max_workers": 20 }
+		]
+	},
+	"oil_press": {
+		"_comment": "Soybeans give oil AND soy meal (a by-product: the meal carries 40% of the cost, cost_share); corn gives oil only. Soy meal feeds animals (Wave 1B). PLACEHOLDERS.",
+		"name": "Oil Press", "category": "processor", "menu_tab": "food",
+		"description": "Presses soybeans into cooking oil and soy meal, or corn into cooking oil. Each press keeps pressing the one it starts with.",
+		"buildable": true, "max_workers": 8, "worker_type": "low_skilled",
+		"materials": { "bricks": 1000, "cement": 100, "steel": 25, "construction_materials": 50 },
+		"power_mw": 3,
+		"recipes": [
+			{ "id": "press_soybeans", "inputs": { "soybeans": 40 }, "outputs": { "vegetable_oil": 8, "soy_meal": 30 }, "cost_share": { "vegetable_oil": 0.6, "soy_meal": 0.4 }, "duration": 3600 },
+			{ "id": "press_corn", "inputs": { "corn": 40 }, "outputs": { "vegetable_oil": 8 }, "duration": 3600 }
+		],
+		"upgrades": [
+			{ "max_workers": 12 },
+			{ "max_workers": 16 },
+			{ "max_workers": 20 }
+		]
+	},
+	"sugar_mill": {
+		"_comment": "60 sugarcane -> 30 sugar per hour of work. PLACEHOLDERS.",
+		"name": "Sugar Mill", "category": "processor", "menu_tab": "food",
+		"description": "Crushes sugarcane into sugar, for sweets, drinks and cereal.",
+		"buildable": true, "max_workers": 8, "worker_type": "low_skilled",
+		"materials": { "bricks": 1000, "cement": 100, "steel": 25, "construction_materials": 50 },
+		"power_mw": 3,
+		"recipes": [
+			{ "id": "make_sugar", "inputs": { "sugarcane": 60 }, "outputs": { "sugar": 30 }, "duration": 3600 }
+		],
+		"upgrades": [
+			{ "max_workers": 12 },
+			{ "max_workers": 16 },
+			{ "max_workers": 20 }
+		]
+	},
+	"food_factory": {
+		"_comment": "Packaged food from the Mill's, Oil Press's and Sugar Mill's goods. Each factory makes one product for good. PLACEHOLDERS.",
+		"name": "Food Factory", "category": "processor", "menu_tab": "food",
+		"description": "Makes pasta, breakfast cereal, packaged rice, chips or packaged food. Each factory keeps making the one it starts with.",
+		"buildable": true, "max_workers": 8, "worker_type": "low_skilled",
+		"materials": { "bricks": 1400, "cement": 140, "steel": 35, "construction_materials": 70 },
+		"power_mw": 4,
+		"recipes": [
+			{ "id": "make_pasta", "inputs": { "flour": 30 }, "outputs": { "pasta": 30 }, "duration": 3600 },
+			{ "id": "make_cereal", "inputs": { "cornmeal": 20, "sugar": 5 }, "outputs": { "cereal": 25 }, "duration": 3600 },
+			{ "id": "pack_rice", "inputs": { "milled_rice": 30 }, "outputs": { "packaged_rice": 30 }, "duration": 3600 },
+			{ "id": "make_chips", "inputs": { "potatoes": 30, "vegetable_oil": 3 }, "outputs": { "chips": 30 }, "duration": 3600 },
+			{ "id": "make_packaged_food", "inputs": { "vegetables": 30, "vegetable_oil": 3 }, "outputs": { "packaged_food": 30 }, "duration": 3600 }
+		],
+		"upgrades": [
+			{ "max_workers": 12 },
+			{ "max_workers": 16 },
+			{ "max_workers": 20 }
+		]
+	},
+	"confectionery": {
+		"_comment": "Sweets from sugar, chocolate from cocoa beans and sugar. Each makes one product for good. PLACEHOLDERS.",
+		"name": "Confectionery", "category": "processor", "menu_tab": "food",
+		"description": "Makes candy from sugar, or chocolate from cocoa beans and sugar. Each one keeps making what it starts with.",
+		"buildable": true, "max_workers": 8, "worker_type": "low_skilled",
+		"materials": { "bricks": 1000, "cement": 100, "steel": 25, "construction_materials": 50 },
+		"power_mw": 3,
+		"recipes": [
+			{ "id": "make_candy", "inputs": { "sugar": 15 }, "outputs": { "candy": 30 }, "duration": 3600 },
+			{ "id": "make_chocolate", "inputs": { "cocoa_beans": 10, "sugar": 5 }, "outputs": { "chocolate": 20 }, "duration": 3600 }
+		],
+		"upgrades": [
+			{ "max_workers": 12 },
+			{ "max_workers": 16 },
+			{ "max_workers": 20 }
+		]
+	},
+	"beverage_plant": {
+		"_comment": "Drinks: juice from fruit, soft drinks from fruit and sugar, roasted coffee from coffee beans. Uses water. Each makes one product for good. PLACEHOLDERS.",
+		"name": "Beverage Plant", "category": "processor", "menu_tab": "food",
+		"description": "Makes fruit juice, soft drinks or roasted coffee. Each plant keeps making the one it starts with.",
+		"buildable": true, "max_workers": 8, "worker_type": "low_skilled",
+		"materials": { "bricks": 1000, "cement": 100, "steel": 25, "construction_materials": 50 },
+		"power_mw": 3,
+		"water_per_hour": 20,
+		"recipes": [
+			{ "id": "make_juice", "inputs": { "fruit": 40 }, "outputs": { "juice": 40 }, "duration": 3600 },
+			{ "id": "make_soft_drinks", "inputs": { "fruit": 20, "sugar": 10 }, "outputs": { "soft_drinks": 60 }, "duration": 3600 },
+			{ "id": "roast_coffee", "inputs": { "coffee_beans": 15 }, "outputs": { "coffee": 15 }, "duration": 3600 }
+		],
+		"upgrades": [
+			{ "max_workers": 12 },
+			{ "max_workers": 16 },
+			{ "max_workers": 20 }
+		]
+	},
+	"cannery": {
+		"_comment": "Canned fruit (canned fish comes with fishing, Wave 1B). Cans themselves (tin, steel) come with mining in a later wave. PLACEHOLDERS.",
+		"name": "Cannery", "category": "processor", "menu_tab": "food",
+		"description": "Cans fruit so it keeps.",
+		"buildable": true, "max_workers": 8, "worker_type": "low_skilled",
+		"materials": { "bricks": 1000, "cement": 100, "steel": 25, "construction_materials": 50 },
+		"power_mw": 3,
+		"recipes": [
+			{ "id": "can_fruit", "inputs": { "fruit": 30 }, "outputs": { "canned_fruit": 30 }, "duration": 3600 }
 		],
 		"upgrades": [
 			{ "max_workers": 12 },

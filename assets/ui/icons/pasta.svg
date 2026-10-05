@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <!-- Three pieces of bow-tie pasta. -->
+  <defs>
+    <linearGradient id="pasta" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFE9A0"/><stop offset="1" stop-color="#E5B44A"/></linearGradient>
+  </defs>
+  <g fill="url(#pasta)" stroke="#7A5210" stroke-width="5" stroke-linejoin="round">
+    <path d="M14 30 C26 22 34 34 44 40 C54 34 62 22 74 30 C78 42 76 58 74 70 C62 76 54 62 44 56 C34 62 26 76 14 70 C10 58 10 42 14 30 Z" transform="rotate(-12 44 50)"/>
+    <path d="M54 66 C66 58 74 70 84 76 C94 70 102 58 114 66 C118 78 116 94 114 106 C102 112 94 98 84 92 C74 98 66 112 54 106 C50 94 50 78 54 66 Z" transform="rotate(10 84 86)"/>
+  </g>
+  <g fill="#E0A83A" stroke="#7A5210" stroke-width="4">
+    <ellipse cx="44" cy="48" rx="7" ry="10" transform="rotate(-12 44 48)"/>
+    <ellipse cx="84" cy="86" rx="7" ry="10" transform="rotate(10 84 86)"/>
+  </g>
+  <g fill="none" stroke="#C98E28" stroke-width="2.5" stroke-linecap="round">
+    <path d="M20 40 L32 44 M20 58 L32 54 M56 34 L66 30 M58 52 L68 58"/>
+    <path d="M60 78 L72 82 M60 96 L72 92 M96 72 L106 70 M96 92 L106 98"/>
+  </g>
+  <ellipse cx="22" cy="36" rx="5" ry="3" fill="#fff" fill-opacity="0.7"/>
+</svg>

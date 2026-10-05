@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <!-- Three coffee beans. -->
+  <defs>
+    <linearGradient id="bean" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#B9784A"/><stop offset="1" stop-color="#6A3818"/></linearGradient>
+  </defs>
+  <g fill="url(#bean)" stroke="#2E160A" stroke-width="5">
+    <ellipse cx="44" cy="46" rx="26" ry="20" transform="rotate(-30 44 46)"/>
+    <ellipse cx="86" cy="58" rx="26" ry="20" transform="rotate(25 86 58)"/>
+    <ellipse cx="56" cy="92" rx="26" ry="20" transform="rotate(-10 56 92)"/>
+  </g>
+  <g fill="none" stroke="#2E160A" stroke-width="4" stroke-linecap="round">
+    <path d="M26 58 C38 52 48 44 62 34"/>
+    <path d="M66 48 C78 54 92 62 106 68"/>
+    <path d="M32 96 C46 90 64 92 80 88"/>
+  </g>
+  <g fill="#fff" fill-opacity="0.45">
+    <ellipse cx="38" cy="38" rx="8" ry="4" transform="rotate(-30 38 38)"/>
+    <ellipse cx="82" cy="48" rx="8" ry="4" transform="rotate(25 82 48)"/>
+    <ellipse cx="50" cy="82" rx="8" ry="4" transform="rotate(-10 50 82)"/>
+  </g>
+</svg>

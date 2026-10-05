@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <!-- Two potatoes. -->
+  <defs>
+    <linearGradient id="spud" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#F0CC86"/><stop offset="1" stop-color="#B57D3C"/></linearGradient>
+  </defs>
+  <path d="M60 34 C78 24 108 30 112 50 C116 68 100 80 80 80 C62 80 46 72 46 56 C46 46 52 38 60 34 Z" fill="url(#spud)" stroke="#5A3A16" stroke-width="5" stroke-linejoin="round"/>
+  <path d="M18 82 C16 62 34 50 58 54 C82 58 92 74 86 92 C80 108 56 114 38 108 C26 104 19 94 18 82 Z" fill="url(#spud)" stroke="#5A3A16" stroke-width="5" stroke-linejoin="round"/>
+  <g fill="#8A5A24">
+    <ellipse cx="40" cy="74" rx="3" ry="2"/>
+    <ellipse cx="62" cy="88" rx="3" ry="2"/>
+    <ellipse cx="44" cy="96" rx="2.5" ry="1.8"/>
+    <ellipse cx="72" cy="70" rx="2.5" ry="1.8"/>
+    <ellipse cx="80" cy="46" rx="3" ry="2"/>
+    <ellipse cx="98" cy="58" rx="2.5" ry="1.8"/>
+  </g>
+  <ellipse cx="34" cy="66" rx="9" ry="4" fill="#fff" fill-opacity="0.55" transform="rotate(-20 34 66)"/>
+  <ellipse cx="74" cy="38" rx="8" ry="3.5" fill="#fff" fill-opacity="0.5" transform="rotate(-12 74 38)"/>
+</svg>

@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <!-- An orange and an apple. -->
+  <defs>
+    <radialGradient id="orange" cx="0.38" cy="0.35" r="0.75"><stop offset="0" stop-color="#FFD27A"/><stop offset="1" stop-color="#EE8A16"/></radialGradient>
+    <radialGradient id="apple" cx="0.38" cy="0.35" r="0.75"><stop offset="0" stop-color="#FF8A78"/><stop offset="1" stop-color="#C0261C"/></radialGradient>
+  </defs>
+  <circle cx="78" cy="58" r="34" fill="url(#orange)" stroke="#6E3A08" stroke-width="5"/>
+  <path d="M78 26 C82 16 94 12 102 16 C98 26 88 30 78 26 Z" fill="#6AA837" stroke="#3F5A12" stroke-width="4" stroke-linejoin="round"/>
+  <g fill="#D9741A"><circle cx="90" cy="70" r="1.8"/><circle cx="70" cy="76" r="1.8"/><circle cx="96" cy="50" r="1.8"/></g>
+  <path d="M46 70 C30 64 16 74 18 92 C20 110 34 122 46 118 C50 116 54 116 58 118 C70 122 84 110 86 92 C88 74 74 64 58 70 C54 72 50 72 46 70 Z" fill="url(#apple)" stroke="#5E120C" stroke-width="5" stroke-linejoin="round"/>
+  <path d="M52 72 C52 64 54 58 58 54" fill="none" stroke="#5A3A16" stroke-width="4.5" stroke-linecap="round"/>
+  <ellipse cx="32" cy="88" rx="5" ry="9" fill="#fff" fill-opacity="0.6" transform="rotate(20 32 88)"/>
+  <ellipse cx="66" cy="42" rx="8" ry="5" fill="#fff" fill-opacity="0.55" transform="rotate(-30 66 42)"/>
+</svg>

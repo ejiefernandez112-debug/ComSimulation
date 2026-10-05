@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <!-- A wrapped sweet. -->
+  <defs>
+    <radialGradient id="sweet" cx="0.4" cy="0.35" r="0.7"><stop offset="0" stop-color="#FF9AD0"/><stop offset="1" stop-color="#D0307E"/></radialGradient>
+  </defs>
+  <g transform="rotate(-25 64 64)">
+    <path d="M38 64 L10 40 C8 52 8 76 10 88 Z" fill="#FFD84A" stroke="#6B3A0C" stroke-width="5" stroke-linejoin="round"/>
+    <path d="M90 64 L118 40 C120 52 120 76 118 88 Z" fill="#FFD84A" stroke="#6B3A0C" stroke-width="5" stroke-linejoin="round"/>
+    <path d="M14 50 L26 60 M14 78 L26 68 M114 50 L102 60 M114 78 L102 68" stroke="#D9A62A" stroke-width="3" stroke-linecap="round"/>
+    <ellipse cx="64" cy="64" rx="30" ry="24" fill="url(#sweet)" stroke="#5A0E32" stroke-width="5.5"/>
+    <path d="M44 56 C52 72 76 72 84 56" fill="none" stroke="#fff" stroke-width="5" stroke-linecap="round" opacity="0.8"/>
+    <ellipse cx="52" cy="52" rx="8" ry="4" fill="#fff" fill-opacity="0.7"/>
+  </g>
+</svg>

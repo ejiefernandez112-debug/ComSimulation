@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <!-- A small stack of sugar cubes. -->
+  <defs>
+    <linearGradient id="top" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFFFFF"/><stop offset="1" stop-color="#ECE8DE"/></linearGradient>
+    <linearGradient id="side" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#E2DCCC"/><stop offset="1" stop-color="#C8BFA8"/></linearGradient>
+  </defs>
+  <g stroke="#6E6656" stroke-width="5" stroke-linejoin="round">
+    <path d="M14 76 L46 62 L76 76 L44 92 Z" fill="url(#top)"/>
+    <path d="M14 76 L14 106 L44 122 L44 92 Z" fill="url(#side)"/>
+    <path d="M44 92 L76 76 L76 106 L44 122 Z" fill="#D8D0BC"/>
+    <path d="M52 76 L84 62 L114 76 L82 92 Z" fill="url(#top)"/>
+    <path d="M52 76 L52 106 L82 122 L82 92 Z" fill="url(#side)"/>
+    <path d="M82 92 L114 76 L114 106 L82 122 Z" fill="#D8D0BC"/>
+    <path d="M34 42 L66 28 L96 42 L64 58 Z" fill="url(#top)"/>
+    <path d="M34 42 L34 72 L64 88 L64 58 Z" fill="url(#side)"/>
+    <path d="M64 58 L96 42 L96 72 L64 88 Z" fill="#D8D0BC"/>
+  </g>
+  <g fill="#B8AE96">
+    <circle cx="50" cy="66" r="1.8"/><circle cx="78" cy="56" r="1.8"/><circle cx="26" cy="96" r="1.8"/><circle cx="96" cy="100" r="1.8"/>
+  </g>
+  <ellipse cx="58" cy="40" rx="10" ry="3.5" fill="#fff" fill-opacity="0.9"/>
+</svg>

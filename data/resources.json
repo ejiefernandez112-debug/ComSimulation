@@ -1,6 +1,34 @@
 {
-	"_note": "No prices here: the game works out each item's Retail price live from what it costs to make (plan.md 5.12; pricing in game_config.json). An item no building makes can have a fixed \"price\" in dollars. appetite = how many of it one villager buys per hour at the Normal price in a store (plan.md 5.16). Only finished goods have one, so raw goods like Wheat can't be sold in shops. category = what kind of item it is (names in game_config.json item_categories): stores sell the categories in their \"sells\" list, and the Food need counts only \"food\". Appetites are PLACEHOLDERS, tuned so about 40 people buy what one Farm + Mill + Bakery make (not realistic amounts: the game only shows village totals).",
+	"_note": "No prices here: the game works out each item's Retail price live from what it costs to make (plan.md 5.12; pricing in game_config.json). An item no building makes can have a fixed \"price\" in dollars. appetite = how many of it one villager buys per hour at the Normal price in a store (plan.md 5.16). Only finished goods have one, so raw goods like Wheat can't be sold in shops (the Trading Post buys anything, plan.md 5.22). category = what kind of item it is (names in game_config.json item_categories): stores sell the categories in their \"sells\" list, and the Food need counts only \"food\". Appetites are PLACEHOLDERS: Flour and Bread are tuned so about 40 people buy what one Farm + Mill + Bakery make; the Wave 1 foods (plan.md 5.21) so about 100 people buy what one building makes in an hour. Not realistic amounts: the game only shows village totals.",
 	"wheat": { "name": "Wheat", "tier": 0, "category": "crop" },
 	"flour": { "name": "Flour", "tier": 1, "category": "food", "appetite": 0.32 },
-	"bread": { "name": "Bread", "tier": 2, "category": "food", "appetite": 0.36 }
+	"bread": { "name": "Bread", "tier": 2, "category": "food", "appetite": 0.36 },
+
+	"corn": { "name": "Corn", "tier": 0, "category": "crop" },
+	"rice": { "name": "Rice", "tier": 0, "category": "crop" },
+	"soybeans": { "name": "Soybeans", "tier": 0, "category": "crop" },
+	"sugarcane": { "name": "Sugarcane", "tier": 0, "category": "crop" },
+	"coffee_beans": { "name": "Coffee Beans", "tier": 0, "category": "crop" },
+	"cocoa_beans": { "name": "Cocoa Beans", "tier": 0, "category": "crop" },
+	"potatoes": { "name": "Potatoes", "tier": 0, "category": "food", "appetite": 0.7 },
+	"vegetables": { "name": "Vegetables", "tier": 0, "category": "food", "appetite": 0.5 },
+	"fruit": { "name": "Fruit", "tier": 0, "category": "food", "appetite": 0.4 },
+
+	"cornmeal": { "name": "Cornmeal", "tier": 1, "category": "ingredient" },
+	"milled_rice": { "name": "Milled Rice", "tier": 1, "category": "ingredient" },
+	"vegetable_oil": { "name": "Cooking Oil", "tier": 1, "category": "ingredient" },
+	"soy_meal": { "name": "Soy Meal", "tier": 1, "category": "ingredient" },
+	"sugar": { "name": "Sugar", "tier": 1, "category": "food", "appetite": 0.3 },
+
+	"pasta": { "name": "Pasta", "tier": 2, "category": "food", "appetite": 0.3 },
+	"cereal": { "name": "Cereal", "tier": 2, "category": "food", "appetite": 0.25 },
+	"packaged_rice": { "name": "Packaged Rice", "tier": 2, "category": "food", "appetite": 0.3 },
+	"chips": { "name": "Chips", "tier": 2, "category": "food", "appetite": 0.3 },
+	"packaged_food": { "name": "Packaged Food", "tier": 2, "category": "food", "appetite": 0.3 },
+	"candy": { "name": "Candy", "tier": 2, "category": "food", "appetite": 0.3 },
+	"chocolate": { "name": "Chocolate", "tier": 2, "category": "food", "appetite": 0.2 },
+	"juice": { "name": "Juice", "tier": 2, "category": "food", "appetite": 0.4 },
+	"soft_drinks": { "name": "Soft Drinks", "tier": 2, "category": "food", "appetite": 0.6 },
+	"coffee": { "name": "Coffee", "tier": 2, "category": "food", "appetite": 0.15 },
+	"canned_fruit": { "name": "Canned Fruit", "tier": 2, "category": "food", "appetite": 0.3 }
 }

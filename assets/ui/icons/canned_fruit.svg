@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <!-- A tin of canned peaches. -->
+  <defs>
+    <linearGradient id="tin" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#E8EEF2"/><stop offset="0.5" stop-color="#B4C0CA"/><stop offset="1" stop-color="#7E8C98"/></linearGradient>
+    <radialGradient id="peach" cx="0.4" cy="0.35" r="0.7"><stop offset="0" stop-color="#FFD08A"/><stop offset="1" stop-color="#F2843A"/></radialGradient>
+  </defs>
+  <path d="M22 32 L22 104 C22 116 106 116 106 104 L106 32 Z" fill="url(#tin)" stroke="#2A343C" stroke-width="5.5" stroke-linejoin="round"/>
+  <rect x="22" y="48" width="84" height="46" fill="#3E8A3A" stroke="#2A343C" stroke-width="4"/>
+  <ellipse cx="64" cy="32" rx="42" ry="12" fill="#D8E0E6" stroke="#2A343C" stroke-width="5"/>
+  <ellipse cx="64" cy="32" rx="32" ry="7" fill="none" stroke="#8E9AA4" stroke-width="3"/>
+  <path d="M24 60 L104 60 M24 82 L104 82" stroke="#2A5E26" stroke-width="2"/>
+  <circle cx="56" cy="72" r="15" fill="url(#peach)" stroke="#7A3A10" stroke-width="3.5"/>
+  <circle cx="76" cy="74" r="13" fill="url(#peach)" stroke="#7A3A10" stroke-width="3.5"/>
+  <path d="M60 58 C64 52 70 50 76 52 C72 58 66 60 60 58 Z" fill="#8CC34A" stroke="#3F5A12" stroke-width="2.5" stroke-linejoin="round"/>
+  <rect x="28" y="36" width="5" height="70" rx="2.5" fill="#fff" fill-opacity="0.6"/>
+</svg>

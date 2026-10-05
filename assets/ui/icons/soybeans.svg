@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <!-- Soybean pod with loose beans. -->
+  <defs>
+    <linearGradient id="bean" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FBE6B4"/><stop offset="1" stop-color="#D1A660"/></linearGradient>
+  </defs>
+  <path d="M16 74 C22 44 62 22 104 26 C114 27 116 36 108 42 C80 52 56 72 40 96 C32 106 12 96 16 74 Z" fill="#8CC34A" stroke="#3F5A12" stroke-width="5" stroke-linejoin="round"/>
+  <g fill="#B4DD6A">
+    <circle cx="38" cy="70" r="11"/>
+    <circle cx="58" cy="54" r="11"/>
+    <circle cx="80" cy="40" r="10"/>
+  </g>
+  <path d="M30 86 C46 64 70 46 100 34" fill="none" stroke="#3F5A12" stroke-width="3" stroke-linecap="round" opacity="0.6"/>
+  <g fill="url(#bean)" stroke="#6B4A1E" stroke-width="4.5">
+    <ellipse cx="72" cy="98" rx="15" ry="12.5"/>
+    <ellipse cx="102" cy="88" rx="14" ry="12" transform="rotate(-20 102 88)"/>
+  </g>
+  <g fill="none" stroke="#9C7436" stroke-width="2.5" stroke-linecap="round">
+    <path d="M66 97 L78 97"/>
+    <path d="M96 90 L107 85"/>
+  </g>
+  <ellipse cx="66" cy="92" rx="5" ry="3" fill="#fff" fill-opacity="0.7"/>
+</svg>

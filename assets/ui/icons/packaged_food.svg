@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <!-- A ready meal: a tray of vegetables under a clear lid, with its sleeve. -->
+  <defs>
+    <linearGradient id="sleeve" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#7CC4E8"/><stop offset="1" stop-color="#3A88B8"/></linearGradient>
+  </defs>
+  <path d="M10 52 L118 52 L110 104 C109 110 104 114 98 114 L30 114 C24 114 19 110 18 104 Z" fill="url(#sleeve)" stroke="#173A52" stroke-width="5.5" stroke-linejoin="round"/>
+  <path d="M18 52 C18 40 26 32 38 32 L90 32 C102 32 110 40 110 52" fill="#EAF6FF" fill-opacity="0.85" stroke="#173A52" stroke-width="5" stroke-linejoin="round"/>
+  <g stroke="#3F5A12" stroke-width="3">
+    <circle cx="44" cy="46" r="8" fill="#6AA837"/>
+    <circle cx="58" cy="42" r="7" fill="#8CC34A"/>
+  </g>
+  <g stroke="#6B2E0C" stroke-width="3">
+    <rect x="68" y="38" width="10" height="10" rx="2" fill="#FF9A3E"/>
+    <rect x="80" y="42" width="10" height="10" rx="2" fill="#FF9A3E"/>
+  </g>
+  <path d="M10 52 L118 52" stroke="#173A52" stroke-width="5.5" stroke-linecap="round"/>
+  <rect x="38" y="68" width="52" height="28" rx="6" fill="#FFF8E6" stroke="#173A52" stroke-width="4"/>
+  <g stroke="#55402A" stroke-width="4" stroke-linecap="round" fill="none">
+    <path d="M54 74 L54 90 M50 74 L50 80 C50 83 58 83 58 80 L58 74"/>
+    <path d="M72 74 C78 76 78 84 74 86 L74 90"/>
+  </g>
+  <ellipse cx="34" cy="40" rx="6" ry="3" fill="#fff" fill-opacity="0.9" transform="rotate(-20 34 40)"/>
+</svg>

@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <!-- A box of breakfast cereal. -->
+  <defs>
+    <linearGradient id="box" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#FF7A4E"/><stop offset="1" stop-color="#D2401E"/></linearGradient>
+  </defs>
+  <path d="M28 18 L92 18 L106 30 L106 116 L92 122 L28 122 Z" fill="#A82E14" stroke="#4A1406" stroke-width="5.5" stroke-linejoin="round"/>
+  <rect x="22" y="16" width="70" height="106" rx="4" fill="url(#box)" stroke="#4A1406" stroke-width="5.5"/>
+  <rect x="30" y="26" width="54" height="16" rx="4" fill="#FFE27A" stroke="#4A1406" stroke-width="3.5"/>
+  <path d="M30 78 C30 98 42 110 57 110 C72 110 84 98 84 78 Z" fill="#F4F8FF" stroke="#2E3E5A" stroke-width="4.5" stroke-linejoin="round"/>
+  <g fill="#F2B640" stroke="#8A5410" stroke-width="2.5">
+    <circle cx="44" cy="74" r="6"/><circle cx="56" cy="70" r="6"/><circle cx="68" cy="74" r="6"/><circle cx="50" cy="80" r="5"/><circle cx="63" cy="80" r="5"/>
+  </g>
+  <path d="M28 78 L86 78" stroke="#2E3E5A" stroke-width="4.5" stroke-linecap="round"/>
+  <rect x="28" y="48" width="5" height="22" rx="2.5" fill="#fff" fill-opacity="0.5"/>
+</svg>

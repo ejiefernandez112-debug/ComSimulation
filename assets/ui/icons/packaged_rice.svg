@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <!-- A bag of rice with a bowl on its label. -->
+  <defs>
+    <linearGradient id="bag" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#FFFFFF"/><stop offset="1" stop-color="#DCE4EE"/></linearGradient>
+  </defs>
+  <path d="M30 22 L98 22 L104 116 C104 120 100 122 96 122 L32 122 C28 122 24 120 24 116 Z" fill="url(#bag)" stroke="#2E3E5A" stroke-width="5.5" stroke-linejoin="round"/>
+  <path d="M30 22 L36 10 L92 10 L98 22" fill="#4A7FC8" stroke="#2E3E5A" stroke-width="5" stroke-linejoin="round"/>
+  <rect x="26" y="34" width="76" height="14" fill="#4A7FC8" stroke="#2E3E5A" stroke-width="4"/>
+  <path d="M42 80 C42 96 52 106 64 106 C76 106 86 96 86 80 Z" fill="#C4402A" stroke="#4A1406" stroke-width="4" stroke-linejoin="round"/>
+  <path d="M44 80 C44 70 52 62 64 62 C76 62 84 70 84 80 Z" fill="#FBFAF4" stroke="#8F8A7A" stroke-width="3"/>
+  <g fill="#fff" stroke="#B9B3A0" stroke-width="1.5">
+    <ellipse cx="56" cy="72" rx="2" ry="4" transform="rotate(30 56 72)"/>
+    <ellipse cx="66" cy="68" rx="2" ry="4" transform="rotate(-20 66 68)"/>
+    <ellipse cx="74" cy="74" rx="2" ry="4" transform="rotate(60 74 74)"/>
+  </g>
+  <path d="M40 80 L88 80" stroke="#4A1406" stroke-width="4" stroke-linecap="round"/>
+  <rect x="32" y="54" width="5" height="54" rx="2.5" fill="#fff" fill-opacity="0.8"/>
+</svg>
