@@ -196,9 +196,12 @@ func _refresh_setup(b: Dictionary) -> void:
 	_lines.power.text = UITheme.money(roundi(float(q.get("power", 0.0))))
 	_lines.power.get_parent().visible = Economy.power_need(Economy.building(building_id)) > 0.0  # only Mills and Bakeries use power
 	_lines.total.text = UITheme.money(roundi(float(q.total)))
-	_lines.per_unit.text = UITheme.price(roundi(float(q.per_unit)))
-	var profit := int(q.price) - roundi(float(q.per_unit))
-	_lines.price.text = "%s each (%s %s)" % [UITheme.price(int(q.price)), UITheme.price(absi(profit)), "profit" if profit >= 0 else "loss"]
+	_lines.per_unit.text = _per_item(q.unit_costs)
+	if q.units.size() > 1:  # by-products: each its own cost and price (plan.md §5.14)
+		_lines.price.text = _per_item(q.prices)
+	else:
+		var profit := int(q.price) - roundi(float(q.per_unit))
+		_lines.price.text = "%s each (%s %s)" % [UITheme.price(int(q.price)), UITheme.price(absi(profit)), "profit" if profit >= 0 else "loss"]
 	var notes: Array[String] = []
 	notes.append("Longest batch your stock and cash allow now: %d h." % most if most > 0 else "Not enough ingredients or cash for a batch yet.")
 	if q.estimated:
@@ -231,13 +234,12 @@ func _refresh_running(b: Dictionary) -> void:
 	_collect.icon = UITheme.icon(output)
 	_collect.text = "Collect %s" % UITheme.number(count) if count > 0 else "Collect"
 	_collect.disabled = count == 0
-	var units := 0
+	var each := {}  # cost per unit of each thing it makes (by-products carry their share)
 	for res in batch.units:
-		units += int(batch.units[res])
-	var each := float(batch.cost) / maxf(units, 1.0)
+		each[res] = Economy.batch_unit_cost(batch, res)
 	var extra := Economy.bonus_output(str(batch.bonus))
 	var bonus_text := "no bonus" if extra <= 0.0 else "%s bonus (+%d%% units)" % [str(batch.bonus).capitalize(), roundi(extra * 100.0)]
-	_locked.text = "Locked in: %s h, %s, %s for %s = %s each." % [_amount(float(batch.hours)), bonus_text, UITheme.money(roundi(float(batch.cost))), _amounts(batch.units), UITheme.price(roundi(each))]
+	_locked.text = "Locked in: %s h, %s, %s for %s = %s each." % [_amount(float(batch.hours)), bonus_text, UITheme.money(roundi(float(batch.cost))), _amounts(batch.units), _per_item(each)]
 	_cancel.visible = Economy.batch_running(b)
 
 
@@ -289,6 +291,16 @@ func _amounts(items: Dictionary) -> String:
 	for res in items:
 		parts.append("%s %s" % [UITheme.number(int(items[res])), BuildingInfo.resource_name(res)])
 	return " + ".join(parts)
+
+
+## Cents per item: "$1.83" for one product, "Beef $42.48 · Hide $4.72" when it makes several.
+func _per_item(cents_each: Dictionary) -> String:
+	if cents_each.size() == 1:
+		return UITheme.price(roundi(float(cents_each.values()[0])))
+	var parts: Array[String] = []
+	for res in cents_each:
+		parts.append("%s %s" % [BuildingInfo.resource_name(res), UITheme.price(roundi(float(cents_each[res])))])
+	return " · ".join(parts)
 
 
 ## 14.0 -> "14", 1.5 -> "1.5".

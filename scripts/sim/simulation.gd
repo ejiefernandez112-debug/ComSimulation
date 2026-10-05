@@ -1300,8 +1300,9 @@ static func set_bonus(state: Dictionary, data: Dictionary, building_id: String, 
 # Each finished hour makes its share of the units, which wait in the batch until the player
 # collects them into the Warehouse. b.batch = {} when idle, else:
 #   {"recipe_id", "hours", "bonus", "units" {res: qty for the whole batch}, "cost" (cents, the
-#    whole batch: ingredients + wages + water estimate), "wages" (cents paid), "inputs"
-#    {res: qty taken}, "input_cost" {res: cents}, "collected" {res: qty}, "made_hours"}
+#    whole batch: ingredients + wages + water estimate), "unit_cost" {res: cents each, the cost
+#    split by the recipe's cost_share; older batches don't have it}, "wages" (cents paid),
+#    "inputs" {res: qty taken}, "input_cost" {res: cents}, "collected" {res: qty}, "made_hours"}
 
 ## True for buildings that make things in batches (Farm, Mill, Bakery).
 static func makes_batches(data: Dictionary, b: Dictionary) -> bool:
@@ -1330,6 +1331,44 @@ static func batch_default_hours(data: Dictionary) -> int:
 ## Extra share of units a bonus makes (bonus_output in game_config.json: 0.1 = +10%).
 static func bonus_output(data: Dictionary, level: String) -> float:
 	return float(data.config.get("bonus_output", {}).get(level, 0.0))
+
+
+## How a recipe's cost is split between the things it makes (by-products, plan.md §5.14): its
+## "cost_share" ({item: share}, adding up to 1) when it has one, else by units, so every unit
+## costs the same. E.g. 4 cattle -> 40 beef + 4 hides with cost_share beef 0.9, hide 0.1: the
+## hides carry a tenth of the cost, so a hide isn't priced like ten steaks. {item: share}.
+static func output_shares(recipe: Dictionary) -> Dictionary:
+	var outputs: Dictionary = recipe.get("outputs", {})
+	var shares: Dictionary = recipe.get("cost_share", {})
+	var total := maxf(_total(outputs), 1)
+	var out := {}
+	for res in outputs:
+		out[res] = float(shares[res]) if shares.has(res) else float(outputs[res]) / total
+	return out
+
+
+## What each unit of a batch costs (cents) when `units` were made for `cost` cents: split by the
+## recipe's cost_share, or evenly per unit without one. {item: cents each}. The parts add up to
+## `cost` exactly (unit cost × units, summed).
+static func _unit_costs(recipe: Dictionary, units: Dictionary, cost: float) -> Dictionary:
+	var shares: Dictionary = recipe.get("cost_share", {})
+	var out := {}
+	for res in units:
+		if shares.is_empty():
+			out[res] = cost / maxf(_total(units), 1)
+		else:
+			out[res] = cost * float(shares.get(res, 0.0)) / maxf(float(units[res]), 1.0)
+	return out
+
+
+## What one unit of `res` from this batch cost to make (cents): its share of the batch's cost,
+## locked in when the batch started (batch.unit_cost). Batches started before by-products have
+## no unit_cost: every unit of them costs the same.
+static func batch_unit_cost(batch: Dictionary, res: String) -> float:
+	var each: Dictionary = batch.get("unit_cost", {})
+	if each.has(res):
+		return float(each[res])
+	return float(batch.get("cost", 0.0)) / maxf(_total(batch.get("units", {})), 1)
 
 
 ## Units made once `hours` of the batch are finished: each hour's share, rounded down so the
@@ -1412,7 +1451,14 @@ static func batch_quote(state: Dictionary, data: Dictionary, b: Dictionary, reci
 	quote["power"] = mw * real_hours * extra_power_price(state, data, mw, now) * 100.0
 	total += int(quote.wages) + float(quote.water) + float(quote.power)
 	quote["total"] = total
-	quote["per_unit"] = total / maxf(float(quote.count), 1.0)
+	# Cost and selling price of each thing it makes (by-products carry their cost_share);
+	# per_unit and price are the main product's (the recipe's first output).
+	quote["unit_costs"] = _unit_costs(recipe, units, total)
+	quote["per_unit"] = float(quote.unit_costs.get(quote.output, 0.0))
+	var prices := {}
+	for res in units:
+		prices[res] = unit_price(data, res)
+	quote["prices"] = prices
 	quote["price"] = unit_price(data, quote.output)
 	var speed := _speed_if_working(data, b)
 	var start := maxf(now, float(state.get("settled_at", now)))
@@ -1495,6 +1541,7 @@ static func start_batch(state: Dictionary, data: Dictionary, building_id: String
 	b["bonus"] = level  # also the choice offered for the next batch
 	b["batch"] = {"recipe_id": recipe_id, "hours": hours, "bonus": level, "units": check.units,
 		"cost": cost, "wages": wages, "inputs": inputs, "input_cost": input_cost,
+		"unit_cost": _unit_costs(_recipe(data.buildings[b.type], recipe_id), check.units, cost),
 		"collected": {}, "made_hours": 0}
 	# A clock set backwards never moves the start before the time already worked out.
 	b.job_started_at = maxf(now, float(state.get("settled_at", now)))
@@ -1534,7 +1581,7 @@ static func collect(state: Dictionary, data: Dictionary, building_id: String, no
 		var qty := mini(int(moved[res]), int(from_batch.get(res, 0)))
 		if qty > 0:
 			_add_to(b.batch.collected, {res: qty})
-			_put_cost(moved_cost, {res: float(b.batch.cost) * qty / maxf(_total(b.batch.units), 1)})
+			_put_cost(moved_cost, {res: batch_unit_cost(b.batch, res) * qty})
 		if int(moved[res]) > qty:
 			from_storage[res] = int(moved[res]) - qty
 	if not from_storage.is_empty():
@@ -1619,7 +1666,10 @@ static func cancel_batch(state: Dictionary, data: Dictionary, building_id: Strin
 	income["batch_refunds"] = int(income.get("batch_refunds", 0)) + int(check.money)
 	var made := int(batch.get("made_hours", 0))
 	var units := _units_after(batch, made)
-	batch.cost = float(batch.cost) * _total(units) / maxf(_total(batch.units), 1)
+	var kept := 0.0  # what the hours already made cost: each unit keeps its cost (by-products too)
+	for res in units:
+		kept += batch_unit_cost(batch, res) * int(units[res])
+	batch.cost = kept
 	batch.units = units
 	batch.hours = maxi(made, 1)  # (an empty batch is cleared just below)
 	batch.made_hours = made
@@ -2641,7 +2691,8 @@ static func _unit_price(data: Dictionary, resource_id: String, visiting: Diction
 			cost += float(def.get("water_per_hour", 0.0)) * hours * float(data.config.get("water", {}).get("price_per_m3", 0.0))
 			cost += float(def.get("power_mw", 0.0)) * hours * float(data.config.get("power", {}).get("price_per_mwh", 0.0))
 			cost += construction_value(data, type_id) / 100.0 / payback * hours
-			price = cents(cost / maxf(_total(recipe.outputs), 1) / keep)
+			# By-products carry their cost_share of the batch (the same split as cost tags).
+			price = cents(cost * float(output_shares(recipe)[resource_id]) / maxf(float(recipe.outputs[resource_id]), 1) / keep)
 			visiting.erase(resource_id)
 			return price
 	visiting.erase(resource_id)
@@ -3627,7 +3678,7 @@ static func _standard_unit_cost(data: Dictionary, resource_id: String, visiting:
 			cost += float(def.get("water_per_hour", 0.0)) * hours * water_price(data) * 100.0
 			cost += float(def.get("power_mw", 0.0)) * hours * utility_price(data, "power") * 100.0
 			visiting.erase(resource_id)
-			return cost / maxf(_total(recipe.outputs), 1)
+			return cost * float(output_shares(recipe)[resource_id]) / maxf(float(recipe.outputs[resource_id]), 1)
 	visiting.erase(resource_id)
 	return 0.0
 
@@ -3820,14 +3871,14 @@ static func balance_sheet(state: Dictionary, data: Dictionary, now: float) -> Di
 		if has_batch(b):
 			# Each unit of a batch is worth its share of the batch's cost: made ones are goods,
 			# the rest is still being made.
-			var each := float(b.batch.cost) / maxf(_total(b.batch.units), 1)
 			var ready := ready_units(b)
 			var ready_cost := {}
 			for res in ready:
-				ready_cost[res] = each * int(ready[res])
+				ready_cost[res] = batch_unit_cost(b.batch, res) * int(ready[res])
 			add_goods.call(ready, ready_cost)
 			var made := _units_after(b.batch, int(b.batch.get("made_hours", 0)))
-			in_production += each * (_total(b.batch.units) - _total(made))
+			for res in b.batch.units:
+				in_production += batch_unit_cost(b.batch, res) * (int(b.batch.units[res]) - int(made.get(res, 0)))
 		for shelf in b.get("shelves", []):
 			if shelf.is_empty():
 				continue

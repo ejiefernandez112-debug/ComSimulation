@@ -571,6 +571,11 @@ func batch_quote(building: Dictionary, recipe_id: String, hours: int, bonus: Str
 	return Simulation.batch_quote(state, data(), building, recipe_id, hours, bonus, TimeService.now())
 
 
+## What one unit of that item from this batch cost to make (cents; by-products carry their share).
+func batch_unit_cost(batch: Dictionary, resource_id: String) -> float:
+	return Simulation.batch_unit_cost(batch, resource_id)
+
+
 ## Whether that batch could start now ({"ok", "error"} + the quote); changes nothing.
 func can_start_batch(building_id: String, recipe_id: String, hours: int, bonus: String) -> Dictionary:
 	return Simulation.can_start_batch(state, data(), building_id, recipe_id, hours, bonus, TimeService.now())

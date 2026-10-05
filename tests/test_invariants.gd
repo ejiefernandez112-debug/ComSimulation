@@ -490,6 +490,14 @@ func _batch_ok(b: Dictionary, def: Dictionary) -> String:
 		return "%s has made %d of its batch's %d hours" % [name, made, hours]
 	if float(batch.cost) < -0.5 or int(batch.wages) < 0:
 		return "%s's batch costs %s cents (wages %s)" % [name, batch.cost, batch.wages]
+	# By-products (plan.md §5.14): each unit's cost, times the units, adds up to the batch's cost.
+	var parts := 0.0
+	for res in batch.units:
+		if Sim.batch_unit_cost(batch, res) < 0.0:
+			return "%s's batch: a %s costs %s cents" % [name, res, Sim.batch_unit_cost(batch, res)]
+		parts += Sim.batch_unit_cost(batch, res) * int(batch.units[res])
+	if absf(parts - float(batch.cost)) > 0.5:
+		return "%s's batch: its units' costs add up to %s cents, not its %s" % [name, parts, batch.cost]
 	var broken := _goods_ok(name + "'s batch", batch.units, {})
 	if broken == "":
 		broken = _goods_ok(name + "'s collected units", batch.collected, {})

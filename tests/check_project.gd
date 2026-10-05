@@ -30,7 +30,7 @@ const BUILDING_KEYS := ["name", "category", "description", "menu_tab", "build_co
 ## What a level in "upgrades" may change (plus an optional fixed "cost" and own "time"), and the
 ## least each may be.
 const UPGRADE_STATS := {"max_workers": 0, "capacity": 1, "shelves": 1, "households": 1, "water_supply": 1, "power_supply": 1, "power_radius": 1}
-const RECIPE_KEYS := ["id", "inputs", "outputs", "duration"]
+const RECIPE_KEYS := ["id", "inputs", "outputs", "duration", "cost_share"]
 const RESOURCE_KEYS := ["name", "tier", "appetite", "price", "category"]
 const CONFIG_KEYS := ["starting_cash", "starting_population", "population_growth_seconds", "move_in_group_size", "move_in_only_for_jobs", "move_in_needs_home", "life", "housing", "happiness", "grid_size", "autosave_seconds",
 	"welcome_back_after_seconds", "cancel_refund_in_progress", "demolish_refund", "batch",
@@ -251,6 +251,20 @@ func _check_producer(data: Dictionary, _id: String, def: Dictionary, where: Stri
 				var qty = recipe[part][res]
 				if not _is_whole(qty) or qty <= 0:
 					_fail("%s: %s '%s' must be a whole number above 0 (is %s)" % [at, part, res, qty])
+		# By-products (plan.md §5.14): cost_share splits the cost between exactly the outputs.
+		if recipe.has("cost_share"):
+			var shares: Dictionary = recipe.cost_share
+			var sum := 0.0
+			for res in shares:
+				if not recipe.get("outputs", {}).has(res):
+					_fail("%s cost_share: '%s' isn't one of its outputs" % [at, res])
+				_share(shares[res], "%s cost_share '%s'" % [at, res], true)
+				sum += float(shares[res]) if _is_number(shares[res]) else 0.0
+			for res in recipe.get("outputs", {}):
+				if not shares.has(res):
+					_fail("%s cost_share: '%s' has no share (every output needs one)" % [at, res])
+			if absf(sum - 1.0) > 0.0001:
+				_fail("%s cost_share: the shares add up to %s, not 1" % [at, sum])
 
 
 func _check_resources(data: Dictionary) -> void:

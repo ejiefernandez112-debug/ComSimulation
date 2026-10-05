@@ -187,7 +187,13 @@ func _ask_start_batch(building_id: String, hours: int, bonus: String) -> void:
 	if Economy.power_problem(Economy.building(building_id)) == "no_grid":
 		lines.append("
 [No power] It's outside your power network: it won't work until a Substation reaches it.")
-	lines.append("Total: %s → %s per %s (sells for %s)" % [UITheme.money(roundi(float(check.total))), UITheme.price(roundi(float(check.per_unit))), item, UITheme.price(int(check.price))])
+	if check.units.size() > 1:  # by-products: each carries its own share of the cost (plan.md §5.14)
+		var parts: Array[String] = []
+		for res in check.units:
+			parts.append("%s per %s (sells for %s)" % [UITheme.price(roundi(float(check.unit_costs[res]))), BuildingInfo.resource_name(res), UITheme.price(int(check.prices[res]))])
+		lines.append("Total: %s → %s" % [UITheme.money(roundi(float(check.total))), " · ".join(parts)])
+	else:
+		lines.append("Total: %s → %s per %s (sells for %s)" % [UITheme.money(roundi(float(check.total))), UITheme.price(roundi(float(check.per_unit))), item, UITheme.price(int(check.price))])
 	lines.append("\nThe ingredients and wages are paid now; the bonus and the cost are locked in.")
 	confirm_dialog.ask("Start this batch?", "\n".join(lines), 0, {}, "Start",
 		_start_batch.bind(building_id, recipe_id, hours, bonus), "Back", "GreenButton")

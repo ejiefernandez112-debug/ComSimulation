@@ -1492,6 +1492,74 @@ func test_real_data_files() -> void:
 	_check(state.buildings.size() == config.starting_buildings.size(), "real data starts a game")
 
 
+# --- By-products (plan.md §5.14) -------------------------------------------------
+
+## Test data with a butcher: 1 cattle ($9, bought) -> 9 beef + 1 hide an "hour" (60 s), the hide
+## carrying 5% of the cost (cost_share). No workers, no build cost: a batch costs its cattle only.
+func _butcher_data() -> Dictionary:
+	var data := _data()
+	data.resources["cattle"] = {"name": "Cattle", "price": 9}
+	data.resources["beef"] = {"name": "Beef"}
+	data.resources["hide"] = {"name": "Hide"}
+	data.buildings["butcher"] = {"category": "processor", "build_cost": 0, "buildable": true,
+		"recipes": [{"id": "cut", "inputs": {"cattle": 1}, "outputs": {"beef": 9, "hide": 1},
+			"cost_share": {"beef": 0.95, "hide": 0.05}, "duration": 60}]}
+	return data
+
+
+## Prices split a batch's cost by cost_share; without one, every unit costs the same.
+func test_cost_share_prices() -> void:
+	var data := _butcher_data()
+	_check(Sim.unit_price(data, "beef") == 95 and Sim.unit_price(data, "hide") == 45, "$9 of cattle: 9 beef share 95% ($0.95 each), 1 hide 5% ($0.45)")
+	_check(is_equal_approx(Sim.standard_unit_cost(data, "beef"), 95.0) and is_equal_approx(Sim.standard_unit_cost(data, "hide"), 45.0), "the standard cost splits the same way")
+	var shares := Sim.output_shares(data.buildings.butcher.recipes[0])
+	_check(is_equal_approx(shares.beef, 0.95) and is_equal_approx(shares.hide, 0.05), "output_shares reads cost_share")
+	data.buildings.butcher.recipes[0].erase("cost_share")
+	_check(Sim.unit_price(data, "beef") == 90 and Sim.unit_price(data, "hide") == 90, "no cost_share: every unit costs the same ($9 / 10)")
+
+
+## A batch's units carry their share as cost tags, the tags add up to the batch's cost, and
+## cancelling keeps each unit's cost.
+func test_cost_share_batch_tags() -> void:
+	var data := _butcher_data()
+	var state := Sim.new_game(data, T0)
+	var butcher := Sim.find_building(state, Sim.build(state, data, "butcher", Vector2i(5, 5), T0).building_id)
+	state.inventory["cattle"] = 6
+	state["inventory_cost"] = {"cattle": 6000.0}  # $10 each
+	var quote := Sim.batch_quote(state, data, butcher, "cut", 2, "none", T0)
+	_check(is_equal_approx(float(quote.unit_costs.beef), 2000.0 * 0.95 / 18) and is_equal_approx(float(quote.unit_costs.hide), 2000.0 * 0.05 / 2), "the quote splits $20 of cattle: beef $1.06, hide $0.50 each")
+	_check(is_equal_approx(float(quote.per_unit), float(quote.unit_costs.beef)) and int(quote.prices.hide) == 45, "per_unit is the main product's; each has its price")
+	_check(_batch(state, data, butcher, 2).ok, "a 2-hour batch: 2 cattle -> 18 beef + 2 hides")
+	var before := Sim.balance_sheet(state, data, T0)
+	Sim.settle(state, data, T0 + 120)
+	Sim.collect(state, data, butcher.id, T0 + 120)
+	var tags: Dictionary = state.inventory_cost
+	_check(is_equal_approx(float(tags.beef), 1900.0) and is_equal_approx(float(tags.hide), 100.0), "collected: beef carries $19, the hides $1")
+	_check(int(Sim.balance_sheet(state, data, T0 + 120).company_value) == int(before.company_value), "making and collecting doesn't change the company's value")
+	# Cancel a 4-hour batch after 1 hour: the hour made keeps its units' costs.
+	_check(_batch(state, data, butcher, 4, "none", T0 + 120).ok, "a 4-hour batch")
+	Sim.settle(state, data, T0 + 180)
+	Sim.cancel_batch(state, data, butcher.id, T0 + 180)
+	_check(int(butcher.batch.units.beef) == 9 and int(butcher.batch.units.hide) == 1, "cancelled after 1 hour: 9 beef + 1 hide kept")
+	_check(is_equal_approx(float(butcher.batch.cost), 1000.0), "they keep their cost: $10 of cattle")
+	_check(is_equal_approx(Sim.batch_unit_cost(butcher.batch, "hide"), 50.0), "a hide still costs $0.50")
+
+
+## A batch started before by-products has no unit_cost: every unit of it costs the same.
+func test_old_batch_without_unit_cost() -> void:
+	var data := _butcher_data()
+	var state := Sim.new_game(data, T0)
+	var butcher := Sim.find_building(state, Sim.build(state, data, "butcher", Vector2i(5, 5), T0).building_id)
+	state.inventory["cattle"] = 1
+	state["inventory_cost"] = {"cattle": 1000.0}
+	_batch(state, data, butcher, 1)
+	butcher.batch.erase("unit_cost")
+	_check(is_equal_approx(Sim.batch_unit_cost(butcher.batch, "hide"), 100.0), "no unit_cost: $10 / 10 units each")
+	Sim.settle(state, data, T0 + 60)
+	Sim.collect(state, data, butcher.id, T0 + 60)
+	_check(is_equal_approx(float(state.inventory_cost.beef), 900.0) and is_equal_approx(float(state.inventory_cost.hide), 100.0), "collected at the even split")
+
+
 # --- Supermarket (plan.md §5.16) ------------------------------------------------
 
 ## Test data with a Supermarket ("market": 2 shelves, 2 workers at $36/hour). Flour and bread
