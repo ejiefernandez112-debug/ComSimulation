@@ -176,7 +176,10 @@ func _refresh() -> void:
 	_warehouse.text = "%s / %s" % [UITheme.number(stored), UITheme.number(cap)]
 	_warehouse_bar.value = 100.0 * stored / maxf(cap, 1)
 	for resource_id in _items:
-		_items[resource_id].text = UITheme.number(int(Economy.state.inventory.get(resource_id, 0)))
+		var qty := int(Economy.state.inventory.get(resource_id, 0))
+		_items[resource_id].text = UITheme.number(qty)
+		# Many kinds of goods: only those in stock get a chip (chip > row > amount label).
+		_items[resource_id].get_parent().get_parent().visible = qty > 0
 
 
 ## Cash counts smoothly towards the new amount, like coins pouring in.

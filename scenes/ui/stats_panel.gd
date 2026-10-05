@@ -26,6 +26,7 @@ var _tab_buttons := {}
 var _graph_buttons := {}
 var _range_buttons := {}
 var _values := {}  # name -> Label whose text _refresh updates
+var _item_cells := {}  # "rate_wheat" / "life_wheat" -> an item's name cell in the Production grids
 var _population_bar: ProgressBar
 var _happiness_bar: ProgressBar
 var _adults_bar: ProgressBar
@@ -70,14 +71,14 @@ func _production_page() -> VBoxContainer:
 	var now_box := _section(page, "Right now, per minute")
 	var grid := _grid(now_box, ["", "Made", "Used", "Net"])
 	for res in GameData.resources:
-		_item_cell(grid, res)
+		_item_cell(grid, res, "rate_")
 		for column in ["made", "used", "net"]:
 			grid.add_child(_value("rate_%s_%s" % [column, res], true))
 	now_box.add_child(_value("buildings"))
 	var all_box := _section(page, "All time")
 	grid = _grid(all_box, ["", "Made", "Sold", "Earned"])
 	for res in GameData.resources:
-		_item_cell(grid, res)
+		_item_cell(grid, res, "life_")
 		for column in ["made", "sold", "earned"]:
 			grid.add_child(_value("life_%s_%s" % [column, res], true))
 	return page
@@ -339,6 +340,12 @@ func _refresh_production() -> void:
 	for res in GameData.resources:
 		var made := float(rates.made.get(res, 0.0))
 		var used := float(rates.used.get(res, 0.0))
+		# With many kinds of goods, show only those in play: made, used, sold or in stock.
+		var in_play := made > 0.0 or used > 0.0 or int(st.made.get(res, 0)) > 0 or int(st.sold.get(res, 0)) > 0 or int(Economy.state.inventory.get(res, 0)) > 0
+		for group in ["rate_", "life_"]:
+			_item_cells[group + res].visible = in_play
+		for key in ["rate_made_", "rate_used_", "rate_net_", "life_made_", "life_sold_", "life_earned_"]:
+			_values[key + res].visible = in_play
 		_show("rate_made_" + res, _rate(made))
 		_show("rate_used_" + res, _rate(used))
 		_show("rate_net_" + res, ("+" if made - used > 0.05 else "") + _rate(made - used), _signed_color(made - used))
@@ -546,6 +553,7 @@ func _refresh_cash() -> void:
 		var earned := int(st.sales_by_item.get(res, 0))
 		total_in += earned
 		_show("in_sales_" + res, UITheme.money(earned))
+		_values["in_sales_" + res].get_parent().visible = earned > 0  # only goods that have sold
 	_show("in_rent", UITheme.money(int(st.income.get("rent", 0))))
 	_show("in_demolish", UITheme.money(int(st.income.demolish)))
 	_show("in_total", UITheme.money(total_in + int(st.income.get("rent", 0)) + int(st.income.demolish)), UP)
@@ -636,6 +644,8 @@ func _refresh_graph() -> void:
 		"production":
 			var i := 0
 			for res in GameData.resources:
+				if int(Economy.stats().made.get(res, 0)) <= 0:
+					continue  # never made: no line (there are many kinds of goods)
 				lines.append({"name": GameData.resources[res].name, "color": i,
 					"points": _per_minute(history, now, func(p): return float(p.made.get(res, 0)))})
 				i += 1
@@ -711,8 +721,9 @@ func _grid(parent: Control, headers: Array) -> GridContainer:
 
 
 ## First cell of a table row: the item's icon and name.
-func _item_cell(grid: GridContainer, resource_id: String) -> void:
+func _item_cell(grid: GridContainer, resource_id: String, group := "") -> void:
 	var row := HBoxContainer.new()
+	_item_cells[group + resource_id] = row  # so the row can be hidden for items not in play
 	row.add_theme_constant_override("separation", 6)
 	row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var icon := TextureRect.new()

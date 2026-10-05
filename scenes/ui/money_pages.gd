@@ -56,6 +56,7 @@ func refresh_balance() -> void:
 		if int(goods.qty) > 0:
 			text = "%s × %s = %s" % [UITheme.number(int(goods.qty)), UITheme.price(roundi(float(goods.value) / int(goods.qty))), text]
 		_panel._show("bs_goods_" + res, text)
+		_panel._values["bs_goods_" + res].get_parent().visible = int(goods.qty) > 0  # only goods you have
 	_panel._show("bs_in_production", UITheme.money(int(sheet.in_production)))
 	_panel._show("bs_buildings", UITheme.money(int(sheet.buildings)))
 	_panel._show("bs_being_built", UITheme.money(int(sheet.being_built)))

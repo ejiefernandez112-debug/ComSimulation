@@ -207,14 +207,21 @@ func _make_window() -> void:
 	scroll.add_child(_grid)
 	column.add_child(_make_details())
 
-	# The tabs, added after the page so the open tab is drawn over the page's border.
+	# The tabs, added after the page so the open tab is drawn over the page's border. They scroll
+	# when there are more than fit down the window's edge.
+	var tab_scroll := ScrollContainer.new()
+	tab_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	tab_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_SHOW_NEVER  # drag or wheel to scroll
+	tab_scroll.anchor_left = 1.0
+	tab_scroll.anchor_right = 1.0
+	tab_scroll.anchor_bottom = 1.0
+	tab_scroll.offset_left = -TAB_SIZE.x - 1  # over the page's 1px see-through edge, touching its outline
+	tab_scroll.offset_top = 80
+	tab_scroll.offset_bottom = -12
+	_frame.add_child(tab_scroll)
 	var tabs := VBoxContainer.new()
 	tabs.add_theme_constant_override("separation", 6)
-	tabs.anchor_left = 1.0
-	tabs.anchor_right = 1.0
-	tabs.offset_left = -TAB_SIZE.x - 1  # over the page's 1px see-through edge, touching its outline
-	tabs.offset_top = 80
-	_frame.add_child(tabs)
+	tab_scroll.add_child(tabs)
 	for tab in GameData.build_menu.get("tabs", []):
 		if _types_in(tab.id).is_empty():
 			continue  # nothing to build here yet
