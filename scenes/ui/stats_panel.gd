@@ -14,8 +14,8 @@ const GRAPHS := [["cash", "Cash"], ["flow", "Cash flow"], ["people", "People"], 
 const CHILD_ROWS := 6  # age groups listed in "Children by age"; the rest are summed up
 const PEOPLE_FLOW := [["moved_in", "Moved in"], ["born", "Born"], ["grew_up", "Grew up"], ["died", "Died"], ["moved_away", "Left the island"]]
 const RANGES := [[900.0, "15 min"], [3600.0, "1 hour"], [21600.0, "6 hours"]]
-const UP := UITheme.GOOD_TEXT  # money in / surplus, readable on the cream panel
-const DOWN := UITheme.BAD_TEXT  # money out / shortfall
+const UP := UITheme.GOOD  # money in / surplus
+const DOWN := UITheme.BAD  # money out / shortfall
 const AVERAGE_OVER := 600.0  # rate graphs (cash flow, production) show 10-minute averages
 
 var _tab := "production"

@@ -112,13 +112,13 @@ func _build_rows(b: Dictionary, def: Dictionary) -> void:
 	if Economy.needs_road(b):
 		_road_box = _section("No road")
 		_road_text = _wrapped("")
-		_road_text.add_theme_color_override("font_color", UITheme.BAD_TEXT)
+		_road_text.add_theme_color_override("font_color", UITheme.BAD)
 		_road_box.add_child(_road_text)
 	_power_box = null
 	if Economy.power_need(b) > 0.0:
 		_power_box = _section("No power")
 		_power_warning = _wrapped("")
-		_power_warning.add_theme_color_override("font_color", UITheme.BAD_TEXT)
+		_power_warning.add_theme_color_override("font_color", UITheme.BAD)
 		_power_box.add_child(_power_warning)
 
 	if def.category in ["extractor", "processor"]:
@@ -377,7 +377,7 @@ func _refresh_workers(b: Dictionary, def: Dictionary) -> void:
 	var short: bool = Economy.is_built(b) and not Economy.is_suspended(b) and int(w.hired) < int(w.wanted)
 	# Workers tied to it / most it can employ, e.g. "6/8" (always whole people).
 	_workers_text.text = "%d/%d" % [int(w.hired), int(w.max)]
-	UITheme.set_font_color(_workers_text, UITheme.BAD_TEXT if short else UITheme.TEXT_DARK)
+	UITheme.set_font_color(_workers_text, UITheme.BAD if short else UITheme.TEXT)
 	var bonus_pay: float = w.wage_each - w.minimum
 	if bonus_pay > 0.01:
 		_wage_each_text.text = "%s + %s bonus = %s" % [UITheme.dollars(w.minimum), UITheme.dollars(bonus_pay), UITheme.dollars(w.wage_each)]
@@ -527,7 +527,7 @@ func _fill_goods_grid() -> void:
 
 
 ## Supermarket: one row per shelf with its food, price tag and price, a bar of how much has sold,
-## and a red X to take it down. The heading shows the shoppers bonus.
+## and an ✕ to take it down. The heading shows the shoppers bonus.
 func _build_shelves(b: Dictionary) -> void:
 	var box := _section("Shelves")
 	_shoppers_text = _body("")
@@ -553,9 +553,9 @@ func _build_shelves(b: Dictionary) -> void:
 		var detail := _body("")
 		detail.theme_type_variation = "SmallLabel"
 		column.add_child(detail)
-		var take_down := RoundButton.make("red", "close", "", UITheme.ROUND_ICON_SIZE - 10)
+		var take_down := RoundButton.make("BackButton", "close", "", UITheme.ROUND_ICON_SIZE - 6)
 		take_down.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		take_down.tooltip_text = "Take it down: what's sold is paid for, the rest goes back to the warehouse"
+		take_down.button.tooltip_text = "Take it down: what's sold is paid for, the rest goes back to the warehouse"
 		take_down.pressed.connect(func(): clear_shelf_requested.emit(building_id, i))
 		row.add_child(take_down)
 		_shelf_rows.append({"icon": icon, "title": title, "bar": bar, "detail": detail, "take_down": take_down})
@@ -725,7 +725,7 @@ func _refresh_stock_form() -> void:
 	_preview.cost.text = "-" + UITheme.money(int(p.cost))
 	_preview.tax.text = "-" + UITheme.money(int(p.tax))
 	_preview.profit.text = UITheme.money(int(p.profit))
-	UITheme.set_font_color(_preview.profit, UITheme.GOOD_TEXT if int(p.profit) >= 0 else UITheme.BAD_TEXT)
+	UITheme.set_font_color(_preview.profit, UITheme.GOOD if int(p.profit) >= 0 else UITheme.BAD)
 	var item := BuildingInfo.resource_name(_chosen_item)
 	if Economy.store_has_product(building_id, _chosen_item):
 		_stock_button.text = "%s is already on a shelf here" % item

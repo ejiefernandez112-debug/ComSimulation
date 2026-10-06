@@ -1,8 +1,1 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
-  <!-- Water drop (water detail). -->
-  <defs>
-    <linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#8FE3FF"/><stop offset="1" stop-color="#1E78C8"/></linearGradient>
-  </defs>
-  <path d="M64 10 C64 10 22 58 22 82 C22 106 42 120 64 120 C86 120 106 106 106 82 C106 58 64 10 64 10 Z" fill="url(#g)" stroke="#0E2138" stroke-width="6" stroke-linejoin="round"/>
-  <path d="M42 84 C42 96 50 104 60 106" fill="none" stroke="#fff" stroke-opacity="0.75" stroke-width="7" stroke-linecap="round"/>
-</svg>
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 24 24"><g fill="none" stroke="#ffffff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.5c3.6 4.3 6 7.6 6 10.6a6 6 0 0 1-12 0c0-3 2.4-6.3 6-10.6z"/></g></svg>

@@ -1,7 +1,7 @@
 extends SceneTree
 ## Saves the game's look (UITheme.build() in scenes/ui/ui_theme.gd) as a Godot theme file,
 ## assets/ui/game_theme.tres, so scenes made in the editor (like scenes/ui/settings_panel.tscn)
-## show the real cream-and-honey style while you arrange them.
+## show the real look (dark glass panels, see ui_theme.gd) while you arrange them.
 ## Run it again after changing ui_theme.gd:
 ##   "C:\Program Files\Godot\Godot.exe.exe" --headless --path . -s tools/make_theme.gd
 

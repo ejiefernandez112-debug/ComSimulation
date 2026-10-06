@@ -1,11 +1,1 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
-  <!-- Clock (time). -->
-  <defs>
-    <linearGradient id="rim" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#7FD6FF"/><stop offset="1" stop-color="#2C82D6"/></linearGradient>
-  </defs>
-  <circle cx="64" cy="66" r="52" fill="url(#rim)" stroke="#10233A" stroke-width="6"/>
-  <circle cx="64" cy="66" r="38" fill="#FFFDF4" stroke="#10233A" stroke-width="4"/>
-  <path d="M64 66 L64 40 M64 66 L82 76" stroke="#10233A" stroke-width="8" stroke-linecap="round"/>
-  <circle cx="64" cy="66" r="6" fill="#E0402E" stroke="#10233A" stroke-width="3"/>
-  <ellipse cx="44" cy="30" rx="14" ry="6" fill="#fff" fill-opacity="0.55" transform="rotate(-28 44 30)"/>
-</svg>
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 24 24"><g fill="none" stroke="#ffffff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.3 2"/></g></svg>

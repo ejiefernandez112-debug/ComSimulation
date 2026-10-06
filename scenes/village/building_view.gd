@@ -225,7 +225,7 @@ func _draw_no_road() -> void:
 	var r := 12.0
 	_no_road.draw_circle(Vector2.ZERO, r + 2.5, UITheme.OUTLINE, true, -1.0, true)
 	_no_road.draw_circle(Vector2.ZERO, r, Color("d8452f"), true, -1.0, true)
-	_no_road.draw_circle(Vector2.ZERO, r - 3.5, Color("fffdf4"), true, -1.0, true)
+	_no_road.draw_circle(Vector2.ZERO, r - 3.5, Color("1b2430"), true, -1.0, true)  # dark, for the white icon
 	_no_road.draw_texture_rect(UITheme.icon(_sign_icon), Rect2(-6.5, -6.5, 13, 13), false)
 	_no_road.draw_line(Vector2(-6.5, -6.5), Vector2(6.5, 6.5), Color("d8452f"), 2.6, true)
 

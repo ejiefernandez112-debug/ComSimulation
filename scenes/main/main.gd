@@ -50,8 +50,6 @@ func _ready() -> void:
 	Economy.people_changed.connect(_on_people_changed)
 	menu_bar.tile_pressed.connect(_on_menu_tile)
 	menu_bar.coming_soon.connect(func(title): hud.toast("%s is coming soon" % title))
-	# The bottom menu steps aside for anything else that uses the bottom of the screen.
-	menu_bar.hide_while_visible([building_bar, build_menu.placing_bar, build_menu.window()])
 	test_panel.message.connect(hud.toast)
 	hud.happiness_pressed.connect(func(): stats_panel.show_stats("people"))
 	settings_panel.new_game_requested.connect(_ask_new_game)
@@ -64,6 +62,10 @@ func _ready() -> void:
 	ui_root.add_child(_warehouse_panel)
 	ui_root.move_child(_warehouse_panel, confirm_dialog.get_index())  # under the "Are you sure?" window
 	_warehouse_panel.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	# The bottom toolbar steps aside for anything else that uses the bottom of the screen, and for
+	# windows (on a computer a docked window can reach down to the bottom edge).
+	menu_bar.hide_while_visible([building_bar, build_menu.placing_bar, build_menu.window(),
+		building_panel, settings_panel, stats_panel, _warehouse_panel])
 	# Developer tools exist only in test builds (plan.md §10): never loaded for real players.
 	if OS.is_debug_build():
 		var dev_panel: Control = load("res://scenes/debug/dev_panel.gd").new()
@@ -133,7 +135,8 @@ func _unhandled_input(event: InputEvent) -> void:
 
 ## Tapping a building selects it; like Clash of Clans, a building with goods waiting also collects.
 ## Buildings with workers (farms, mills, bakeries, warehouses, water plants…) and power buildings then
-## open their info window in the middle; the others (City Hall, houses) show the action bar at the bottom.
+## open their info window (docked on the left on a computer); the others (City Hall, houses) show the
+## building card at the bottom.
 func _on_building_tapped(building_id: String) -> void:
 	var b := Economy.building(building_id)
 	if not Economy.waiting_goods(b).is_empty():
@@ -300,7 +303,7 @@ func _start_move(building_id: String) -> void:
 	var building_name: String = GameData.buildings[Economy.building(building_id).type].name
 	building_panel.close()
 	_deselect()
-	build_menu.show_placing("Moving %s: drag it to a free spot, then tap the green tick" % building_name)
+	build_menu.show_placing("Moving %s: drag it to a free spot, then tap the blue tick" % building_name)
 	village.start_moving(building_id)  # after the bar is up, so the ghost's first check reaches it
 
 
