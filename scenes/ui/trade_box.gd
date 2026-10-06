@@ -38,8 +38,7 @@ func setup(width: float) -> void:
 		var button := Button.new()
 		button.text = "Sell to the trader" if side == "sell" else "Buy from the trader"
 		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		button.custom_minimum_size.y = 48
-		button.add_theme_font_size_override("font_size", 17)
+		UITheme.size_button(button, "normal")
 		button.pressed.connect(func():
 			_side = side
 			_item = ""
@@ -55,8 +54,8 @@ func setup(width: float) -> void:
 	for kind in [""] + categories.keys():
 		var button := Button.new()
 		button.text = "All" if kind == "" else Economy.category_name(kind)
-		button.custom_minimum_size = Vector2(80, 38)
-		button.add_theme_font_size_override("font_size", 15)
+		UITheme.size_button(button, "small")
+		button.custom_minimum_size.x = 80
 		button.pressed.connect(func():
 			_kind = kind
 			_item = ""
@@ -90,10 +89,9 @@ func setup(width: float) -> void:
 	_amount_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	amount_row.add_child(_amount_label)
 	var all := Button.new()
-	all.theme_type_variation = "BlueButton"
+	all.theme_type_variation = ""
 	all.text = "All"
-	all.custom_minimum_size = Vector2(70, 42)
-	all.add_theme_font_size_override("font_size", 16)
+	UITheme.size_button(all, "small")
 	all.pressed.connect(func():
 		_amount = _most()
 		refresh())
@@ -102,7 +100,8 @@ func setup(width: float) -> void:
 	for key in ["price", "total", "tax", "earned", "cost", "profit", "cash"]:
 		_lines[key] = _figure_row(key)
 	_go = Button.new()
-	_go.custom_minimum_size = Vector2(300, 56)
+	UITheme.size_button(_go, "big")
+	_go.custom_minimum_size.x = 300
 	_go.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	# Greyed when it can't trade, but still tappable, so the player is told why.
 	_go.pressed.connect(func(): trade_requested.emit(_side, _item, _amount))
@@ -112,9 +111,9 @@ func setup(width: float) -> void:
 ## Brings the box up to date (the building window calls this on every Economy change).
 func refresh() -> void:
 	for side in _side_buttons:
-		_side_buttons[side].theme_type_variation = "YellowButton" if side == _side else "BlueButton"
+		_side_buttons[side].theme_type_variation = "ChipOnButton" if side == _side else "ChipButton"
 	for kind in _kind_buttons:
-		_kind_buttons[kind].theme_type_variation = "YellowButton" if kind == _kind else "BlueButton"
+		_kind_buttons[kind].theme_type_variation = "ChipOnButton" if kind == _kind else "ChipButton"
 	var list := _list()
 	if list != _shown_items:
 		_fill_items(list)
@@ -123,7 +122,7 @@ func refresh() -> void:
 		_amount = mini(_most(), 100) if _side == "buy" else _most()
 	var stock: Dictionary = Economy.state.inventory
 	for res in _item_buttons:
-		_item_buttons[res].theme_type_variation = "YellowButton" if res == _item else "BlueButton"
+		_item_buttons[res].theme_type_variation = "ChipOnButton" if res == _item else "ChipButton"
 		_item_buttons[res].text = "%s  %s" % [BuildingInfo.resource_name(res), UITheme.number(int(stock.get(res, 0)))]
 	_empty_note.visible = list.is_empty()
 	_empty_note.text = "Nothing of this kind in your warehouse to sell." if _side == "sell" else "Nothing of this kind."
@@ -158,9 +157,9 @@ func _fill_items(list: Array) -> void:
 		var button := Button.new()
 		button.icon = UITheme.icon(res)
 		button.expand_icon = true
-		button.custom_minimum_size = Vector2(150, 46)
+		UITheme.size_button(button, "small")
+		button.custom_minimum_size.x = 150
 		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		button.add_theme_font_size_override("font_size", 16)
 		button.pressed.connect(func():
 			_item = res
 			_amount = mini(_most(), 100) if _side == "buy" else _most()
@@ -190,7 +189,7 @@ func _refresh_lines() -> void:
 		for key in _lines:
 			_lines[key].text = "-"
 		_go.text = "Choose an item"
-		_go.theme_type_variation = "GreyButton"
+		_go.theme_type_variation = "BackButton"
 		return
 	var item_name := BuildingInfo.resource_name(_item)
 	var normal := Economy.unit_price(_item)
@@ -204,9 +203,9 @@ func _refresh_lines() -> void:
 		_lines.cost.text = UITheme.money(int(check.get("cost", 0)))
 		var profit := int(check.get("profit", 0))
 		_lines.profit.text = ("" if profit >= 0 else "-") + UITheme.money(absi(profit))
-		_lines.profit.add_theme_color_override("font_color", UITheme.GOOD.darkened(0.35) if profit >= 0 else UITheme.BAD.darkened(0.3))
+		_lines.profit.add_theme_color_override("font_color", UITheme.GOOD_TEXT if profit >= 0 else UITheme.BAD_TEXT)
 		_go.text = "Sell %s %s" % [UITheme.number(_amount), item_name]
-		_go.theme_type_variation = "YellowButton" if check.ok and _amount > 0 else "GreyButton"
+		_go.theme_type_variation = "GoButton" if check.ok and _amount > 0 else "BackButton"
 		_go.tooltip_text = "Sold at once; the money reaches cash now" if check.ok else str(check.error)
 	else:
 		var check := Economy.can_trade_buy(_item, maxi(_amount, 1))
@@ -215,7 +214,7 @@ func _refresh_lines() -> void:
 		_lines.total.text = UITheme.money(price * _amount)
 		_lines.cash.text = UITheme.money(Economy.currency() - price * _amount)
 		_go.text = "Buy %s %s" % [UITheme.number(_amount), item_name]
-		_go.theme_type_variation = "YellowButton" if check.ok and _amount > 0 else "GreyButton"
+		_go.theme_type_variation = "GoButton" if check.ok and _amount > 0 else "BackButton"
 		_go.tooltip_text = "Paid now; the goods go into your warehouse" if check.ok else str(check.error)
 
 
@@ -233,9 +232,4 @@ func _figure_row(key: String) -> Label:
 
 
 func _label(text: String, font_size: int) -> Label:
-	var label := Label.new()
-	label.theme_type_variation = "BodyLabel"
-	label.text = text
-	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	label.add_theme_font_size_override("font_size", font_size)
-	return label
+	return UITheme.label(text, UITheme.style_for(font_size))

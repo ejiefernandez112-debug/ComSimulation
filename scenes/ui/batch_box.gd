@@ -71,8 +71,8 @@ func _build_setup() -> void:
 			button.icon = UITheme.icon(out)
 			button.expand_icon = true
 			button.text = BuildingInfo.resource_name(out)
-			button.custom_minimum_size = Vector2(130, 44)
-			button.add_theme_font_size_override("font_size", 16)
+			UITheme.size_button(button, "small")
+			button.custom_minimum_size.x = 130
 			button.pressed.connect(_on_product_pressed.bind(str(r.id)))
 			products.add_child(button)
 			_product_buttons[str(r.id)] = button
@@ -93,8 +93,7 @@ func _build_setup() -> void:
 		button.text = "None" if extra <= 0.0 else "+%d%%" % roundi(extra * 100.0)
 		button.tooltip_text = "%s bonus: wages +%d%%, the batch makes +%d%% units" % [level.capitalize(), roundi(float(wages[level]) * 100.0), roundi(extra * 100.0)]
 		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		button.custom_minimum_size.y = 40
-		button.add_theme_font_size_override("font_size", 16)
+		UITheme.size_button(button, "small")
 		button.pressed.connect(func():
 			_bonus = level
 			refresh())
@@ -111,11 +110,10 @@ func _build_setup() -> void:
 	length.add_child(_finish_text)
 	length.add_child(_step_button("+", 1, "One hour more"))
 	var all := Button.new()
-	all.theme_type_variation = "BlueButton"
+	all.theme_type_variation = ""
 	all.text = "All"
 	all.tooltip_text = "As long as your ingredients and cash allow"
-	all.custom_minimum_size = Vector2(70, 44)
-	all.add_theme_font_size_override("font_size", 17)
+	UITheme.size_button(all, "small")
 	all.pressed.connect(func():
 		_hours = maxi(_most_hours(), 1)
 		refresh())
@@ -126,7 +124,8 @@ func _build_setup() -> void:
 	_note = _wrapped("", 15)
 	_setup.add_child(_note)
 	_start = Button.new()
-	_start.custom_minimum_size = Vector2(300, 56)
+	UITheme.size_button(_start, "big")
+	_start.custom_minimum_size.x = 300
 	_start.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	# Greyed when it can't start, but still tappable, so the player is told why.
 	_start.pressed.connect(func(): start_requested.emit(building_id, _recipe_id(Economy.building(building_id)), _hours, _bonus))
@@ -152,19 +151,20 @@ func _build_running() -> void:
 	row.add_child(_ready_text)
 	_collect = Button.new()
 	_collect.expand_icon = true
-	_collect.custom_minimum_size = Vector2(190, 56)
+	UITheme.size_button(_collect, "normal")
+	_collect.custom_minimum_size.x = 190
 	_collect.pressed.connect(func(): collect_requested.emit(building_id))
 	row.add_child(_collect)
 	_locked = _wrapped("", 15)
 	_running.add_child(_locked)
 	_cancel = Button.new()
-	_cancel.theme_type_variation = "RedButton"
+	_cancel.theme_type_variation = "DangerButton"
 	_cancel.text = "Cancel batch"
 	_cancel.icon = UITheme.icon("close")
 	_cancel.expand_icon = true
-	_cancel.custom_minimum_size = Vector2(190, 44)
+	UITheme.size_button(_cancel, "small")
+	_cancel.custom_minimum_size.x = 190
 	_cancel.size_flags_horizontal = Control.SIZE_SHRINK_END
-	_cancel.add_theme_font_size_override("font_size", 16)
 	_cancel.tooltip_text = "Stop it: the hours made are kept, part of the rest is given back"
 	_cancel.pressed.connect(func(): cancel_requested.emit(building_id))
 	_running.add_child(_cancel)
@@ -228,7 +228,7 @@ func _refresh_setup(b: Dictionary) -> void:
 		_hours = mini(Economy.batch_default_hours(), most)
 	_hours = clampi(_hours, 1, limit)
 	for level in _bonus_buttons:
-		_bonus_buttons[level].theme_type_variation = "YellowButton" if level == _bonus else "BlueButton"
+		_bonus_buttons[level].theme_type_variation = "ChipOnButton" if level == _bonus else "ChipButton"
 	var q := Economy.batch_quote(b, _recipe_id(b), _hours, _bonus)
 	if q.is_empty():
 		return
@@ -260,7 +260,7 @@ func _refresh_setup(b: Dictionary) -> void:
 	_note.text = " ".join(notes)
 	var check := Economy.can_start_batch(building_id, _recipe_id(b), _hours, _bonus)
 	_start.text = "Start %s h batch" % _amount(real_hours)
-	_start.theme_type_variation = "YellowButton" if check.ok else "GreyButton"
+	_start.theme_type_variation = "GoButton" if check.ok else "BackButton"
 	_start.tooltip_text = "Pays the ingredients and wages now" if check.ok else str(check.error)
 
 
@@ -270,11 +270,11 @@ func _refresh_products(b: Dictionary) -> void:
 	var shown := _recipe_id(b)
 	var switchable := Economy.is_switchable(b.type)
 	for id in _product_buttons:
-		var variation := "BlueButton"
+		var variation := "ChipButton"
 		if id == shown:
-			variation = "YellowButton"
+			variation = "ChipOnButton"
 		elif current != "" and not switchable:
-			variation = "GreyButton"  # a factory's product is for good
+			variation = "BackButton"  # a factory's product is for good
 		_product_buttons[id].theme_type_variation = variation
 	var kind: String = GameData.buildings[b.type].name
 	var item := BuildingInfo.resource_name(BuildingInfo.output_of(BuildingInfo.recipe_of(b)))
@@ -319,11 +319,10 @@ func _refresh_running(b: Dictionary) -> void:
 
 func _step_button(text: String, step: int, tip: String) -> Button:
 	var button := Button.new()
-	button.theme_type_variation = "BlueButton"
+	button.theme_type_variation = ""
 	button.text = text
 	button.tooltip_text = tip
-	button.custom_minimum_size = Vector2(52, 44)
-	button.add_theme_font_size_override("font_size", 22)
+	UITheme.size_button(button, "small")
 	button.pressed.connect(func():
 		_hours = clampi(_hours + step, 1, Economy.batch_hours_limit())
 		refresh())
@@ -344,12 +343,7 @@ func _figure_row(parent: Control, title: String) -> Label:
 
 
 func _label(text: String, font_size: int) -> Label:
-	var label := Label.new()
-	label.theme_type_variation = "BodyLabel"
-	label.text = text
-	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	label.add_theme_font_size_override("font_size", font_size)
-	return label
+	return UITheme.label(text, UITheme.style_for(font_size))
 
 
 func _wrapped(text: String, font_size: int) -> Label:

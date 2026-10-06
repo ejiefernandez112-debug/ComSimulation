@@ -1,5 +1,5 @@
 extends Control
-## The always-on HUD, Clash-of-Clans style: resource bars in the top-right corner (cash,
+## The always-on HUD: cream bubbles in the top-right corner (cash,
 ## population, happiness, warehouse) with a chip for each item in the warehouse, and short
 ## messages ("toasts") at the top. Shows numbers from Economy; decides nothing itself.
 ## (The menu buttons live in the bottom menu bar, menu_bar.gd.)
@@ -40,11 +40,10 @@ func toast(text: String, bad := false) -> void:
 	pill.theme_type_variation = "HudPill"
 	pill.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	pill.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	var label := Label.new()
-	label.text = text
+	var label := UITheme.label(text)
 	label.add_theme_font_size_override("font_size", 20)
 	if bad:
-		label.add_theme_color_override("font_color", UITheme.BAD)
+		label.add_theme_color_override("font_color", UITheme.BAD_TEXT)
 	pill.add_child(label)
 	_toast_box.add_child(pill)
 	if _toast_box.get_child_count() > 3:
@@ -94,15 +93,15 @@ func _build_resources() -> void:
 		var row := HBoxContainer.new()
 		row.add_theme_constant_override("separation", 4)
 		chip.add_child(row)
-		row.add_child(_icon_rect(UITheme.icon(resource_id), 26))
-		var amount := Label.new()
+		row.add_child(_icon_rect(resource_id, 26))
+		var amount := UITheme.label("")
 		amount.add_theme_font_size_override("font_size", 17)
 		row.add_child(amount)
 		chips.add_child(chip)
 		_items[resource_id] = amount
 
 
-## One HUD row: a dark pill holding the number (and a fill bar), with the icon overlapping its
+## One HUD row: a cream pill holding the number (and a fill bar), with the icon overlapping its
 ## right end. Returns {"row", "label", "bar"}; bar is null when `bar_style` is "".
 func _resource_row(parent: Control, icon_name: String, bar_style: String) -> Dictionary:
 	var row := Control.new()
@@ -124,27 +123,22 @@ func _resource_row(parent: Control, icon_name: String, bar_style: String) -> Dic
 		bar.position = Vector2(6, 26)
 		bar.size = Vector2(ROW_WIDTH - 52, 9)
 		row.add_child(bar)
-	var label := Label.new()
+	var label := UITheme.label("", "BigLabel")
 	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	label.position = Vector2(8, 2)
 	label.size = Vector2(ROW_WIDTH - 66, 30 if bar else 40)
-	label.add_theme_font_size_override("font_size", 21 if bar else 24)
+	label.add_theme_font_size_override("font_size", 20 if bar else 24)
 	row.add_child(label)
-	var icon := _icon_rect(UITheme.icon(icon_name), 46)
+	var icon := _icon_rect(icon_name, 46)
 	icon.position = Vector2(ROW_WIDTH - 46, 0)
 	row.add_child(icon)
 	return {"row": row, "label": label, "bar": bar}
 
 
-func _icon_rect(texture: Texture2D, side: float) -> TextureRect:
-	var rect := TextureRect.new()
-	rect.texture = texture
-	rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	rect.custom_minimum_size = Vector2(side, side)
+func _icon_rect(icon_name: String, side: float) -> TextureRect:
+	var rect := UITheme.icon_rect(icon_name, side)
 	rect.size = Vector2(side, side)
-	rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	return rect
 
 
@@ -187,4 +181,4 @@ func _show_cash(value: float) -> void:
 	_shown_cash = value
 	_cash.text = UITheme.money(roundi(value))
 	# In debt (wages can take cash below 0): show it in red.
-	_cash.add_theme_color_override("font_color", UITheme.BAD if value < 0.0 else UITheme.TEXT)
+	_cash.add_theme_color_override("font_color", UITheme.BAD_TEXT if value < 0.0 else UITheme.TEXT_DARK)

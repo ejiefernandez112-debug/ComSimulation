@@ -14,8 +14,8 @@ const GRAPHS := [["cash", "Cash"], ["flow", "Cash flow"], ["people", "People"], 
 const CHILD_ROWS := 6  # age groups listed in "Children by age"; the rest are summed up
 const PEOPLE_FLOW := [["moved_in", "Moved in"], ["born", "Born"], ["grew_up", "Grew up"], ["died", "Died"], ["moved_away", "Left the island"]]
 const RANGES := [[900.0, "15 min"], [3600.0, "1 hour"], [21600.0, "6 hours"]]
-const UP := Color("2f7a1f")  # money in / surplus, readable on the cream panel
-const DOWN := Color("b63a2b")  # money out / shortfall
+const UP := UITheme.GOOD_TEXT  # money in / surplus, readable on the cream panel
+const DOWN := UITheme.BAD_TEXT  # money out / shortfall
 const AVERAGE_OVER := 600.0  # rate graphs (cash flow, production) show 10-minute averages
 
 var _tab := "production"
@@ -109,7 +109,7 @@ func _people_page() -> VBoxContainer:
 	var wealth_note := _body("Wealth comes from the wage: no job = Broke, the minimum wage = Poor, a wage bonus = Well off. Rich classes need skilled jobs (schools, later).")
 	wealth_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	wealth_note.custom_minimum_size.x = WIDTH - 90
-	wealth_note.add_theme_font_size_override("font_size", 15)
+	wealth_note.theme_type_variation = "SmallLabel"
 	wealth_note.modulate.a = 0.8
 	wealth.add_child(wealth_note)
 	var kids := _section(page, "Children by age")
@@ -134,7 +134,7 @@ func _people_page() -> VBoxContainer:
 	var why := _body(_happiness_explanation())
 	why.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	why.custom_minimum_size.x = WIDTH - 90
-	why.add_theme_font_size_override("font_size", 15)
+	why.theme_type_variation = "SmallLabel"
 	why.modulate.a = 0.8
 	mood.add_child(why)
 	var work := _section(page, "Work")
@@ -159,7 +159,7 @@ func _cash_page() -> VBoxContainer:
 	var page := _page()
 	var now_box := _section(page, "Cash")
 	now_box.add_child(_value("cash"))
-	_values.cash.add_theme_font_size_override("font_size", 26)
+	_values.cash.theme_type_variation = "BigLabel"
 	var recent := _section(page, "Last hour")
 	_values["flow_title"] = recent.get_child(0).get_child(0)  # the section heading names the real time span
 	_value_row(recent, "Money in", "flow_in")
@@ -189,7 +189,7 @@ func _cash_page() -> VBoxContainer:
 	var how := _body("Progressive: the first $5,000 sold in 24 hours is tax-free, then each part of a sale pays its bracket's rate (8%, 15%, 22%). Selling more never leaves you with less.")
 	how.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	how.custom_minimum_size.x = WIDTH - 90
-	how.add_theme_font_size_override("font_size", 15)
+	how.theme_type_variation = "SmallLabel"
 	how.modulate.a = 0.8
 	tax.add_child(how)
 	var water := _section(page, "Water bill")
@@ -200,7 +200,7 @@ func _cash_page() -> VBoxContainer:
 	var water_how := _body(_water_explanation())
 	water_how.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	water_how.custom_minimum_size.x = WIDTH - 90
-	water_how.add_theme_font_size_override("font_size", 15)
+	water_how.theme_type_variation = "SmallLabel"
 	water_how.modulate.a = 0.8
 	water.add_child(water_how)
 	if Economy.power_on():
@@ -212,7 +212,7 @@ func _cash_page() -> VBoxContainer:
 		var power_how := _body(_power_explanation())
 		power_how.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		power_how.custom_minimum_size.x = WIDTH - 90
-		power_how.add_theme_font_size_override("font_size", 15)
+		power_how.theme_type_variation = "SmallLabel"
 		power_how.modulate.a = 0.8
 		power.add_child(power_how)
 	return page
@@ -308,7 +308,7 @@ func _graphs_page() -> VBoxContainer:
 	var hint := _body("Point at (or drag across) the graph to see the values at that time. Per-minute rates are 10-minute averages.")
 	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	hint.custom_minimum_size.x = WIDTH - 70
-	hint.add_theme_font_size_override("font_size", 15)
+	hint.theme_type_variation = "SmallLabel"
 	hint.modulate.a = 0.8
 	page.add_child(hint)
 	return page
@@ -697,7 +697,7 @@ func _section(parent: Control, title: String) -> VBoxContainer:
 	column.add_child(header)
 	var heading := Label.new()
 	heading.text = title
-	heading.add_theme_font_size_override("font_size", 19)
+	heading.theme_type_variation = "HeadingLabel"
 	header.add_child(heading)
 	return column
 
@@ -711,7 +711,7 @@ func _grid(parent: Control, headers: Array) -> GridContainer:
 	parent.add_child(grid)
 	for i in headers.size():
 		var label := _body(headers[i])
-		label.add_theme_font_size_override("font_size", 15)
+		label.theme_type_variation = "SmallLabel"
 		label.modulate.a = 0.75
 		if i > 0:
 			label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
@@ -778,8 +778,8 @@ func _button_row(parent: Control, items: Array, store: Dictionary, on_pick: Call
 		var button := Button.new()
 		button.text = item[1]
 		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		button.custom_minimum_size.y = 44
-		button.add_theme_font_size_override("font_size", 16)
+		UITheme.size_button(button, "small")
+		button.custom_minimum_size.x = 0
 		button.pressed.connect(on_pick.bind(item[0]))
 		row.add_child(button)
 		store[item[0]] = button
@@ -788,15 +788,11 @@ func _button_row(parent: Control, items: Array, store: Dictionary, on_pick: Call
 
 func _highlight(store: Dictionary, chosen: String) -> void:
 	for id in store:
-		store[id].theme_type_variation = "YellowButton" if id == chosen else "BlueButton"
+		store[id].theme_type_variation = "ChipOnButton" if id == chosen else "ChipButton"
 
 
 func _body(text: String) -> Label:
-	var label := Label.new()
-	label.theme_type_variation = "BodyLabel"
-	label.text = text
-	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	return label
+	return UITheme.label(text)
 
 
 func _sum(amounts: Dictionary) -> int:

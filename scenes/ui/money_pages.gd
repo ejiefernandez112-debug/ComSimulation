@@ -9,7 +9,6 @@ extends RefCounted
 const NAMES := {"rent": "Rent", "demolish": "Demolish refunds", "batch_refunds": "Cancelled batches",
 	"construction": "Construction", "roads": "Roads", "wages": "Wages", "water": "Water", "power": "Power", "tax": "Sales tax",
 	"switch_fees": "Switching products", "purchases": "Trading Post purchases"}
-const NOTE_SIZE := 15
 
 var _panel  # the Statistics window (stats_panel.gd)
 var _log_rows: VBoxContainer  # the finished blocks of the money log, rebuilt when a block ends
@@ -40,7 +39,7 @@ func build_balance(page: VBoxContainer) -> void:
 	_panel._value_row(owe, "Total owed", "bs_owed")
 	var value: VBoxContainer = _panel._section(page, "Company value")
 	value.add_child(_panel._value("bs_value"))
-	_panel._values.bs_value.add_theme_font_size_override("font_size", 26)
+	_panel._values.bs_value.theme_type_variation = "BigLabel"
 	_panel._value_row(value, "Starting capital", "bs_capital")
 	_panel._value_row(value, "Profit kept since the start", "bs_profit")
 	page.add_child(_note("Company value = what you own − what you owe. Goods count at what they cost to make, buildings and roads at the price paid (the starter buildings and roads at their build cost, as part of the starting capital). Shop sales not paid yet = goods sold from Supermarket shelves, paid (after sales tax) when the shelf sells out or is taken down. Profit kept = how much the company has grown since the start."))
@@ -208,8 +207,7 @@ func _note(text: String) -> Label:
 	var label: Label = _panel._body(text)
 	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	label.custom_minimum_size.x = _panel.WIDTH - 90
-	label.add_theme_font_size_override("font_size", NOTE_SIZE)
-	label.modulate.a = 0.8
+	label.theme_type_variation = "SmallLabel"
 	return label
 
 

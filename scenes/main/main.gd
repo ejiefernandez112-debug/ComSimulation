@@ -203,7 +203,7 @@ func _ask_start_batch(building_id: String, recipe_id: String, hours: int, bonus:
 		else:
 			lines.append("This %s will make %s for good: build another one to make something else." % [GameData.buildings[b.type].name, item])
 	confirm_dialog.ask("Start this batch?", "\n".join(lines), 0, {}, "Start",
-		_start_batch.bind(building_id, recipe_id, hours, bonus), "Back", "GreenButton")
+		_start_batch.bind(building_id, recipe_id, hours, bonus), "Back", "GoButton")
 
 
 ## Switching a Plantation (or Ranch) to another product costs a fee (plan.md §5.21), so ask.
@@ -216,7 +216,7 @@ func _ask_switch_product(building_id: String, recipe_id: String) -> void:
 	var item := BuildingInfo.resource_name(BuildingInfo.output_of(BuildingInfo.recipe_of({"type": b.type, "product": recipe_id})))
 	var now_item := BuildingInfo.resource_name(BuildingInfo.output_of(BuildingInfo.recipe_of(b)))
 	confirm_dialog.ask("Switch to %s?" % item, "This %s stops making %s and makes %s from its next batch.\nSwitching costs %s, paid now." % [GameData.buildings[b.type].name, now_item, item, UITheme.money(int(check.fee))],
-		0, {}, "Switch", _switch_product.bind(building_id, recipe_id), "Back", "GreenButton")
+		0, {}, "Switch", _switch_product.bind(building_id, recipe_id), "Back", "GoButton")
 
 
 func _switch_product(building_id: String, recipe_id: String) -> void:

@@ -1,6 +1,6 @@
 extends Control
 ## The main menu along the bottom centre of the screen, Tropico-style: a row of paper cards, each
-## with an icon, clipped onto a blue folder with its name underneath. Pointing at a card lifts it.
+## with an icon, clipped onto a caramel folder with its name underneath. Pointing at a card lifts it.
 ## Cards for screens that aren't built yet are greyed with a lock ("coming soon").
 ## It steps aside (slides down) while something else is using the bottom of the screen, such as a
 ## building's action bar or Placement Mode. The cards only ask (signals); main.gd opens things.
@@ -78,7 +78,7 @@ func _set_drop(drop: float) -> void:
 	_row.offset_top = _row.offset_bottom - TILE_SIZE.y
 
 
-## One tile: the blue folder, the tilted paper card with the icon, the name, and an invisible
+## One tile: the caramel folder, the tilted paper card with the icon, the name, and an invisible
 ## button over the lot that catches taps and the pointer.
 func _make_tile(tile: Dictionary, tilt: float) -> Control:
 	var soon: bool = tile.get("soon", false)
@@ -98,8 +98,7 @@ func _make_tile(tile: Dictionary, tilt: float) -> Control:
 	var icon := _picture(UITheme.icon(tile.icon), Vector2(56, 56))
 	icon.position = Vector2(14, 10)
 	card.add_child(icon)
-	var caption := Label.new()
-	caption.text = tile.title
+	var caption := UITheme.label(tile.title, "OutlineLabel")
 	caption.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	caption.add_theme_font_size_override("font_size", 16)
 	caption.position = Vector2(4, 90)

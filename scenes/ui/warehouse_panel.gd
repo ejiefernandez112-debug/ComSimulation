@@ -32,7 +32,6 @@ func show_stock() -> void:
 	_list.add_theme_constant_override("separation", 6)
 	content.add_child(_list)
 	var hint := _label("More room: build another Warehouse, or give your warehouses more workers.", 15)
-	hint.theme_type_variation = "BodyLabel"
 	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	hint.custom_minimum_size.x = WIDTH - 70
 	content.add_child(hint)
@@ -64,7 +63,6 @@ func _refresh() -> void:
 		_list.add_child(_row(res, qty))
 	if not any:
 		var empty := _label("Nothing in stock yet. Collect goods from your buildings to fill it.", 17)
-		empty.theme_type_variation = "BodyLabel"
 		_list.add_child(empty)
 
 
@@ -75,12 +73,7 @@ func _row(res: String, qty: int) -> PanelContainer:
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 12)
 	box.add_child(row)
-	var icon := TextureRect.new()
-	icon.texture = UITheme.icon(res)
-	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	icon.custom_minimum_size = Vector2(36, 36)
-	row.add_child(icon)
+	row.add_child(UITheme.icon_rect(res, 36))
 	# The name, with its cost tag underneath: what this stock cost you to make or buy (§5.14).
 	var names := VBoxContainer.new()
 	names.add_theme_constant_override("separation", -4)
@@ -88,16 +81,13 @@ func _row(res: String, qty: int) -> PanelContainer:
 	row.add_child(names)
 	names.add_child(_label(BuildingInfo.resource_name(res), 20))
 	var tag := _label("made for %s each" % UITheme.price(roundi(Economy.average_cost(res))), 14)
-	tag.theme_type_variation = "BodyLabel"
 	names.add_child(tag)
 	row.add_child(_label(UITheme.number(qty), 20))
 	var each := _label("sells %s" % UITheme.price(Economy.unit_price(res)), 16)
-	each.theme_type_variation = "BodyLabel"
 	each.custom_minimum_size.x = 100
 	each.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	row.add_child(each)
 	var worth := _label("worth %s" % UITheme.money(qty * Economy.unit_price(res)), 16)
-	worth.theme_type_variation = "BodyLabel"
 	worth.custom_minimum_size.x = 130
 	worth.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	row.add_child(worth)
@@ -105,8 +95,4 @@ func _row(res: String, qty: int) -> PanelContainer:
 
 
 func _label(text: String, font_size: int) -> Label:
-	var label := Label.new()
-	label.text = text
-	label.add_theme_font_size_override("font_size", font_size)
-	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	return label
+	return UITheme.label(text, UITheme.style_for(font_size))

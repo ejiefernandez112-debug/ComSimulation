@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <!-- Chip button skin (9-patch): rounded, soft outline, a darker lip along the bottom and a shine. -->
+  <defs>
+    <linearGradient id="face" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFCF3"/>
+      <stop offset="1" stop-color="#F6E7C8"/>
+    </linearGradient>
+  </defs>
+  <rect x="1" y="5" width="62" height="58" rx="17" fill="#7A4A1F" fill-opacity="0.22"/>
+  <rect x="1" y="1" width="62" height="58" rx="17" fill="#B98A52"/>
+  <rect x="4" y="4" width="56" height="52" rx="14" fill="#DDC197"/>
+  <rect x="4" y="4" width="56" height="46" rx="14" fill="url(#face)"/>
+  <rect x="10" y="8" width="30" height="7" rx="3.5" fill="#fff" fill-opacity="0.8"/>
+  <circle cx="53" cy="12" r="2.5" fill="#fff" fill-opacity="0.8"/>
+</svg>

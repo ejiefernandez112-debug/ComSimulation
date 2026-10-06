@@ -23,13 +23,13 @@ var _taps: Array = []  # times of recent taps on the cash bar (ms)
 func _ready() -> void:
 	super()
 	var hint := _text("Only in test builds. Opens with F12, or 5 quick taps on the cash bar.")
-	hint.add_theme_font_size_override("font_size", 15)
+	hint.theme_type_variation = "SmallLabel"
 	hint.modulate.a = 0.75
 	content.add_child(hint)
 
 	var box := _section("Cash")
 	_cash = _text("")
-	_cash.add_theme_font_size_override("font_size", 26)
+	_cash.theme_type_variation = "BigLabel"
 	box.add_child(_cash)
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 8)
@@ -37,25 +37,25 @@ func _ready() -> void:
 	_amount = LineEdit.new()
 	_amount.placeholder_text = "Amount in $, e.g. 5000"
 	_amount.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_amount.custom_minimum_size.y = 46
+	_amount.custom_minimum_size.y = UITheme.SIZES.small.min.y
 	_amount.text_submitted.connect(func(_text: String): _add())
 	row.add_child(_amount)
-	row.add_child(_button("Add", "GreenButton", _add))
-	row.add_child(_button("Set to", "BlueButton", _set_cash))
+	row.add_child(_button("Add", "GoButton", _add))
+	row.add_child(_button("Set to", "", _set_cash))
 	var quick := HBoxContainer.new()
 	quick.add_theme_constant_override("separation", 8)
 	box.add_child(quick)
 	for amount in QUICK_ADD:
-		var button := _button("+" + UITheme.dollars(amount), "YellowButton", _quick_add.bind(amount))
+		var button := _button("+" + UITheme.dollars(amount), "", _quick_add.bind(amount))
 		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		quick.add_child(button)
-	quick.add_child(_button("Set $0", "RedButton", func(): _apply(Economy.dev_set_cash(0), "Cash set to $0")))
+	quick.add_child(_button("Set $0", "DangerButton", func(): _apply(Economy.dev_set_cash(0), "Cash set to $0")))
 	_message = _text("")
 	box.add_child(_message)
 
 	var rent_box := _section("Rent per household (per hour)")
 	var rent_hint := _text("Households that can't afford the new rent move to cheaper homes, or become homeless.")
-	rent_hint.add_theme_font_size_override("font_size", 15)
+	rent_hint.theme_type_variation = "SmallLabel"
 	rent_hint.modulate.a = 0.75
 	rent_box.add_child(rent_hint)
 	for type_id in GameData.buildings:
@@ -74,8 +74,8 @@ func _ready() -> void:
 		line.add_child(value)
 		_rent_labels[type_id] = value
 		for step in RENT_STEPS:
-			line.add_child(_button("%+d" % step, "YellowButton" if step > 0 else "BlueButton", _change_rent.bind(type_id, step)))
-		line.add_child(_button("Reset", "RedButton", _reset_rent.bind(type_id)))
+			line.add_child(_button("%+d" % step, "ChipOnButton" if step > 0 else "ChipButton", _change_rent.bind(type_id, step)))
+		line.add_child(_button("Reset", "DangerButton", _reset_rent.bind(type_id)))
 	Economy.changed.connect(_refresh)
 
 
@@ -157,27 +157,15 @@ func _section(title: String) -> VBoxContainer:
 	var column := VBoxContainer.new()
 	column.add_theme_constant_override("separation", 8)
 	panel.add_child(column)
-	var heading := Label.new()
-	heading.text = title
-	heading.add_theme_font_size_override("font_size", 19)
-	column.add_child(heading)
+	column.add_child(UITheme.label(title, "HeadingLabel"))
 	return column
 
 
 func _button(text: String, variation: String, action: Callable) -> Button:
-	var button := Button.new()
-	button.text = text
-	button.theme_type_variation = variation
-	button.custom_minimum_size.y = 46
-	button.add_theme_font_size_override("font_size", 17)
+	var button := UITheme.button(text, variation, "small")
 	button.pressed.connect(action)
 	return button
 
 
 func _text(text: String) -> Label:
-	var label := Label.new()
-	label.theme_type_variation = "BodyLabel"
-	label.text = text
-	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	label.custom_minimum_size.x = WIDTH - 70
-	return label
+	return UITheme.wrapped(text, WIDTH - 70)

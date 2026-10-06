@@ -110,13 +110,13 @@ func _build_rows(b: Dictionary, def: Dictionary) -> void:
 	if Economy.needs_road(b):
 		_road_box = _section("No road")
 		_road_text = _wrapped("")
-		_road_text.add_theme_color_override("font_color", UITheme.BAD)
+		_road_text.add_theme_color_override("font_color", UITheme.BAD_TEXT)
 		_road_box.add_child(_road_text)
 	_power_box = null
 	if Economy.power_need(b) > 0.0:
 		_power_box = _section("No power")
 		_power_warning = _wrapped("")
-		_power_warning.add_theme_color_override("font_color", UITheme.BAD)
+		_power_warning.add_theme_color_override("font_color", UITheme.BAD_TEXT)
 		_power_box.add_child(_power_warning)
 
 	if def.category in ["extractor", "processor"]:
@@ -189,19 +189,19 @@ func _build_rows(b: Dictionary, def: Dictionary) -> void:
 	var tools := HBoxContainer.new()
 	tools.add_theme_constant_override("separation", 14)
 	content.add_child(tools)
-	tools.add_child(_small_button("BlueButton", "Move", "move", func(): move_requested.emit(building_id)))
+	tools.add_child(_small_button("", "Move", "move", func(): move_requested.emit(building_id)))
 	var spacer := Control.new()
 	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	tools.add_child(spacer)
 	if int(def.get("max_workers", 0)) > 0:  # only buildings with workers can be switched off
-		_suspend = _small_button("YellowButton", "Suspend", "clock", func():
+		_suspend = _small_button("", "Suspend", "clock", func():
 			if Economy.is_suspended(Economy.building(building_id)):
 				resume_requested.emit(building_id)
 			else:
 				suspend_requested.emit(building_id))
 		tools.add_child(_suspend)
 	if def.get("buildable", false):  # starter buildings can't be rebuilt, so they can't be demolished
-		tools.add_child(_small_button("RedButton", "Demolish", "demolish", func(): demolish_requested.emit(building_id)))
+		tools.add_child(_small_button("DangerButton", "Demolish", "demolish", func(): demolish_requested.emit(building_id)))
 
 
 ## Without a road (plan.md §5.20) nobody can get to work here: say so. Hidden once it has a road.
@@ -229,22 +229,21 @@ func _refresh_power(b: Dictionary) -> void:
 func _build_upgrade() -> void:
 	var box := _section("Upgrade")
 	_upgrade_text = _wrapped("")
-	_upgrade_text.add_theme_font_size_override("font_size", 16)
+	_upgrade_text.theme_type_variation = "SmallLabel"
 	box.add_child(_upgrade_text)
 	_upgrade_button = Button.new()
-	_upgrade_button.custom_minimum_size = Vector2(0, 52)
-	_upgrade_button.add_theme_font_size_override("font_size", 18)
+	UITheme.size_button(_upgrade_button, "normal")
 	_upgrade_button.pressed.connect(func(): upgrade_requested.emit(building_id))
 	box.add_child(_upgrade_button)
 	_upgrade_needs = _wrapped("")
-	_upgrade_needs.add_theme_font_size_override("font_size", 15)
+	_upgrade_needs.theme_type_variation = "SmallLabel"
 	box.add_child(_upgrade_needs)
 	# A later upgrade, shown so players know it's coming (plan.md §5.15); nothing behind it yet.
 	var robots := Button.new()
 	robots.text = "Robotic workers: coming soon"
-	robots.theme_type_variation = "GreyButton"
+	robots.theme_type_variation = "BackButton"
 	robots.disabled = true
-	robots.custom_minimum_size = Vector2(0, 44)
+	UITheme.size_button(robots, "small")
 	box.add_child(robots)
 
 
@@ -287,7 +286,7 @@ func _refresh_upgrade(b: Dictionary) -> void:
 	_upgrade_button.text = "Upgrade to Level %d · ≈ %s · %s" % [level + 1, UITheme.money(int(quote.cost)), UITheme.duration(float(quote.seconds))]
 	_upgrade_needs.text = "Needs %s. Materials are bought at today's prices (they change in %s)." % [BuildingInfo.construction_needs(quote), UITheme.duration(Economy.price_change_in())]
 	# Greyed when it can't start, but still tappable, so the player is told why.
-	_upgrade_button.theme_type_variation = "GreenButton" if check.ok else "GreyButton"
+	_upgrade_button.theme_type_variation = "GoButton" if check.ok else "BackButton"
 	_upgrade_button.tooltip_text = "Pay now; it reaches Level %d when the time is up" % (level + 1) if check.ok else str(check.error)
 
 
@@ -304,7 +303,7 @@ func _build_workers(b: Dictionary, def: Dictionary) -> void:
 			text += ", hired before any other building"
 		var later := " Upgrading adds more." if int(Economy.next_upgrade(b).get("max_workers", 0)) > 0 else ""
 		var fixed := _wrapped(text + "." + later)
-		fixed.add_theme_font_size_override("font_size", 16)
+		fixed.theme_type_variation = "SmallLabel"
 		box.add_child(fixed)
 	else:
 		_build_staffing_buttons(box, int(Economy.level_stat(b, "max_workers")))
@@ -324,7 +323,7 @@ func _build_workers(b: Dictionary, def: Dictionary) -> void:
 	_water_text = _figure_row(box, "Water:") if float(def.get("water_per_hour", 0.0)) > 0.0 else null
 	_power_text = _figure_row(box, "Power:") if Economy.power_need(b) > 0.0 else null
 	_workers_note = _wrapped("")
-	_workers_note.add_theme_font_size_override("font_size", 15)
+	_workers_note.theme_type_variation = "SmallLabel"
 	box.add_child(_workers_note)
 
 
@@ -339,8 +338,8 @@ func _build_staffing_buttons(box: VBoxContainer, most: int) -> void:
 		button.text = "%s  %d" % [level.capitalize(), roundi(most * float(levels[level]))]
 		button.tooltip_text = "Employ %d of %d workers. Fewer workers = slower (a batch costs the same, it just takes longer)" % [roundi(most * float(levels[level])), most]
 		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		button.custom_minimum_size.y = 44
-		button.add_theme_font_size_override("font_size", 17)
+		UITheme.size_button(button, "small")
+		button.custom_minimum_size.x = 0
 		button.pressed.connect(func(): staffing_requested.emit(building_id, level))
 		row.add_child(button)
 		_staff_buttons[level] = button
@@ -354,7 +353,7 @@ func _figure_row(parent: Control, title: String) -> Label:
 	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	row.add_child(label)
 	var value := _body("")
-	value.add_theme_font_size_override("font_size", 20)
+	value.theme_type_variation = "HeadingLabel"
 	value.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	row.add_child(value)
 	return value
@@ -363,14 +362,14 @@ func _figure_row(parent: Control, title: String) -> Label:
 func _refresh_workers(b: Dictionary, def: Dictionary) -> void:
 	var w := Economy.workers(b)
 	for level in _staff_buttons:
-		_staff_buttons[level].theme_type_variation = "YellowButton" if level == w.level else "BlueButton"
+		_staff_buttons[level].theme_type_variation = "ChipOnButton" if level == w.level else "ChipButton"
 	var batches := Economy.makes_batches(b)
 	var producing: bool = Economy.is_built(b) and Economy.is_producing(b)
 	# Short: posts it asked for that nobody has taken (open posts, waiting for free people).
 	var short: bool = Economy.is_built(b) and not Economy.is_suspended(b) and int(w.hired) < int(w.wanted)
 	# Workers tied to it / most it can employ, e.g. "6/8" (always whole people).
 	_workers_text.text = "%d/%d" % [int(w.hired), int(w.max)]
-	_workers_text.add_theme_color_override("font_color", UITheme.BAD.darkened(0.3) if short else UITheme.TEXT_DARK)
+	_workers_text.add_theme_color_override("font_color", UITheme.BAD_TEXT if short else UITheme.TEXT_DARK)
 	var bonus_pay: float = w.wage_each - w.minimum
 	if bonus_pay > 0.01:
 		_wage_each_text.text = "%s + %s bonus = %s" % [UITheme.dollars(w.minimum), UITheme.dollars(bonus_pay), UITheme.dollars(w.wage_each)]
@@ -429,13 +428,8 @@ func _refresh_workers(b: Dictionary, def: Dictionary) -> void:
 
 
 func _small_button(variation: String, text: String, icon_name: String, action: Callable) -> Button:
-	var button := Button.new()
-	button.theme_type_variation = variation
-	button.text = text
-	button.icon = UITheme.icon(icon_name)
-	button.expand_icon = true
-	button.custom_minimum_size = Vector2(160, 44)
-	button.add_theme_font_size_override("font_size", 17)
+	var button := UITheme.button(text, variation, "small", icon_name)
+	button.custom_minimum_size.x = 160
 	button.pressed.connect(action)
 	return button
 
@@ -476,7 +470,7 @@ func _refresh() -> void:
 	if _suspend:
 		var off := Economy.is_suspended(b)
 		_suspend.text = "Resume" if off else "Suspend"
-		_suspend.theme_type_variation = "GreenButton" if off else "YellowButton"
+		_suspend.theme_type_variation = "GoButton" if off else ""
 		_suspend.tooltip_text = "Switch it back on (free)" if off else "Switch it off: workers go home, no wages. Goods inside go to the warehouse (a batch must be finished or cancelled first)"
 	if _upgrade_text:
 		_refresh_upgrade(b)
@@ -512,14 +506,12 @@ func _fill_goods_grid() -> void:
 		row.add_theme_constant_override("separation", 4)
 		tile.add_child(row)
 		row.add_child(_icon(res, 34))
-		var amount := Label.new()
-		amount.text = UITheme.number(qty)
-		amount.add_theme_font_size_override("font_size", 20)
+		var amount := UITheme.label(UITheme.number(qty), "HeadingLabel")
 		row.add_child(amount)
 		_goods_grid.add_child(tile)
 	if _goods_grid.get_child_count() == 0:
 		var empty := _body("Nothing stored yet. Collect goods from your buildings.")
-		empty.add_theme_font_size_override("font_size", 16)
+		empty.theme_type_variation = "SmallLabel"
 		_goods_grid.add_child(empty)
 	_layout.call_deferred()  # the window may need to grow or shrink for the new rows
 
@@ -529,7 +521,7 @@ func _fill_goods_grid() -> void:
 func _build_shelves(b: Dictionary) -> void:
 	var box := _section("Shelves")
 	_shoppers_text = _body("")
-	_shoppers_text.add_theme_font_size_override("font_size", 16)
+	_shoppers_text.theme_type_variation = "SmallLabel"
 	box.get_child(0).add_child(_shoppers_text)
 	for i in int(Economy.level_stat(b, "shelves")):
 		var row := HBoxContainer.new()
@@ -542,7 +534,6 @@ func _build_shelves(b: Dictionary) -> void:
 		column.add_theme_constant_override("separation", 2)
 		row.add_child(column)
 		var title := _body("")
-		title.add_theme_font_size_override("font_size", 18)
 		column.add_child(title)
 		var bar := ProgressBar.new()
 		bar.theme_type_variation = "GoldBar"
@@ -550,9 +541,9 @@ func _build_shelves(b: Dictionary) -> void:
 		bar.custom_minimum_size.y = 12
 		column.add_child(bar)
 		var detail := _body("")
-		detail.add_theme_font_size_override("font_size", 15)
+		detail.theme_type_variation = "SmallLabel"
 		column.add_child(detail)
-		var take_down := RoundButton.make("red", "close", "", 44)
+		var take_down := RoundButton.make("red", "close", "", UITheme.ROUND_ICON_SIZE - 10)
 		take_down.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		take_down.tooltip_text = "Take it down: what's sold is paid for, the rest goes back to the warehouse"
 		take_down.pressed.connect(func(): clear_shelf_requested.emit(building_id, i))
@@ -574,9 +565,9 @@ func _build_stock_form() -> void:
 		var button := Button.new()
 		button.icon = UITheme.icon(res)
 		button.expand_icon = true
-		button.custom_minimum_size = Vector2(150, 48)
+		UITheme.size_button(button, "small")
+		button.custom_minimum_size.x = 150
 		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		button.add_theme_font_size_override("font_size", 17)
 		button.pressed.connect(func(): _choose_item(res))
 		items.add_child(button)
 		_item_buttons[res] = button
@@ -599,10 +590,9 @@ func _build_stock_form() -> void:
 	_amount_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	amount_row.add_child(_amount_label)
 	var all := Button.new()
-	all.theme_type_variation = "BlueButton"
+	all.theme_type_variation = ""
 	all.text = "All"
-	all.custom_minimum_size = Vector2(70, 42)
-	all.add_theme_font_size_override("font_size", 16)
+	UITheme.size_button(all, "small")
 	all.pressed.connect(func():
 		_chosen_amount = int(Economy.state.inventory.get(_chosen_item, 0))
 		_refresh())
@@ -619,8 +609,9 @@ func _build_stock_form() -> void:
 		button.text = "%s\n%s" % [tags[tag].name, "price" if change == 0 else "%+d%%" % change]
 		button.tooltip_text = "Price x%.2f: sells %.2fx as fast" % [float(tags[tag].price), float(tags[tag].speed)]
 		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		button.custom_minimum_size.y = 58
-		button.add_theme_font_size_override("font_size", 14)
+		UITheme.size_button(button, "small")
+		button.custom_minimum_size = Vector2(0, 62)  # two lines: the tag's name and its price change
+		button.add_theme_font_size_override("font_size", UITheme.SIZE_SMALL)
 		button.pressed.connect(func():
 			_chosen_tag = tag
 			_refresh())
@@ -635,8 +626,9 @@ func _build_stock_form() -> void:
 	_preview["tax"] = _figure_row(box, "Sales tax (today's rate):")
 	_preview["profit"] = _figure_row(box, "Profit:")
 	_stock_button = Button.new()
-	_stock_button.theme_type_variation = "YellowButton"
-	_stock_button.custom_minimum_size = Vector2(300, 56)
+	_stock_button.theme_type_variation = ""
+	UITheme.size_button(_stock_button, "big")
+	_stock_button.custom_minimum_size.x = 300
 	_stock_button.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	# Greyed when it can't go on a shelf, but still tappable, so the player is told why.
 	_stock_button.pressed.connect(func(): stock_requested.emit(building_id, _chosen_item, _chosen_amount, _chosen_tag))
@@ -701,11 +693,11 @@ func _refresh_stock_form() -> void:
 		_item_buttons[res].visible = have > 0 or on_shelf or res == _chosen_item
 		_item_buttons[res].text = "%s  %s" % [BuildingInfo.resource_name(res), "on a shelf" if on_shelf else UITheme.number(have)]
 		if res == _chosen_item:
-			_item_buttons[res].theme_type_variation = "YellowButton"
+			_item_buttons[res].theme_type_variation = "ChipOnButton"
 		else:
-			_item_buttons[res].theme_type_variation = "BlueButton" if have > 0 and not on_shelf else "GreyButton"
+			_item_buttons[res].theme_type_variation = "ChipButton" if have > 0 and not on_shelf else "BackButton"
 	for tag in _tag_buttons:
-		_tag_buttons[tag].theme_type_variation = "YellowButton" if tag == _chosen_tag else "BlueButton"
+		_tag_buttons[tag].theme_type_variation = "ChipOnButton" if tag == _chosen_tag else "ChipButton"
 	var have := int(stock.get(_chosen_item, 0))
 	_chosen_amount = clampi(_chosen_amount, mini(1, have), have)
 	_amount_slider.max_value = maxi(have, 1)
@@ -723,7 +715,7 @@ func _refresh_stock_form() -> void:
 	_preview.cost.text = "-" + UITheme.money(int(p.cost))
 	_preview.tax.text = "-" + UITheme.money(int(p.tax))
 	_preview.profit.text = UITheme.money(int(p.profit))
-	_preview.profit.add_theme_color_override("font_color", UITheme.GOOD.darkened(0.35) if int(p.profit) >= 0 else UITheme.BAD.darkened(0.3))
+	_preview.profit.add_theme_color_override("font_color", UITheme.GOOD_TEXT if int(p.profit) >= 0 else UITheme.BAD_TEXT)
 	var item := BuildingInfo.resource_name(_chosen_item)
 	if Economy.store_has_product(building_id, _chosen_item):
 		_stock_button.text = "%s is already on a shelf here" % item
@@ -732,7 +724,7 @@ func _refresh_stock_form() -> void:
 	else:
 		_stock_button.text = "Put %s %s on a shelf" % [UITheme.number(_chosen_amount), item]
 	var check := Economy.can_stock_shelf(building_id, _chosen_item, _chosen_amount, _chosen_tag)
-	_stock_button.theme_type_variation = "YellowButton" if check.ok else "GreyButton"
+	_stock_button.theme_type_variation = "GoButton" if check.ok else "BackButton"
 
 
 ## A titled, sunken box in the window. Returns the column to add rows to; its first child is the
@@ -749,7 +741,7 @@ func _section(title: String) -> VBoxContainer:
 	column.add_child(header)
 	var heading := Label.new()
 	heading.text = title
-	heading.add_theme_font_size_override("font_size", 19)
+	heading.theme_type_variation = "HeadingLabel"
 	heading.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	header.add_child(heading)
 	return column
@@ -782,32 +774,20 @@ func _item(resource_id: String, amount: int) -> HBoxContainer:
 	row.add_child(_icon(resource_id, 38))
 	var label := Label.new()
 	label.text = "x%d" % amount
-	label.add_theme_font_size_override("font_size", 20)
+	label.theme_type_variation = "HeadingLabel"
 	row.add_child(label)
 	return row
 
 
 func _icon(icon_name: String, side: float) -> TextureRect:
-	var rect := TextureRect.new()
-	rect.texture = UITheme.icon(icon_name)
-	rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	rect.custom_minimum_size = Vector2(side, side)
-	return rect
+	return UITheme.icon_rect(icon_name, side)
 
 
 func _body(text: String) -> Label:
-	var label := Label.new()
-	label.theme_type_variation = "BodyLabel"
-	label.text = text
-	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	return label
+	return UITheme.label(text)
 
 
 ## Body text that wraps onto more lines instead of making the window wider.
 func _wrapped(text: String) -> Label:
-	var label := _body(text)
-	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	label.custom_minimum_size.x = WIDTH - 70
-	return label
+	return UITheme.wrapped(text, WIDTH - 70)
 

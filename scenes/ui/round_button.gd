@@ -1,17 +1,20 @@
 class_name RoundButton
 extends VBoxContainer
-## A round, glossy Clash-of-Clans-style button with an icon and a caption underneath, used in the
-## building action bar and as small icon buttons (close, menu). It squishes when pressed.
+## A round, chunky cartoon button with an icon and a caption underneath, used in the building
+## action bar and as small icon buttons (close, ✓, ✗). It squishes when pressed.
+## Colours (same meaning as other buttons, see ui_theme.gd): "honey" normal, "green" go,
+## "red" close / danger, "grey" can't. Sizes: UITheme.ROUND_ACTION_SIZE (with a caption) or
+## UITheme.ROUND_ICON_SIZE (icon only).
 
 signal pressed
 
 var button := TextureButton.new()
 var _icon := TextureRect.new()
 var _caption := Label.new()
-var _color := "blue"
+var _color := "honey"
 
 
-static func make(color: String, icon_name: String, caption := "", diameter := 84.0) -> RoundButton:
+static func make(color: String, icon_name: String, caption := "", diameter := UITheme.ROUND_ACTION_SIZE) -> RoundButton:
 	var b := RoundButton.new()
 	b._color = color
 	b.mouse_filter = Control.MOUSE_FILTER_IGNORE  # only the round button itself catches clicks
@@ -34,6 +37,7 @@ static func make(color: String, icon_name: String, caption := "", diameter := 84
 	b._icon.offset_bottom = -inset * 1.2
 	b.button.add_child(b._icon)
 	b._caption.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	b._caption.theme_type_variation = "OutlineLabel"
 	b._caption.add_theme_font_size_override("font_size", 16)
 	b._caption.visible = caption != ""
 	b.add_child(b._caption)

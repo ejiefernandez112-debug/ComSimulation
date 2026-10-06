@@ -1,7 +1,8 @@
 class_name ModalWindow
 extends Control
-## A pop-up window over the game: dims the map, shows a cream panel with a title and a red close
-## button, and pops in with a little bounce. Wide screens get a centred window; tall (phone)
+## A pop-up window over the game: dims the map, shows a cream panel with the honey title ribbon
+## (title + red close button, UITheme.title_bar) and pops in with a little bounce. Every pop-up
+## window uses this, so they all look the same. Wide screens get a centred window; tall (phone)
 ## screens get a sheet along the bottom (plan.md §6). BuildingPanel and SettingsPanel build on
 ## this: they fill `content` with their own rows.
 
@@ -23,8 +24,29 @@ var _scroll: ScrollContainer
 func _ready() -> void:
 	set_anchors_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
+	if has_node("Window"):
+		_use_scene_frame()
+	else:
+		_make_frame()
+	hide()
+	resized.connect(_layout)
+
+
+## A window laid out in the Godot editor (a .tscn, e.g. settings_panel.tscn) brings its own frame:
+## nodes named Dim, Window, and (unique names) %Title, %Close, %Scroll and %Content.
+func _use_scene_frame() -> void:
+	get_node("Dim").gui_input.connect(_on_dim_input)
+	_window = get_node("Window")
+	_title = get_node("%Title")
+	(get_node("%Close") as BaseButton).pressed.connect(close)
+	_scroll = get_node("%Scroll")
+	content = get_node("%Content")
+
+
+## Other windows build the same frame in code.
+func _make_frame() -> void:
 	var dim := ColorRect.new()
-	dim.color = Color(0.02, 0.04, 0.08, 0.5)
+	dim.color = UITheme.DIM
 	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
 	dim.gui_input.connect(_on_dim_input)  # tapping outside the window closes it
 	add_child(dim)
@@ -33,16 +55,10 @@ func _ready() -> void:
 	var column := VBoxContainer.new()
 	column.add_theme_constant_override("separation", 12)
 	_window.add_child(column)
-	var header := HBoxContainer.new()
-	column.add_child(header)
-	_title = Label.new()
-	_title.add_theme_font_size_override("font_size", 32)
-	_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_title.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	header.add_child(_title)
-	var close_button := RoundButton.make("red", "close", "", 52)
-	close_button.pressed.connect(close)
-	header.add_child(close_button)
+	var header := UITheme.title_bar()
+	column.add_child(header.bar)
+	_title = header.label
+	header.close.pressed.connect(close)
 	# The rows scroll if the screen is too short to show them all.
 	_scroll = ScrollContainer.new()
 	_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
@@ -51,8 +67,6 @@ func _ready() -> void:
 	content.add_theme_constant_override("separation", 10)
 	content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_scroll.add_child(content)
-	hide()
-	resized.connect(_layout)
 
 
 func open(title_text: String) -> void:
@@ -61,12 +75,7 @@ func open(title_text: String) -> void:
 	show()
 	_layout()
 	_layout.call_deferred()  # again once new text has been measured
-	_window.pivot_offset = _window.size / 2.0
-	_window.scale = Vector2(0.8, 0.8)
-	_window.modulate.a = 0.0
-	var pop := create_tween().set_parallel()
-	pop.tween_property(_window, "scale", Vector2.ONE, 0.22).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-	pop.tween_property(_window, "modulate:a", 1.0, 0.12)
+	UITheme.pop_in(_window)
 
 
 func close() -> void:
@@ -99,7 +108,7 @@ func _layout() -> void:
 		return
 	var tall := size.x < size.y
 	# As tall as the rows need, but no taller than the screen allows (then they scroll).
-	var room := size.y * (1.0 - SHEET_TOP if tall else 0.94) - 110.0  # minus title and window edges
+	var room := size.y * (1.0 - SHEET_TOP if tall else 0.94) - 130.0  # minus the title ribbon and window edges
 	_scroll.custom_minimum_size.y = minf(content.get_combined_minimum_size().y, room)
 	_window.reset_size()
 	if tall:

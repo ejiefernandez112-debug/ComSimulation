@@ -25,7 +25,6 @@ const SHEET_TOP := 0.3  # on tall screens the sheet covers the bottom 70%
 const HUD_WIDTH := 250.0  # the money / population / warehouse bars down the top-right corner
 const TAB_SIZE := Vector2(72, 66)
 const CARD_SIZE := Vector2(128, 144)
-const SELECTED := Color("ffc93c")
 const ROAD := "road"  # the Road card's id in the Roads tab (roads aren't buildings)
 ## Locked buildings' pictures are drawn in grey.
 const GREY_SHADER := "shader_type canvas_item;
@@ -39,7 +38,6 @@ void fragment() {
 
 var _window: Control  # everything the Build button opens: a dimmer over the map + _frame
 var _frame: Control  # the window and its tabs; _apply_layout places it
-var _close_button: RoundButton
 var _title: Label
 var _grid: HFlowContainer
 var _tab_buttons := {}  # tab id -> its Button
@@ -58,7 +56,7 @@ var _name: Label
 var _cost: Label
 var _cost_note: Label
 var _about: Label
-var _makes: HBoxContainer
+var _makes: HFlowContainer  # wraps onto more lines when it lists many items
 var _needs: Label  # what building it needs (materials, crew, time) and when prices change
 var _build: Button
 
@@ -79,12 +77,7 @@ func open() -> void:
 	_window.show()
 	_show_tab(_tab if _tab_buttons.has(_tab) else _tab_buttons.keys()[0])
 	_apply_layout()
-	_frame.pivot_offset = _frame.size / 2.0
-	_frame.scale = Vector2(0.9, 0.9)
-	_frame.modulate.a = 0.0
-	var pop := create_tween().set_parallel()
-	pop.tween_property(_frame, "scale", Vector2.ONE, 0.2).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-	pop.tween_property(_frame, "modulate:a", 1.0, 0.12)
+	UITheme.pop_in(_frame, 0.9)
 
 
 ## Called when the building was placed (or placement ended some other way).
@@ -125,7 +118,7 @@ func show_ghost_state(check: Dictionary) -> void:
 
 func _set_removing(on: bool) -> void:
 	_removing = on
-	_road_switch.set_color("red" if on else "blue")
+	_road_switch.set_color("red" if on else "honey")
 	_road_switch.set_icon("demolish" if on else "road")
 	_road_switch.button.tooltip_text = "Removing road: tap to lay road instead" if on else "Laying road: tap to remove road instead"
 
@@ -133,18 +126,18 @@ func _set_removing(on: bool) -> void:
 ## ✗ (cancel) on the left of the placing bar's hint, ✓ (place) on the right.
 func _make_placing_buttons() -> void:
 	var row: HBoxContainer = $PlacingBar/Row
-	var cancel := RoundButton.make("red", "close", "", 64)
+	var cancel := RoundButton.make("red", "close", "", UITheme.ROUND_ICON_SIZE)
 	cancel.pressed.connect(cancel_placement)
 	row.add_child(cancel)
 	row.move_child(cancel, 0)
-	_road_switch = RoundButton.make("blue", "road", "", 64)
+	_road_switch = RoundButton.make("honey", "road", "", UITheme.ROUND_ICON_SIZE)
 	_road_switch.pressed.connect(func():
 		_set_removing(not _removing)
 		road_remove_toggled.emit(_removing))
 	_road_switch.hide()
 	row.add_child(_road_switch)
 	row.move_child(_road_switch, 1)
-	_confirm = RoundButton.make("green", "check", "", 64)
+	_confirm = RoundButton.make("green", "check", "", UITheme.ROUND_ICON_SIZE)
 	_confirm.pressed.connect(placement_confirmed.emit)
 	row.add_child(_confirm)
 
@@ -173,7 +166,7 @@ func _make_window() -> void:
 	_window.hide()
 	add_child(_window)
 	var dim := ColorRect.new()
-	dim.color = Color(0.02, 0.04, 0.08, 0.35)
+	dim.color = UITheme.DIM
 	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
 	dim.gui_input.connect(_on_dim_input)  # tapping outside the window closes it
 	_window.add_child(dim)
@@ -189,13 +182,11 @@ func _make_window() -> void:
 	var column := VBoxContainer.new()
 	column.add_theme_constant_override("separation", 12)
 	panel.add_child(column)
-	var banner := PanelContainer.new()
-	banner.theme_type_variation = "Inset"
-	column.add_child(banner)
-	_title = Label.new()
-	_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_title.add_theme_font_size_override("font_size", 28)
-	banner.add_child(_title)
+	# The same title ribbon and close button as every other window.
+	var header := UITheme.title_bar()
+	column.add_child(header.bar)
+	_title = header.label
+	header.close.pressed.connect(_close)
 	var scroll := ScrollContainer.new()
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -216,7 +207,7 @@ func _make_window() -> void:
 	tab_scroll.anchor_right = 1.0
 	tab_scroll.anchor_bottom = 1.0
 	tab_scroll.offset_left = -TAB_SIZE.x - 1  # over the page's 1px see-through edge, touching its outline
-	tab_scroll.offset_top = 80
+	tab_scroll.offset_top = 96  # below the title ribbon
 	tab_scroll.offset_bottom = -12
 	_frame.add_child(tab_scroll)
 	var tabs := VBoxContainer.new()
@@ -235,11 +226,6 @@ func _make_window() -> void:
 		tabs.add_child(button)
 		_tab_buttons[tab.id] = button
 
-	# Round close button sitting on the page's top-right corner.
-	_close_button = RoundButton.make("red", "close", "", 50)
-	_close_button.pressed.connect(_close)
-	_frame.add_child(_close_button)
-
 
 ## The strip along the bottom: name and cost, then description and what it makes, and Build.
 func _make_details() -> Control:
@@ -248,16 +234,14 @@ func _make_details() -> Control:
 	var top := HBoxContainer.new()
 	top.add_theme_constant_override("separation", 8)
 	box.add_child(top)
-	_name = Label.new()
-	_name.add_theme_font_size_override("font_size", 25)
+	_name = UITheme.label("", "BigLabel")
 	_name.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	top.add_child(_name)
 	_cost_note = _body("")
-	_cost_note.add_theme_color_override("font_color", Color("b8321f"))
+	_cost_note.add_theme_color_override("font_color", UITheme.BAD_TEXT)
 	top.add_child(_cost_note)
 	top.add_child(_icon("cash", 32))
-	_cost = Label.new()
-	_cost.add_theme_font_size_override("font_size", 25)
+	_cost = UITheme.label("", "BigLabel")
 	top.add_child(_cost)
 
 	var row := HBoxContainer.new()
@@ -274,20 +258,16 @@ func _make_details() -> Control:
 	_about = _body("")
 	_about.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	text.add_child(_about)
-	_makes = HBoxContainer.new()
-	_makes.add_theme_constant_override("separation", 6)
+	_makes = HFlowContainer.new()
+	_makes.add_theme_constant_override("h_separation", 6)
+	_makes.add_theme_constant_override("v_separation", 2)
 	text.add_child(_makes)
 	_needs = _body("")
+	_needs.theme_type_variation = "SmallLabel"
 	_needs.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_needs.add_theme_font_size_override("font_size", 16)
 	text.add_child(_needs)
-	_build = Button.new()
-	_build.theme_type_variation = "YellowButton"
-	_build.text = "Build"
-	_build.icon = UITheme.icon("build")
-	_build.expand_icon = true
-	_build.custom_minimum_size = Vector2(176, 72)
-	_build.add_theme_font_size_override("font_size", 27)
+	_build = UITheme.button("Build", "GoButton", "big", "build")
+	_build.custom_minimum_size.x = 180
 	_build.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	_build.pressed.connect(func(): _choose(_selected))
 	row.add_child(_build)
@@ -321,7 +301,8 @@ func _add_card(type_id: String) -> void:
 	var title := _body(def.name)
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	title.add_theme_font_size_override("font_size", 16)
+	title.theme_type_variation = "SmallLabel"
+	title.add_theme_color_override("font_color", UITheme.TEXT_DARK)
 	column.add_child(title)
 	if not def.get("buildable", false):
 		picture.material = _grey
@@ -335,16 +316,7 @@ func _add_card(type_id: String) -> void:
 	badge.offset_bottom = 38
 	card.add_child(badge)
 	var outline := Panel.new()
-	var ring := StyleBoxFlat.new()
-	ring.draw_center = false
-	ring.border_color = SELECTED
-	ring.set_border_width_all(4)
-	ring.set_corner_radius_all(14)
-	ring.expand_margin_left = 3
-	ring.expand_margin_right = 3
-	ring.expand_margin_top = 3
-	ring.expand_margin_bottom = 1
-	outline.add_theme_stylebox_override("panel", ring)
+	outline.theme_type_variation = "CardRing"
 	outline.set_anchors_preset(Control.PRESET_FULL_RECT)
 	outline.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	outline.hide()
@@ -528,7 +500,7 @@ func _refresh() -> void:
 		_needs.visible = not locked and not quote.lines.is_empty()
 		_needs.text = "Needs %s. Material prices change in %s." % [BuildingInfo.construction_needs(quote), UITheme.duration(Economy.price_change_in())]
 	var short := _shortfall(_shown)
-	_cost.add_theme_color_override("font_color", UITheme.BAD if short > 0 and not locked else UITheme.TEXT)
+	_cost.add_theme_color_override("font_color", UITheme.BAD_TEXT if short > 0 and not locked else UITheme.TEXT_DARK)
 	_cost_note.text = str(_def(_shown).get("coming_soon", "Not available yet")) if locked else ("Need %s more" % UITheme.money(short) if short > 0 else "")
 	if not locked and _shown != ROAD and Economy.at_build_limit(_shown):
 		_cost_note.text = "Already built: one is all you need"  # max_count (the Trading Post: 1)
@@ -584,7 +556,6 @@ func _apply_layout() -> void:
 		_frame.size = Vector2(minf(MAX_SIZE.x, size.x * 0.94), minf(MAX_SIZE.y, size.y * 0.92))
 		_frame.position = ((size - _frame.size) / 2.0).round()
 		_frame.position.x = maxf(minf(_frame.position.x, size.x - HUD_WIDTH - _frame.size.x), 16.0)
-	_close_button.position = Vector2(_frame.size.x - TAB_SIZE.x - 40, -12)
 
 
 # --- Small helpers -------------------------------------------------------------
@@ -597,19 +568,10 @@ func _add_amounts(items: Dictionary) -> void:
 
 
 func _icon(icon_name: String, side: float) -> TextureRect:
-	var rect := TextureRect.new()
-	rect.texture = UITheme.icon(icon_name)
-	rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	rect.custom_minimum_size = Vector2(side, side)
-	rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	return rect
+	return UITheme.icon_rect(icon_name, side)
 
 
 func _body(text: String) -> Label:
-	var label := Label.new()
-	label.theme_type_variation = "BodyLabel"
-	label.text = text
-	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	var label := UITheme.label(text)
 	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	return label

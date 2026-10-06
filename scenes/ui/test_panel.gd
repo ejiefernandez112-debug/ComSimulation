@@ -17,10 +17,7 @@ func _ready() -> void:
 
 
 func _add_button(parent: Node, text: String, action: Callable) -> void:
-	var button := Button.new()
-	button.theme_type_variation = "BlueButton"
-	button.add_theme_font_size_override("font_size", 15)
-	button.text = text
+	var button := UITheme.button(text, "BackButton", "small")
 	button.pressed.connect(action)
 	parent.add_child(button)
 

@@ -7,7 +7,7 @@
 [ext_resource type="Script" path="res://scenes/ui/hud.gd" id="5"]
 [ext_resource type="Script" path="res://scenes/ui/building_bar.gd" id="6"]
 [ext_resource type="Script" path="res://scenes/ui/building_panel.gd" id="7"]
-[ext_resource type="Script" path="res://scenes/ui/settings_panel.gd" id="8"]
+[ext_resource type="PackedScene" path="res://scenes/ui/settings_panel.tscn" id="8"]
 [ext_resource type="Script" path="res://scenes/ui/confirm_dialog.gd" id="9"]
 [ext_resource type="Script" path="res://scenes/ui/menu_bar.gd" id="10"]
 [ext_resource type="Script" path="res://scenes/ui/stats_panel.gd" id="11"]
@@ -81,15 +81,8 @@ grow_vertical = 2
 mouse_filter = 2
 script = ExtResource("7")
 
-[node name="SettingsPanel" type="Control" parent="UI/Root"]
+[node name="SettingsPanel" parent="UI/Root" instance=ExtResource("8")]
 layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-grow_horizontal = 2
-grow_vertical = 2
-mouse_filter = 2
-script = ExtResource("8")
 
 [node name="StatsPanel" type="Control" parent="UI/Root"]
 layout_mode = 1

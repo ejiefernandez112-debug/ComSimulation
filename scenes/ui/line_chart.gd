@@ -9,11 +9,11 @@ extends Control
 ## A line keeps its colour whatever else is shown (e.g. Wheat is always the first colour).
 const COLORS := [Color("2a78d6"), Color("eb6834"), Color("1baf7a"), Color("eda100"),
 	Color("e87ba4"), Color("008300"), Color("4a3aa7"), Color("e34948")]
-const SURFACE := Color("fbf6ea")
-const BORDER := Color("c7a46a")
-const GRID := Color("e8dcc2")
-const INK := Color("4b341d")
-const MUTED := Color("8a7556")
+const SURFACE := Color("fffcf3")
+const BORDER := UITheme.SAND_EDGE
+const GRID := Color("efe0c2")
+const INK := UITheme.TEXT_DARK
+const MUTED := UITheme.TEXT_MUTED
 const LEGEND_HEIGHT := 28.0
 const PAD_LEFT := 50.0
 const PAD_RIGHT := 16.0
@@ -37,7 +37,7 @@ func _init() -> void:
 	_frame.bg_color = SURFACE
 	_frame.border_color = BORDER
 	_frame.set_border_width_all(2)
-	_frame.set_corner_radius_all(10)
+	_frame.set_corner_radius_all(14)
 	_frame.anti_aliasing = true
 	mouse_exited.connect(func():
 		_hover_x = -1.0

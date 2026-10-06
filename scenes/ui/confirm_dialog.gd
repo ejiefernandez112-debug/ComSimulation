@@ -9,16 +9,12 @@ var _on_yes := Callable()
 ## money: coins given back; goods: {resource: qty} given back. Either can be empty/0.
 ## no_text / yes_variation: the "no" button's words and the "yes" button's colour (red for
 ## things that can't be undone, green for a go-ahead like starting a batch).
+## yes_variation: "DangerButton" (red) or "GoButton" (green).
 func ask(title_text: String, message: String, money: int, goods: Dictionary, yes_text: String, on_yes: Callable,
-		no_text := "Keep it", yes_variation := "RedButton") -> void:
+		no_text := "Keep it", yes_variation := "DangerButton") -> void:
 	_on_yes = on_yes
 	clear_content()
-	var text := Label.new()
-	text.theme_type_variation = "BodyLabel"
-	text.text = message
-	text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	text.custom_minimum_size.x = WIDTH - 70  # wrapped text needs a width
-	content.add_child(text)
+	content.add_child(UITheme.wrapped(message, WIDTH - 70))
 
 	if money > 0 or not goods.is_empty():
 		var box := PanelContainer.new()
@@ -27,10 +23,7 @@ func ask(title_text: String, message: String, money: int, goods: Dictionary, yes
 		var row := HBoxContainer.new()
 		row.add_theme_constant_override("separation", 14)
 		box.add_child(row)
-		var heading := Label.new()
-		heading.text = "You get back:"
-		heading.add_theme_font_size_override("font_size", 19)
-		row.add_child(heading)
+		row.add_child(UITheme.label("You get back:", "HeadingLabel"))
 		if money > 0:
 			row.add_child(_amount("cash", money))
 		for res in goods:
@@ -40,16 +33,12 @@ func ask(title_text: String, message: String, money: int, goods: Dictionary, yes
 	buttons.alignment = BoxContainer.ALIGNMENT_CENTER
 	buttons.add_theme_constant_override("separation", 14)
 	content.add_child(buttons)
-	var no := Button.new()
-	no.theme_type_variation = "GreyButton"
-	no.text = no_text
-	no.custom_minimum_size = Vector2(170, 58)
+	var no := UITheme.button(no_text, "BackButton", "big")
+	no.custom_minimum_size.x = 170
 	no.pressed.connect(close)
 	buttons.add_child(no)
-	var yes := Button.new()
-	yes.theme_type_variation = yes_variation
-	yes.text = yes_text
-	yes.custom_minimum_size = Vector2(190, 58)
+	var yes := UITheme.button(yes_text, yes_variation, "big")
+	yes.custom_minimum_size.x = 190
 	yes.pressed.connect(_yes)
 	buttons.add_child(yes)
 	open(title_text)
@@ -67,14 +56,6 @@ func _yes() -> void:
 func _amount(icon_name: String, qty: int) -> HBoxContainer:
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 2)
-	var icon := TextureRect.new()
-	icon.texture = UITheme.icon(icon_name)
-	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	icon.custom_minimum_size = Vector2(34, 34)
-	row.add_child(icon)
-	var label := Label.new()
-	label.text = UITheme.money(qty) if icon_name == "cash" else UITheme.number(qty)
-	label.add_theme_font_size_override("font_size", 20)
-	row.add_child(label)
+	row.add_child(UITheme.icon_rect(icon_name, 34))
+	row.add_child(UITheme.label(UITheme.money(qty) if icon_name == "cash" else UITheme.number(qty), "HeadingLabel"))
 	return row

@@ -60,10 +60,7 @@ func show_if_away() -> bool:
 	if Economy.currency() < 0:
 		_text("You are in debt: sell goods to pay it back before building again.", true)
 
-	var go := Button.new()
-	go.theme_type_variation = "GreenButton"
-	go.text = "Continue"
-	go.custom_minimum_size = Vector2(220, 58)
+	var go := UITheme.button("Continue", "GoButton", "big")
 	go.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	go.pressed.connect(close)
 	content.add_child(go)
@@ -72,13 +69,9 @@ func show_if_away() -> bool:
 
 
 func _text(message: String, warning := false) -> void:
-	var label := Label.new()
-	label.theme_type_variation = "BodyLabel"
-	label.text = message
-	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	label.custom_minimum_size.x = WIDTH - 70  # wrapped text needs a width
+	var label := UITheme.wrapped(message, WIDTH - 70)
 	if warning:
-		label.add_theme_color_override("font_color", UITheme.BAD.darkened(0.25))
+		label.add_theme_color_override("font_color", UITheme.BAD_TEXT)
 	content.add_child(label)
 
 
@@ -90,10 +83,8 @@ func _row(heading_text: String) -> HBoxContainer:
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 14)
 	box.add_child(row)
-	var heading := Label.new()
-	heading.text = heading_text
+	var heading := UITheme.label(heading_text, "HeadingLabel")
 	heading.custom_minimum_size.x = 130
-	heading.add_theme_font_size_override("font_size", 19)
 	row.add_child(heading)
 	return row
 
@@ -102,14 +93,6 @@ func _row(heading_text: String) -> HBoxContainer:
 func _amount(icon_name: String, text: String) -> HBoxContainer:
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 4)
-	var icon := TextureRect.new()
-	icon.texture = UITheme.icon(icon_name)
-	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	icon.custom_minimum_size = Vector2(32, 32)
-	row.add_child(icon)
-	var label := Label.new()
-	label.text = text
-	label.add_theme_font_size_override("font_size", 20)
-	row.add_child(label)
+	row.add_child(UITheme.icon_rect(icon_name, 32))
+	row.add_child(UITheme.label(text, "HeadingLabel"))
 	return row
