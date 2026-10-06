@@ -197,7 +197,7 @@ func road_check() -> Dictionary:
 		return removal
 	var quote := Economy.road_quote(_road_line)
 	if quote.ok:
-		quote["hint"] = "%d new road tiles for %s: tap the green tick" % [quote.new_cells.size(), UITheme.money(int(quote.cost))]
+		quote["hint"] = "%d new road tiles for %s: tap the blue tick" % [quote.new_cells.size(), UITheme.money(int(quote.cost))]
 	return quote
 
 

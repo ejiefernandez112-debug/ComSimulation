@@ -6,10 +6,14 @@ extends ModalWindow
 var _on_yes := Callable()
 
 
+func _init() -> void:
+	docked = false  # a small question: in the middle of the screen, not docked at the side
+
+
 ## money: coins given back; goods: {resource: qty} given back. Either can be empty/0.
 ## no_text / yes_variation: the "no" button's words and the "yes" button's colour (red for
-## things that can't be undone, green for a go-ahead like starting a batch).
-## yes_variation: "DangerButton" (red) or "GoButton" (green).
+## things that can't be undone, blue for a go-ahead like starting a batch).
+## yes_variation: "DangerButton" (red) or "GoButton" (blue).
 func ask(title_text: String, message: String, money: int, goods: Dictionary, yes_text: String, on_yes: Callable,
 		no_text := "Keep it", yes_variation := "DangerButton") -> void:
 	_on_yes = on_yes

@@ -4,8 +4,8 @@ extends Control
 ## data/build_menu.json and each building names its tab with "menu_tab"). Each card shows a
 ## building's picture and name. Tapping a card shows its details and cost along the bottom;
 ## Build (or tapping the same card again) starts Placement Mode. On a computer, pointing at a
-## card previews its details too. Wide screens get a window in the middle; tall (phone) screens
-## a sheet along the bottom.
+## card previews its details too. Wide screens get a window in the middle (below the HUD strip);
+## tall (phone) screens a sheet along the bottom.
 ## The Roads tab holds one "Road" card: it starts Road Mode (plan.md §5.20), where the placing bar
 ## gets a switch between laying and removing road.
 ## Costs come from GameData; affordability from Economy. This panel decides nothing itself.
@@ -22,8 +22,8 @@ signal road_remove_toggled(removing: bool)
 const BuildingView = preload("res://scenes/village/building_view.gd")
 const MAX_SIZE := Vector2(900, 640)  # the window on wide screens (smaller if the screen is)
 const SHEET_TOP := 0.3  # on tall screens the sheet covers the bottom 70%
-const HUD_WIDTH := 250.0  # the money / population / warehouse bars down the top-right corner
-const TAB_SIZE := Vector2(72, 66)
+const HUD_HEIGHT := 66.0  # the HUD strip across the top-right corner: the window stays below it
+const TAB_SIZE := Vector2(64, 58)
 const CARD_SIZE := Vector2(128, 144)
 const ROAD := "road"  # the Road card's id in the Roads tab (roads aren't buildings)
 ## Locked buildings' pictures are drawn in grey.
@@ -47,7 +47,7 @@ var _selected := ""  # the chosen building: Build places this one
 var _shown := ""  # the building in the details strip (the selected one, or the one pointed at)
 var _grey: ShaderMaterial
 var _confirm: RoundButton  # the ✓ in the placing bar
-var _road_switch: RoundButton  # Road Mode: lay road (blue) or remove it (red)
+var _road_switch: RoundButton  # Road Mode: lay road (glass) or remove it (red)
 var _removing := false
 var _placing_text := ""  # the placing bar's hint while the ghost is on a free tile
 
@@ -77,7 +77,7 @@ func open() -> void:
 	_window.show()
 	_show_tab(_tab if _tab_buttons.has(_tab) else _tab_buttons.keys()[0])
 	_apply_layout()
-	UITheme.pop_in(_frame, 0.9)
+	UITheme.pop_in(_frame)
 
 
 ## Called when the building was placed (or placement ended some other way).
@@ -118,7 +118,7 @@ func show_ghost_state(check: Dictionary) -> void:
 
 func _set_removing(on: bool) -> void:
 	_removing = on
-	_road_switch.set_color("red" if on else "honey")
+	_road_switch.set_style("DangerButton" if on else "Button")
 	_road_switch.set_icon("demolish" if on else "road")
 	_road_switch.button.tooltip_text = "Removing road: tap to lay road instead" if on else "Laying road: tap to remove road instead"
 
@@ -126,18 +126,18 @@ func _set_removing(on: bool) -> void:
 ## ✗ (cancel) on the left of the placing bar's hint, ✓ (place) on the right.
 func _make_placing_buttons() -> void:
 	var row: HBoxContainer = $PlacingBar/Row
-	var cancel := RoundButton.make("red", "close", "", UITheme.ROUND_ICON_SIZE)
+	var cancel := RoundButton.make("BackButton", "close", "", UITheme.ROUND_ICON_SIZE)
 	cancel.pressed.connect(cancel_placement)
 	row.add_child(cancel)
 	row.move_child(cancel, 0)
-	_road_switch = RoundButton.make("honey", "road", "", UITheme.ROUND_ICON_SIZE)
+	_road_switch = RoundButton.make("Button", "road", "", UITheme.ROUND_ICON_SIZE)
 	_road_switch.pressed.connect(func():
 		_set_removing(not _removing)
 		road_remove_toggled.emit(_removing))
 	_road_switch.hide()
 	row.add_child(_road_switch)
 	row.move_child(_road_switch, 1)
-	_confirm = RoundButton.make("green", "check", "", UITheme.ROUND_ICON_SIZE)
+	_confirm = RoundButton.make("GoButton", "check", "", UITheme.ROUND_ICON_SIZE)
 	_confirm.pressed.connect(placement_confirmed.emit)
 	row.add_child(_confirm)
 
@@ -182,7 +182,7 @@ func _make_window() -> void:
 	var column := VBoxContainer.new()
 	column.add_theme_constant_override("separation", 12)
 	panel.add_child(column)
-	# The same title ribbon and close button as every other window.
+	# The same title strip and close button as every other window.
 	var header := UITheme.title_bar()
 	column.add_child(header.bar)
 	_title = header.label
@@ -206,8 +206,8 @@ func _make_window() -> void:
 	tab_scroll.anchor_left = 1.0
 	tab_scroll.anchor_right = 1.0
 	tab_scroll.anchor_bottom = 1.0
-	tab_scroll.offset_left = -TAB_SIZE.x - 1  # over the page's 1px see-through edge, touching its outline
-	tab_scroll.offset_top = 96  # below the title ribbon
+	tab_scroll.offset_left = -TAB_SIZE.x - 1  # over the page's 1px edge, touching it
+	tab_scroll.offset_top = 70  # below the title strip
 	tab_scroll.offset_bottom = -12
 	_frame.add_child(tab_scroll)
 	var tabs := VBoxContainer.new()
@@ -220,6 +220,7 @@ func _make_window() -> void:
 		button.theme_type_variation = "SideTab"
 		button.icon = UITheme.icon(tab.icon)
 		button.expand_icon = true
+		button.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		button.custom_minimum_size = TAB_SIZE
 		button.pressed.connect(_show_tab.bind(tab.id))
 		tabs.add_child(button)
@@ -237,7 +238,7 @@ func _make_details() -> Control:
 	_name.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	top.add_child(_name)
 	_cost_note = _body("")
-	_cost_note.add_theme_color_override("font_color", UITheme.BAD_TEXT)
+	_cost_note.add_theme_color_override("font_color", UITheme.BAD)
 	top.add_child(_cost_note)
 	top.add_child(_icon("cash", 32))
 	_cost = UITheme.label("", "BigLabel")
@@ -286,7 +287,6 @@ func _add_card(type_id: String) -> void:
 	_grid.add_child(card)
 	var column := VBoxContainer.new()
 	column.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT, Control.PRESET_MODE_KEEP_SIZE, 8)
-	column.offset_bottom = -14  # clear of the card's darker bottom lip
 	column.add_theme_constant_override("separation", 2)
 	column.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	card.add_child(column)
@@ -300,18 +300,18 @@ func _add_card(type_id: String) -> void:
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	title.theme_type_variation = "SmallLabel"
-	title.add_theme_color_override("font_color", UITheme.TEXT_DARK)
+	title.add_theme_color_override("font_color", UITheme.TEXT)
 	column.add_child(title)
 	if not def.get("buildable", false):
 		picture.material = _grey
 		card.self_modulate = Color(0.85, 0.85, 0.85)  # greys the card itself, not what's on it
-	var badge := _icon("lock", 32)
+	var badge := _icon("lock", 22)
 	badge.anchor_left = 1.0
 	badge.anchor_right = 1.0
-	badge.offset_left = -38
-	badge.offset_right = -6
-	badge.offset_top = 6
-	badge.offset_bottom = 38
+	badge.offset_left = -30
+	badge.offset_right = -8
+	badge.offset_top = 8
+	badge.offset_bottom = 30
 	card.add_child(badge)
 	var outline := Panel.new()
 	outline.theme_type_variation = "CardRing"
@@ -491,7 +491,7 @@ func _refresh() -> void:
 		_needs.visible = not locked and not quote.lines.is_empty()
 		_needs.text = "Needs %s." % BuildingInfo.construction_needs(quote)
 	var short := _shortfall(_shown)
-	UITheme.set_font_color(_cost, UITheme.BAD_TEXT if short > 0 and not locked else UITheme.TEXT_DARK)
+	UITheme.set_font_color(_cost, UITheme.BAD if short > 0 and not locked else UITheme.TEXT)
 	_cost_note.text = str(_def(_shown).get("coming_soon", "Not available yet")) if locked else ("Need %s more" % UITheme.money(short) if short > 0 else "")
 	if not locked and _shown != ROAD and Economy.at_build_limit(_shown):
 		_cost_note.text = "Already built: one is all you need"  # max_count (the Trading Post: 1)
@@ -522,10 +522,10 @@ func _choose(type_id: String) -> void:
 	if not _can_place(type_id):
 		return
 	if type_id == ROAD:
-		show_placing("Drag from a road to lay road, then tap the green tick", true)
+		show_placing("Drag from a road to lay road, then tap the blue tick", true)
 		road_requested.emit()
 		return
-	show_placing("Placing %s: drag it to a free spot, then tap the green tick" % GameData.buildings[type_id].name)
+	show_placing("Placing %s: drag it to a free spot, then tap the blue tick" % GameData.buildings[type_id].name)
 	placement_requested.emit(type_id)
 
 
@@ -542,11 +542,11 @@ func _apply_layout() -> void:
 		_frame.position = Vector2(0, roundf(size.y * SHEET_TOP))
 		_frame.size = Vector2(size.x, size.y - _frame.position.y)
 	else:
-		# Wide screen (PC / landscape): a window in the middle, nudged left if it would cover the
-		# money bar (handy to see while shopping).
-		_frame.size = Vector2(minf(MAX_SIZE.x, size.x * 0.94), minf(MAX_SIZE.y, size.y * 0.92))
+		# Wide screen (PC / landscape): a window in the middle, below the HUD strip (the cash is
+		# handy to see while shopping).
+		_frame.size = Vector2(minf(MAX_SIZE.x, size.x * 0.94), minf(MAX_SIZE.y, size.y - HUD_HEIGHT - 12.0))
 		_frame.position = ((size - _frame.size) / 2.0).round()
-		_frame.position.x = maxf(minf(_frame.position.x, size.x - HUD_WIDTH - _frame.size.x), 16.0)
+		_frame.position.y = maxf(_frame.position.y, HUD_HEIGHT)
 
 
 # --- Small helpers -------------------------------------------------------------

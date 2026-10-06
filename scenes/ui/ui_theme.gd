@@ -1,75 +1,81 @@
 class_name UITheme
-## The game's look, in one place: a warm, cosy cartoon style ("Honey & cream"). Cream paper
-## windows with soft caramel outlines, a honey title ribbon on every window, chunky rounded
-## buttons, and the rounded Fredoka font (assets/fonts/, SIL Open Font License).
-## The artwork is SVG files in assets/ui/ (plain text, easy to restyle); main.gd applies the
-## theme to all of the UI, so every Button, Label and panel picks it up automatically.
+## The game's look, in one place: "Harbor Glass", a calm, realistic city-builder style (the user
+## asked for something like Cities: Skylines II, 2026-10-06). Dark slate glass panels with a thin
+## light rim and small rounded corners, one blue highlight colour, white line icons and the Overpass
+## font (assets/fonts/, SIL Open Font License). Everything is drawn by Godot (no picture files), so
+## a colour change here restyles the whole game. main.gd applies the theme to all of the UI, so
+## every Button, Label and panel picks it up automatically.
 ##
 ## Buttons all have the same shape; their colour says what they do (set theme_type_variation):
-##   "" (honey)       a normal action
-##   "GoButton"       go / start / collect (green)
-##   "DangerButton"   demolish, cancel, can't be undone (coral red)
-##   "BackButton"     back / no / can't do it yet (warm grey)
-##   "ChipButton" / "ChipOnButton"   one choice out of several; the picked one is "On" (honey)
+##   "" (glass)       a normal action
+##   "GoButton"       go / start / collect (blue, the one strong colour)
+##   "DangerButton"   demolish, can't be undone (red)
+##   "BackButton"     back / no / can't do it yet (just an outline)
+##   "IconButton"     no box at all until pointed at: close ✕, the bottom toolbar
+##   "ChipButton" / "ChipOnButton"   one choice out of several; the picked one is "On" (blue)
 ## Make buttons with UITheme.button(), which also gives them one of three sizes.
 ##
-## Text styles (Label theme_type_variation): "" or "BodyLabel" (brown body text), "SmallLabel",
-## "HeadingLabel", "BigLabel", "TitleLabel" (white, on the title ribbon) and "OutlineLabel"
-## (white with an outline, for text straight over the map).
+## Text styles (Label theme_type_variation): "" or "BodyLabel" (body text), "SmallLabel" (grey
+## notes), "HeadingLabel", "BigLabel", "TitleLabel" (window titles) and "OutlineLabel" (white with
+## a dark outline, for text straight over the map).
 
-const SKINS := "res://assets/ui/"
 const ICONS := "res://assets/ui/icons/"
-const FONT_FILE := "res://assets/fonts/Fredoka.ttf"
+const FONT_FILE := "res://assets/fonts/Overpass-Medium.ttf"
+const BOLD_FONT_FILE := "res://assets/fonts/Overpass-Bold.ttf"
 
 # Palette.
-const CREAM := Color("fff8e9")
-const SAND := Color("f7e5c1")
-const SAND_EDGE := Color("e0be83")
-const CARAMEL := Color("d9a066")
-const BROWN := Color("8a5a2b")  # window and pill outlines
-const HONEY := Color("f6b13f")
-const HONEY_DARK := Color("8e5312")
-const TEXT := Color("fffcf2")  # white text (on buttons, the ribbon, over the map)
-const TEXT_DARK := Color("5a3618")  # body text on cream
-const TEXT_MUTED := Color("85623f")  # small notes
-const HEADING := Color("8e4f14")
-const OUTLINE := Color("4a2a12")  # outlines over the map: name tags, bubbles, floating numbers
-const GOOD := Color("9cf06a")  # good news over the map
-const BAD := Color("ff7a63")  # bad news over the map
-const GOOD_TEXT := Color("3f8a2a")  # good news on cream
-const BAD_TEXT := Color("c23b2c")  # bad news / warnings on cream
-const WARN_TEXT := Color("ffd166")  # "not quite right" over the map
-const SELECTED := Color("f6b13f")  # the ring around the chosen card
-## Dims the map behind an open window.
-const DIM := Color(0.22, 0.12, 0.04, 0.4)
+const GLASS := Color(0.075, 0.102, 0.141, 0.93)  # windows, bars and the HUD: dark slate glass
+const GLASS_HIGH := Color(0.106, 0.141, 0.188, 0.97)  # tooltips and side tabs: a shade lighter
+const EDGE := Color(1, 1, 1, 0.09)  # the thin light rim around glass
+const EDGE_STRONG := Color(1, 1, 1, 0.17)  # outlines of empty buttons, chips and text boxes
+const WELL := Color(0, 0, 0, 0.28)  # sunken boxes inside windows
+const HOVER := Color(1, 1, 1, 0.08)  # under the pointer
+const TEXT := Color("eef3f8")  # body text, titles and numbers
+const TEXT_DIM := Color("a9b6c5")  # small notes and captions
+const TEXT_FAINT := Color("74849a")  # hints and empty text boxes
+const ACCENT := Color("2f9cf0")  # the one highlight colour: Go buttons, picked choices, selection
+const ACCENT_HIGH := Color("5bb6ff")
+const GOOD := Color("5fd07a")  # good news (in windows and over the map)
+const WARN := Color("f2b23e")  # "not quite right"
+const BAD := Color("f0605a")  # bad news / warnings
+const OUTLINE := Color("0b1118")  # dark outline for text and signs straight over the map
+## Dims the map behind a window in the middle of the screen (and phone sheets).
+const DIM := Color(0.02, 0.04, 0.07, 0.42)
+## Behind a window docked at the side: lighter, so the map stays in view.
+const DIM_LIGHT := Color(0.02, 0.04, 0.07, 0.16)
+const RADIUS := 4  # buttons
+const WINDOW_RADIUS := 6  # windows, cards and the HUD
 
 # Text sizes: every label uses one of these (through its variation).
-const SIZE_SMALL := 15
-const SIZE_BODY := 18
-const SIZE_HEADING := 21
-const SIZE_BIG := 26
-const SIZE_TITLE := 30
+const SIZE_SMALL := 14
+const SIZE_BODY := 17
+const SIZE_HEADING := 19
+const SIZE_BIG := 23
+const SIZE_TITLE := 21
 
 ## Button sizes: minimum width and height, and font size.
 const SIZES := {
-	"small": {"min": Vector2(64, 44), "font": 17},
-	"normal": {"min": Vector2(150, 52), "font": 20},
-	"big": {"min": Vector2(240, 60), "font": 23},
+	"small": {"min": Vector2(64, 40), "font": 15},
+	"normal": {"min": Vector2(140, 46), "font": 17},
+	"big": {"min": Vector2(220, 54), "font": 19},
 }
-## Round buttons: icon-only ones (close, ✓, ✗) and the building action bar's.
-const ROUND_ICON_SIZE := 56.0
-const ROUND_ACTION_SIZE := 84.0
+## Tile buttons (RoundButton): icon-only ones (close ✕, ✓) and the building card's, with a caption.
+const ROUND_ICON_SIZE := 44.0
+const ROUND_ACTION_SIZE := 64.0
 
-## Button colours: variation -> [skin, text colour, text outline colour ("" = no outline)].
-## Light buttons get dark brown text; the strong green and red ones white text with an outline.
+## Button colours: variation -> [fill, rim, text colour]. Filled buttons (Go, Danger, the picked
+## chip) light up a little towards the top, like the glass catching the light.
 const BUTTONS := {
-	"Button": ["honey", "6b3a0e", ""],
-	"GoButton": ["green", "fffcf2", "2f6b27"],
-	"DangerButton": ["red", "fffcf2", "8c2c27"],
-	"BackButton": ["grey", "5a4a38", ""],
-	"ChipOnButton": ["honey", "6b3a0e", ""],
-	"ChipButton": ["chip", "5a3618", ""],
+	"Button": [Color(1, 1, 1, 0.08), EDGE, TEXT],
+	"GoButton": [Color("1f86d6"), Color("4fb0f8"), Color.WHITE],
+	"DangerButton": [Color("cf433d"), Color("f47770"), Color.WHITE],
+	"BackButton": [Color(0, 0, 0, 0), EDGE_STRONG, TEXT_DIM],
+	"IconButton": [Color(0, 0, 0, 0), Color(0, 0, 0, 0), TEXT_DIM],
+	"ChipOnButton": [Color("1f86d6"), Color("4fb0f8"), Color.WHITE],
+	"ChipButton": [Color(0, 0, 0, 0), EDGE_STRONG, TEXT_DIM],
 }
+const FILLED := ["GoButton", "DangerButton", "ChipOnButton"]
+const CHIPS := ["ChipButton", "ChipOnButton"]
 
 static var _font: Font
 static var _bold: Font
@@ -89,28 +95,25 @@ static func build() -> Theme:
 
 
 static func _labels(t: Theme) -> void:
-	# Almost every label sits on a cream window, so plain brown text is the default.
-	t.set_color("font_color", "Label", TEXT_DARK)
+	t.set_color("font_color", "Label", TEXT)
 	t.set_font_size("font_size", "Label", SIZE_BODY)
 	t.set_type_variation("BodyLabel", "Label")
-	_label_style(t, "SmallLabel", SIZE_SMALL, TEXT_MUTED)
-	_label_style(t, "HeadingLabel", SIZE_HEADING, HEADING, true)
-	_label_style(t, "BigLabel", SIZE_BIG, TEXT_DARK, true)
+	_label_style(t, "SmallLabel", SIZE_SMALL, TEXT_DIM)
+	_label_style(t, "HeadingLabel", SIZE_HEADING, TEXT, true)
+	_label_style(t, "BigLabel", SIZE_BIG, TEXT, true)
 	_label_style(t, "TitleLabel", SIZE_TITLE, TEXT, true)
-	t.set_color("font_outline_color", "TitleLabel", HONEY_DARK)
-	t.set_constant("outline_size", "TitleLabel", 9)
-	# White text with a soft brown outline and shadow: readable over the map.
-	_label_style(t, "OutlineLabel", 20, TEXT, true)
+	# White text with a dark outline and a soft shadow: readable over the map.
+	_label_style(t, "OutlineLabel", 18, TEXT, true)
 	t.set_color("font_outline_color", "OutlineLabel", OUTLINE)
-	t.set_constant("outline_size", "OutlineLabel", 8)
-	t.set_color("font_shadow_color", "OutlineLabel", Color(OUTLINE, 0.35))
+	t.set_constant("outline_size", "OutlineLabel", 6)
+	t.set_color("font_shadow_color", "OutlineLabel", Color(OUTLINE, 0.4))
 	t.set_constant("shadow_offset_x", "OutlineLabel", 0)
-	t.set_constant("shadow_offset_y", "OutlineLabel", 3)
-	t.set_constant("shadow_outline_size", "OutlineLabel", 8)
-	# Tooltips: a little cream note.
-	t.set_stylebox("panel", "TooltipPanel", _flat(CREAM, BROWN, 10, 2, 8))
-	t.set_color("font_color", "TooltipLabel", TEXT_DARK)
-	t.set_font_size("font_size", "TooltipLabel", 16)
+	t.set_constant("shadow_offset_y", "OutlineLabel", 2)
+	t.set_constant("shadow_outline_size", "OutlineLabel", 6)
+	# Tooltips: a small glass note.
+	t.set_stylebox("panel", "TooltipPanel", _flat(GLASS_HIGH, EDGE_STRONG, RADIUS, 1, 8))
+	t.set_color("font_color", "TooltipLabel", TEXT)
+	t.set_font_size("font_size", "TooltipLabel", 15)
 
 
 static func _label_style(t: Theme, variation: String, size: int, color: Color, bold := false) -> void:
@@ -125,145 +128,159 @@ static func _buttons(t: Theme) -> void:
 	t.set_font("font", "Button", bold_font())
 	t.set_font_size("font_size", "Button", SIZES.normal.font)
 	t.set_constant("h_separation", "Button", 8)
+	t.set_constant("icon_max_width", "Button", 28)  # icons on buttons stay small next to the words
 	for variation in BUTTONS:
 		if variation != "Button":
 			t.set_type_variation(variation, "Button")
 		var spec: Array = BUTTONS[variation]
-		_button(t, variation, spec[0])
-		for state in ["font_color", "font_hover_color", "font_pressed_color", "font_focus_color", "font_hover_pressed_color"]:
-			t.set_color(state, variation, Color(spec[1]))
-		t.set_constant("outline_size", variation, 5 if spec[2] != "" else 0)
-		if spec[2] != "":
-			t.set_color("font_outline_color", variation, Color(spec[2]))
-		# Disabled buttons all turn grey: keep their text readable on it.
-		t.set_color("font_disabled_color", variation, Color(1, 1, 1, 0.9) if spec[2] != "" else Color("5a4a38", 0.6))
+		_button(t, variation, spec[0], spec[1], variation in FILLED, 16 if variation in CHIPS else RADIUS)
+		var text: Color = spec[2]
+		for state in ["font_color", "font_focus_color"]:
+			t.set_color(state, variation, text)
+		# Grey text lights up under the pointer.
+		for state in ["font_hover_color", "font_pressed_color", "font_hover_pressed_color"]:
+			t.set_color(state, variation, TEXT if text == TEXT_DIM else text)
+		t.set_color("font_disabled_color", variation, Color(TEXT, 0.38))
+		t.set_constant("outline_size", variation, 0)
 
-	# Clickable cards (build menu entries).
+	# Clickable cards (build menu entries): a faint glass tile.
 	t.set_type_variation("CardButton", "Button")
-	var card := skin("card", 16, 16, 16, 18)
-	card.set_content_margin_all(10)
-	card.content_margin_bottom = 14
+	var card := _flat(Color(1, 1, 1, 0.05), EDGE, WINDOW_RADIUS, 1, 8)
 	t.set_stylebox("normal", "CardButton", card)
-	t.set_stylebox("hover", "CardButton", _tinted(card, Color(1.05, 1.03, 0.96)))
-	t.set_stylebox("pressed", "CardButton", _pressed(card))
-	t.set_stylebox("disabled", "CardButton", _tinted(card, Color(0.85, 0.82, 0.78)))
+	t.set_stylebox("hover", "CardButton", _filled(card, Color(1, 1, 1, 0.1)))
+	t.set_stylebox("pressed", "CardButton", _filled(card, Color(1, 1, 1, 0.03)))
+	t.set_stylebox("hover_pressed", "CardButton", _filled(card, Color(1, 1, 1, 0.03)))
+	t.set_stylebox("disabled", "CardButton", card)
 	t.set_stylebox("focus", "CardButton", StyleBoxEmpty.new())
-	# The honey ring around the chosen card (a Panel laid over it).
+	# The blue outline around the chosen card (a Panel laid over it), with a faint blue wash.
 	t.set_type_variation("CardRing", "Panel")
-	var ring := _flat(Color(0, 0, 0, 0), SELECTED, 16, 4, 0)
-	ring.draw_center = false
-	ring.expand_margin_left = 3
-	ring.expand_margin_right = 3
-	ring.expand_margin_top = 3
-	ring.expand_margin_bottom = 1
+	var ring := _flat(Color(ACCENT, 0.12), ACCENT_HIGH, WINDOW_RADIUS, 2, 0)
 	t.set_stylebox("panel", "CardRing", ring)
 
-	# Tabs down a window's right edge (Build Menu). A closed tab is sand; the open one is cream and
-	# reaches left over the window's border, so it looks joined to the page.
-	var tab := _flat(Color("f2d49b"), BROWN, 0, 3, 8)
+	# Tabs down a window's right edge (Build Menu): glass tiles; the open one is blue.
+	var tab := _flat(GLASS_HIGH, EDGE, 0, 1, 8)
 	tab.border_width_left = 0
-	tab.corner_radius_top_right = 18
-	tab.corner_radius_bottom_right = 18
-	tab.content_margin_left = 14
-	var open_tab: StyleBoxFlat = tab.duplicate()
-	open_tab.bg_color = Color("fdf1d9")
-	open_tab.expand_margin_left = 12
+	tab.corner_radius_top_right = WINDOW_RADIUS
+	tab.corner_radius_bottom_right = WINDOW_RADIUS
+	var open_tab := _lit(tab, Color("1f86d6"), Color("4fb0f8"))
 	for pair in [["SideTab", tab], ["SideTabOpen", open_tab]]:
 		t.set_type_variation(pair[0], "Button")
 		t.set_stylebox("normal", pair[0], pair[1])
 		t.set_stylebox("pressed", pair[0], pair[1])
+		t.set_stylebox("hover_pressed", pair[0], pair[1])
 		t.set_stylebox("focus", pair[0], StyleBoxEmpty.new())
-		var hover: StyleBoxFlat = pair[1].duplicate()
-		hover.bg_color = hover.bg_color.lightened(0.15)
-		t.set_stylebox("hover", pair[0], hover)
+		t.set_constant("icon_max_width", pair[0], 30)
+	t.set_stylebox("hover", "SideTab", _filled(tab, Color("243041", 0.97)))
 	t.set_stylebox("hover", "SideTabOpen", open_tab)
 
 
 static func _panels(t: Theme) -> void:
-	# Windows: cream paper with a caramel rim.
-	var window := skin("panel", 26, 26, 26, 30)
-	window.set_content_margin_all(22)
-	window.content_margin_bottom = 28
+	# Windows: dark glass with a thin light rim and a soft shadow underneath.
+	var window := _flat(GLASS, EDGE, WINDOW_RADIUS, 1, 16)
+	window.content_margin_top = 12
+	window.shadow_color = Color(0, 0, 0, 0.35)
+	window.shadow_size = 16
+	window.shadow_offset = Vector2(0, 6)
 	t.set_stylebox("panel", "PanelContainer", window)
 	t.set_stylebox("panel", "Panel", window)
-	# The honey ribbon across the top of every window (title + close button).
+	# The strip across the top of every window (title + close button). It reaches out over the
+	# window's own padding (expand margins), so its faint band and the line under it run edge to edge.
 	t.set_type_variation("TitleBar", "PanelContainer")
-	var ribbon := skin("title_bar", 24, 30, 24, 26)
-	ribbon.content_margin_left = 22
-	ribbon.content_margin_right = 8
-	ribbon.content_margin_top = 4
-	ribbon.content_margin_bottom = 10
-	t.set_stylebox("panel", "TitleBar", ribbon)
+	var strip := _flat(Color(1, 1, 1, 0.035), EDGE, 0, 0, 0)
+	strip.border_width_bottom = 1
+	strip.corner_radius_top_left = WINDOW_RADIUS
+	strip.corner_radius_top_right = WINDOW_RADIUS
+	strip.expand_margin_left = 16
+	strip.expand_margin_right = 16
+	strip.expand_margin_top = 12
+	strip.content_margin_bottom = 8
+	t.set_stylebox("panel", "TitleBar", strip)
 	# Sunken boxes inside windows (sections, rows of details).
 	t.set_type_variation("Inset", "PanelContainer")
-	t.set_stylebox("panel", "Inset", _flat(SAND, SAND_EDGE, 14, 2, 12))
-	# Cream bubbles over the map: the HUD numbers and the short messages.
+	t.set_stylebox("panel", "Inset", _flat(WELL, EDGE, 5, 1, 10))
+	# Small glass boxes over the map: the warehouse chips under the HUD and the short messages.
 	t.set_type_variation("HudPill", "PanelContainer")
-	var pill := _flat(Color(CREAM, 0.97), BROWN, 18, 3, 6)
-	pill.content_margin_left = 10
+	var pill := _flat(GLASS, EDGE, 5, 1, 4)
+	pill.content_margin_left = 8
 	pill.content_margin_right = 10
-	pill.shadow_color = Color(0.48, 0.29, 0.12, 0.3)
-	pill.shadow_size = 3
-	pill.shadow_offset = Vector2(0, 3)
+	pill.shadow_color = Color(0, 0, 0, 0.3)
+	pill.shadow_size = 6
+	pill.shadow_offset = Vector2(0, 2)
 	t.set_stylebox("panel", "HudPill", pill)
-	# Text boxes (developer tools).
-	var field := _flat(Color("fffdf6"), Color("b98a52"), 12, 2, 10)
-	var focused := field.duplicate()
-	focused.border_color = HONEY
-	focused.set_border_width_all(3)
+	# Glass bars over the map: the HUD's numbers, the bottom toolbar.
+	t.set_type_variation("HudBar", "PanelContainer")
+	var bar := _flat(GLASS, EDGE, WINDOW_RADIUS, 1, 6)
+	bar.content_margin_left = 10
+	bar.content_margin_right = 10
+	bar.shadow_color = Color(0, 0, 0, 0.32)
+	bar.shadow_size = 12
+	bar.shadow_offset = Vector2(0, 4)
+	t.set_stylebox("panel", "HudBar", bar)
+	# Text boxes (developer tools): a dark well that outlines in blue while typing.
+	var field := _flat(Color(0, 0, 0, 0.3), EDGE_STRONG, RADIUS, 1, 8)
+	field.content_margin_left = 10
+	field.content_margin_right = 10
+	var focused := _flat(Color(0, 0, 0, 0), ACCENT, RADIUS, 2, 8)
+	focused.draw_center = false  # drawn over the normal box
 	t.set_stylebox("normal", "LineEdit", field)
 	t.set_stylebox("focus", "LineEdit", focused)
-	t.set_color("font_color", "LineEdit", TEXT_DARK)
-	t.set_color("font_placeholder_color", "LineEdit", Color(TEXT_MUTED, 0.7))
-	t.set_color("caret_color", "LineEdit", TEXT_DARK)
+	t.set_color("font_color", "LineEdit", TEXT)
+	t.set_color("font_placeholder_color", "LineEdit", TEXT_FAINT)
+	t.set_color("caret_color", "LineEdit", ACCENT_HIGH)
+	t.set_color("selection_color", "LineEdit", Color(ACCENT, 0.35))
 
 
 static func _bars(t: Theme) -> void:
-	# Scroll bars inside windows: a caramel handle on a faint track.
+	# Scroll bars inside windows: a thin light handle on a faint track.
 	for bar in ["VScrollBar", "HScrollBar"]:
-		var track := _flat(Color(BROWN, 0.1), Color(0, 0, 0, 0), 7, 0, 0)
-		track.set_content_margin_all(5)
+		var track := _flat(Color(1, 1, 1, 0.04), Color(0, 0, 0, 0), 4, 0, 4)
 		t.set_stylebox("scroll", bar, track)
-		t.set_stylebox("grabber", bar, _flat(CARAMEL, BROWN, 7, 2, 0))
-		t.set_stylebox("grabber_highlight", bar, _flat(CARAMEL.lightened(0.15), BROWN, 7, 2, 0))
-		t.set_stylebox("grabber_pressed", bar, _flat(CARAMEL.darkened(0.1), BROWN, 7, 2, 0))
+		t.set_stylebox("grabber", bar, _flat(Color(1, 1, 1, 0.22), Color(0, 0, 0, 0), 4, 0, 0))
+		t.set_stylebox("grabber_highlight", bar, _flat(Color(1, 1, 1, 0.32), Color(0, 0, 0, 0), 4, 0, 0))
+		t.set_stylebox("grabber_pressed", bar, _flat(Color(1, 1, 1, 0.4), Color(0, 0, 0, 0), 4, 0, 0))
 
-	# Sliders (amount pickers): a sand track that fills with honey up to the handle.
-	var groove := _flat(Color("ead6b0"), Color("b98a52"), 6, 2, 0)
-	groove.content_margin_top = 4
-	groove.content_margin_bottom = 4
+	# Sliders (amount pickers): a thin track that fills with blue up to the handle.
+	var groove := _flat(Color(1, 1, 1, 0.18), Color(0, 0, 0, 0), 3, 0, 0)
+	groove.content_margin_top = 2
+	groove.content_margin_bottom = 2
 	t.set_stylebox("slider", "HSlider", groove)
-	t.set_stylebox("grabber_area", "HSlider", _flat(HONEY, Color("b98a52"), 6, 2, 0))
-	t.set_stylebox("grabber_area_highlight", "HSlider", _flat(HONEY.lightened(0.15), Color("b98a52"), 6, 2, 0))
+	t.set_stylebox("grabber_area", "HSlider", _filled(groove, ACCENT))
+	t.set_stylebox("grabber_area_highlight", "HSlider", _filled(groove, ACCENT_HIGH))
 
-	# Progress bars: a sand track with a soft coloured fill. Other fills are variations.
-	t.set_stylebox("background", "ProgressBar", _flat(Color("ead6b0"), Color("b98a52"), 9, 2, 0))
-	t.set_stylebox("fill", "ProgressBar", _bar_fill(Color("8cd267")))
-	for pair in [["GoldBar", "f7c548"], ["BlueBar", "7cc4f0"], ["BrownBar", "d9a066"], ["GreenBar", "8cd267"], ["RedBar", "f07f6e"]]:
+	# Progress bars: a faint track with a flat coloured fill (blue). Other fills are variations.
+	t.set_stylebox("background", "ProgressBar", _flat(Color(1, 1, 1, 0.12), Color(0, 0, 0, 0), 3, 0, 0))
+	t.set_stylebox("fill", "ProgressBar", _flat(ACCENT, Color(0, 0, 0, 0), 3, 0, 0))
+	t.set_color("font_color", "ProgressBar", TEXT)
+	for pair in [["GoldBar", WARN], ["BlueBar", Color("7cc4f0")], ["BrownBar", Color("c9a26a")], ["GreenBar", GOOD], ["RedBar", BAD]]:
 		t.set_type_variation(pair[0], "ProgressBar")
-		t.set_stylebox("fill", pair[0], _bar_fill(Color(pair[1])))
+		t.set_stylebox("fill", pair[0], _flat(pair[1], Color(0, 0, 0, 0), 3, 0, 0))
 
 
-## The game font: Fredoka, medium weight. Symbols it doesn't have (→ ✓) come from Godot's own font.
+## The game font: Overpass Medium. Symbols it doesn't have (✓) come from Godot's own font.
 static func font() -> Font:
 	if _font == null:
-		_font = _fredoka(500)
+		_font = _overpass(FONT_FILE)
 	return _font
 
 
-## Bold Fredoka, for titles, headings and buttons.
+## Overpass Bold, for titles, headings, numbers and buttons.
 static func bold_font() -> Font:
 	if _bold == null:
-		_bold = _fredoka(700)
+		_bold = _overpass(BOLD_FONT_FILE)
 	return _bold
 
 
-static func _fredoka(weight: int) -> Font:
-	var weighted := FontVariation.new()
-	weighted.base_font = load(FONT_FILE)
-	weighted.variation_opentype = {TextServerManager.get_primary_interface().name_to_tag("wght"): weight}
-	weighted.fallbacks = [ThemeDB.fallback_font]
-	return weighted
+static func _overpass(path: String) -> Font:
+	var tuned := FontVariation.new()
+	tuned.base_font = load(path)
+	# Digits all the same width ("tnum"), so numbers that change don't wobble and columns line up.
+	tuned.opentype_features = {TextServerManager.get_primary_interface().name_to_tag("tnum"): 1}
+	# Overpass sits a little high in its line; this nudges it down a pixel so text looks centred
+	# in buttons and bars (the line stays the same height).
+	tuned.spacing_top = 1
+	tuned.spacing_bottom = -1
+	tuned.fallbacks = [ThemeDB.fallback_font]
+	return tuned
 
 
 # --- Builders: every screen makes its buttons, labels and boxes with these -----------
@@ -336,7 +353,7 @@ static func icon_rect(icon_name: String, side: float) -> TextureRect:
 	return rect
 
 
-## The honey ribbon with a window's title, and a round red close button at its right end.
+## The strip across the top of a window: its title, and a close ✕ at the right end.
 ## Returns {"bar": PanelContainer, "label": Label, "close": RoundButton}.
 static func title_bar(text := "") -> Dictionary:
 	var bar := PanelContainer.new()
@@ -348,19 +365,19 @@ static func title_bar(text := "") -> Dictionary:
 	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	title.clip_text = true
 	row.add_child(title)
-	var close := RoundButton.make("red", "close", "", ROUND_ICON_SIZE)
+	var close := RoundButton.make("IconButton", "close", "", ROUND_ICON_SIZE)
 	close.button.tooltip_text = "Close"
 	row.add_child(close)
 	return {"bar": bar, "label": title, "close": close}
 
 
-## A window (or bar) pops in with a little bounce.
-static func pop_in(control: Control, from := 0.85) -> void:
+## A window (or bar) fades in, growing very slightly into place.
+static func pop_in(control: Control, from := 0.97) -> void:
 	control.pivot_offset = control.size / 2.0
 	control.scale = Vector2(from, from)
 	control.modulate.a = 0.0
 	var pop := control.create_tween().set_parallel()
-	pop.tween_property(control, "scale", Vector2.ONE, 0.22).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	pop.tween_property(control, "scale", Vector2.ONE, 0.16).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 	pop.tween_property(control, "modulate:a", 1.0, 0.12)
 
 
@@ -370,17 +387,6 @@ static func icon(icon_name: String) -> Texture2D:
 		var path := ICONS + icon_name + ".svg"
 		_icons[icon_name] = load(path) if ResourceLoader.exists(path) else load(ICONS + "item.svg")
 	return _icons[icon_name]
-
-
-## A 9-patch style from an SVG skin: the corners keep their shape however big the box gets.
-static func skin(skin_name: String, left: float, top: float, right: float, bottom: float) -> StyleBoxTexture:
-	var box := StyleBoxTexture.new()
-	box.texture = load(SKINS + skin_name + ".svg")
-	box.texture_margin_left = left
-	box.texture_margin_top = top
-	box.texture_margin_right = right
-	box.texture_margin_bottom = bottom
-	return box
 
 
 # --- Numbers and times as text -------------------------------------------------------
@@ -442,32 +448,52 @@ static func clock(unix: float, now: float) -> String:
 
 # --- Style helpers -------------------------------------------------------------------
 
-static func _button(t: Theme, type: String, color: String) -> void:
-	var normal := skin("button_" + color, 18, 20, 18, 18)
-	normal.content_margin_left = 16
-	normal.content_margin_right = 16
-	normal.content_margin_top = 6
-	normal.content_margin_bottom = 12
+## One button look: normal, a lighter hover, a darker pressed (its text sinks a pixel, as if
+## pushed in) and a faint grey disabled one, which is the same for every colour.
+static func _button(t: Theme, type: String, fill: Color, rim: Color, filled: bool, radius: int) -> void:
+	var normal := _flat(fill, rim, radius, 1, 6)
+	normal.content_margin_left = 14
+	normal.content_margin_right = 14
+	var hover: StyleBoxFlat
+	var pressed: StyleBoxFlat
+	if filled:
+		normal = _lit(normal, fill, rim)
+		hover = _lit(normal, fill.lightened(0.1), rim.lightened(0.1))
+		pressed = _filled(normal, fill.darkened(0.12))
+		pressed.border_color = fill
+	else:
+		hover = _filled(normal, Color(1, 1, 1, fill.a + 0.07))
+		pressed = _filled(normal, Color(1, 1, 1, 0.04))
+	pressed.content_margin_top += 1
+	pressed.content_margin_bottom -= 1
+	var disabled := _flat(Color(1, 1, 1, 0.05), EDGE, radius, 1, 6)
+	disabled.content_margin_left = 14
+	disabled.content_margin_right = 14
+	if type == "IconButton":
+		disabled.draw_center = false
+		disabled.border_color = Color(0, 0, 0, 0)
 	t.set_stylebox("normal", type, normal)
-	t.set_stylebox("hover", type, _tinted(normal, Color(1.07, 1.07, 1.07)))
-	t.set_stylebox("pressed", type, _pressed(normal))
+	t.set_stylebox("hover", type, hover)
+	t.set_stylebox("pressed", type, pressed)
+	t.set_stylebox("hover_pressed", type, pressed)
+	t.set_stylebox("disabled", type, disabled)
 	t.set_stylebox("focus", type, StyleBoxEmpty.new())
-	var grey: StyleBoxTexture = normal.duplicate()
-	grey.texture = load(SKINS + "button_grey.svg")
-	t.set_stylebox("disabled", type, grey)
 
 
-static func _tinted(box: StyleBoxTexture, tint: Color) -> StyleBoxTexture:
-	var copy: StyleBoxTexture = box.duplicate()
-	copy.modulate_color = tint
+## A copy of a box with another fill colour.
+static func _filled(box: StyleBoxFlat, fill: Color) -> StyleBoxFlat:
+	var copy: StyleBoxFlat = box.duplicate()
+	copy.bg_color = fill
 	return copy
 
 
-## Pressed look: a little darker, and the label sinks 3 pixels as if pushed in.
-static func _pressed(box: StyleBoxTexture) -> StyleBoxTexture:
-	var copy := _tinted(box, Color(0.9, 0.88, 0.86))
-	copy.content_margin_top += 3
-	copy.content_margin_bottom -= 3
+## A filled box whose top half catches the light: a lighter top edge that fades into the fill
+## (Godot boxes can't hold a real gradient, so a thick top border that blends does it).
+static func _lit(box: StyleBoxFlat, fill: Color, light: Color) -> StyleBoxFlat:
+	var copy := _filled(box, fill)
+	copy.border_color = light
+	copy.border_width_top = 20
+	copy.border_blend = true
 	return copy
 
 
@@ -479,11 +505,4 @@ static func _flat(fill: Color, border: Color, radius: int, border_width: int, pa
 	box.set_corner_radius_all(radius)
 	box.set_content_margin_all(padding)
 	box.anti_aliasing = true
-	return box
-
-
-static func _bar_fill(color: Color) -> StyleBoxFlat:
-	var box := _flat(color, color.lightened(0.5), 9, 0, 0)
-	box.border_width_top = 4  # light top edge fading into the colour: a soft shine
-	box.border_blend = true
 	return box

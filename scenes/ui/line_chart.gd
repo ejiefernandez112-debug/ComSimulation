@@ -5,15 +5,16 @@ extends Control
 ## and, while the pointer is over it (or a finger drags across it), a crosshair with the values
 ## at that moment. Only draws numbers it is handed; it works nothing out about the game.
 
-## Line colours in a fixed order, checked to stay tell-apart-able for colour-blind players.
+## Line colours in a fixed order, checked to stay tell-apart-able for colour-blind players (the
+## same hues as before, made lighter so they stand out on the dark windows).
 ## A line keeps its colour whatever else is shown (e.g. Wheat is always the first colour).
-const COLORS := [Color("2a78d6"), Color("eb6834"), Color("1baf7a"), Color("eda100"),
-	Color("e87ba4"), Color("008300"), Color("4a3aa7"), Color("e34948")]
-const SURFACE := Color("fffcf3")
-const BORDER := UITheme.SAND_EDGE
-const GRID := Color("efe0c2")
-const INK := UITheme.TEXT_DARK
-const MUTED := UITheme.TEXT_MUTED
+const COLORS := [Color("4d9cf0"), Color("f07e4a"), Color("2fcf95"), Color("f2b42a"),
+	Color("f095bd"), Color("52b84a"), Color("9a8cf2"), Color("f2665f")]
+const SURFACE := Color("0e141c")  # the chart's own dark background (and the ring around its dots)
+const BORDER := Color(1, 1, 1, 0.17)  # the zero line and the edge of the box under the pointer
+const GRID := Color(1, 1, 1, 0.07)
+const INK := UITheme.TEXT
+const MUTED := UITheme.TEXT_DIM
 const LEGEND_HEIGHT := 28.0
 const PAD_LEFT := 50.0
 const PAD_RIGHT := 16.0
@@ -35,9 +36,9 @@ var _frame := StyleBoxFlat.new()
 func _init() -> void:
 	mouse_filter = Control.MOUSE_FILTER_PASS  # wheel scrolling still reaches the window
 	_frame.bg_color = SURFACE
-	_frame.border_color = BORDER
-	_frame.set_border_width_all(2)
-	_frame.set_corner_radius_all(14)
+	_frame.border_color = UITheme.EDGE
+	_frame.set_border_width_all(1)
+	_frame.set_corner_radius_all(5)
 	_frame.anti_aliasing = true
 	mouse_exited.connect(func():
 		_hover_x = -1.0

@@ -300,7 +300,7 @@ func _make_dev_tag() -> void:
 	_dev_tag = UITheme.label("DEV", "HeadingLabel")
 	_dev_tag.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_dev_tag.tooltip_text = "Developer changes are on (F12 → Money & time → Reset all)"
-	UITheme.set_font_color(_dev_tag, UITheme.BAD_TEXT)
+	UITheme.set_font_color(_dev_tag, UITheme.BAD)
 	_refresh_dev_tag()
 	_place_dev_tag.call_deferred()  # the parent is still setting up its own children now
 
@@ -363,7 +363,7 @@ func _refresh_happiness() -> void:
 	for key in _lock_labels:
 		var locked := locks.has(key)
 		_lock_labels[key].text = "%s%% %s" % [_pct(float(locks.get(key, real[key]))), "locked" if locked else "real"]
-		UITheme.set_font_color(_lock_labels[key], UITheme.BAD_TEXT if locked else UITheme.TEXT_DARK)
+		UITheme.set_font_color(_lock_labels[key], UITheme.BAD if locked else UITheme.TEXT)
 
 
 func _refresh_tuning() -> void:

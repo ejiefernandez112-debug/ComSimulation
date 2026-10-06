@@ -4,6 +4,10 @@ extends ModalWindow
 ## warning. It only shows Economy's numbers; the catch-up itself happened in the game rules.
 
 
+func _init() -> void:
+	docked = false  # a greeting: in the middle of the screen, not docked at the side
+
+
 ## Opens the window if the player was away long enough (welcome_back_after_seconds in
 ## game_config.json). Returns whether it opened.
 func show_if_away() -> bool:
@@ -48,7 +52,7 @@ func show_if_away() -> bool:
 func _text(message: String, warning := false) -> void:
 	var label := UITheme.wrapped(message, WIDTH - 70)
 	if warning:
-		label.add_theme_color_override("font_color", UITheme.BAD_TEXT)
+		label.add_theme_color_override("font_color", UITheme.BAD)
 	content.add_child(label)
 
 

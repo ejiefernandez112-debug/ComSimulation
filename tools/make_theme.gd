@@ -1,7 +1,7 @@
 extends SceneTree
 ## Saves the game's look (UITheme.build() in scenes/ui/ui_theme.gd) as a Godot theme file,
 ## assets/ui/game_theme.tres, so scenes made in the editor (like scenes/ui/settings_panel.tscn)
-## show the real cream-and-honey style while you arrange them.
+## show the real look (dark glass panels, see ui_theme.gd) while you arrange them.
 ## Run it again after changing ui_theme.gd:
 ##   "C:\Program Files\Godot\Godot.exe.exe" --headless --path . -s tools/make_theme.gd
 
@@ -9,6 +9,7 @@ const OUT := "res://assets/ui/game_theme.tres"
 
 
 func _initialize() -> void:
+	Engine.set_meta("running_tests", true)  # keeps Economy away from the player's real save
 	# Loaded here, not named at the top: ui_theme.gd uses the game's autoloads, which only exist
 	# once the game has started.
 	var ui_theme: GDScript = load("res://scenes/ui/ui_theme.gd")

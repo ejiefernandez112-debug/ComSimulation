@@ -37,7 +37,7 @@ func show_settings() -> void:
 	open("Settings")
 
 
-## On: a honey chip with the "on" text; off: a cream chip with the "off" text.
+## On: a blue chip with the "on" text; off: an outlined chip with the "off" text.
 func _show_switch(key: String) -> void:
 	var button: Button = get_node("%" + SWITCHES[key][0])
 	var on: bool = Settings.get_value(key)

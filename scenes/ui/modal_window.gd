@@ -1,22 +1,28 @@
 class_name ModalWindow
 extends Control
-## A pop-up window over the game: dims the map, shows a cream panel with the honey title ribbon
-## (title + red close button, UITheme.title_bar) and pops in with a little bounce. Every pop-up
-## window uses this, so they all look the same. Wide screens get a centred window; tall (phone)
-## screens get a sheet along the bottom (plan.md §6). BuildingPanel and SettingsPanel build on
-## this: they fill `content` with their own rows.
+## A pop-up window over the game: a dark glass panel with the title strip across its top (title +
+## close ✕, UITheme.title_bar) that fades in. Every pop-up window uses this, so they all look the
+## same. Wide screens (PC) dock the window along the left edge, so the map stays in view, with the
+## map dimmed only a little; small questions ("Are you sure?", "Welcome back!") sit in the middle
+## instead (docked = false). Tall (phone) screens get a sheet along the bottom (plan.md §6).
+## BuildingPanel and SettingsPanel build on this: they fill `content` with their own rows.
 
 signal closed
 
 const WIDTH := 540.0
 const SHEET_TOP := 0.35  # on tall screens the sheet covers the bottom 65%
+const GAP := 12  # space between a docked window and the screen's edges
+const FRAME_HEIGHT := 100.0  # the title strip and the window's edges: what's left over is for the rows
 ## For this long after opening, tapping outside doesn't close the window: a quick second tap (a
 ## double-tap on the building that opened it) would otherwise shut it straight away.
 const IGNORE_OUTSIDE_TAPS_MS := 300
 
 var content: VBoxContainer
+## Wide screens: dock along the left edge (true) or sit in the middle (false). Set it in _init().
+var docked := true
 var _opened_at_ms := 0  # when the window last opened (milliseconds since the game started)
 var _title: Label
+var _dim: ColorRect
 var _window: PanelContainer
 var _scroll: ScrollContainer
 
@@ -35,7 +41,8 @@ func _ready() -> void:
 ## A window laid out in the Godot editor (a .tscn, e.g. settings_panel.tscn) brings its own frame:
 ## nodes named Dim, Window, and (unique names) %Title, %Close, %Scroll and %Content.
 func _use_scene_frame() -> void:
-	get_node("Dim").gui_input.connect(_on_dim_input)
+	_dim = get_node("Dim")
+	_dim.gui_input.connect(_on_dim_input)
 	_window = get_node("Window")
 	_title = get_node("%Title")
 	(get_node("%Close") as BaseButton).pressed.connect(close)
@@ -45,11 +52,11 @@ func _use_scene_frame() -> void:
 
 ## Other windows build the same frame in code.
 func _make_frame() -> void:
-	var dim := ColorRect.new()
-	dim.color = UITheme.DIM
-	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
-	dim.gui_input.connect(_on_dim_input)  # tapping outside the window closes it
-	add_child(dim)
+	_dim = ColorRect.new()
+	_dim.color = UITheme.DIM
+	_dim.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_dim.gui_input.connect(_on_dim_input)  # tapping outside the window closes it
+	add_child(_dim)
 	_window = PanelContainer.new()
 	add_child(_window)
 	var column := VBoxContainer.new()
@@ -107,8 +114,12 @@ func _layout() -> void:
 	if not visible:
 		return
 	var tall := size.x < size.y
+	var side := docked and not tall
+	_dim.color = UITheme.DIM_LIGHT if side else UITheme.DIM
 	# As tall as the rows need, but no taller than the screen allows (then they scroll).
-	var room := size.y * (1.0 - SHEET_TOP if tall else 0.94) - 130.0  # minus the title ribbon and window edges
+	var room := size.y * (1.0 - SHEET_TOP if tall else 0.94) - FRAME_HEIGHT
+	if side:
+		room = size.y - 2.0 * GAP - FRAME_HEIGHT
 	_scroll.custom_minimum_size.y = minf(content.get_combined_minimum_size().y, room)
 	_window.reset_size()
 	if tall:
@@ -120,8 +131,15 @@ func _layout() -> void:
 		_window.offset_right = 0
 		_window.offset_top = 0
 		_window.offset_bottom = 0
+	elif side:
+		# Wide screen (PC / landscape): docked along the left edge, clear of the HUD in the
+		# top-right corner.
+		_window.custom_minimum_size.x = WIDTH
+		_window.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT, Control.PRESET_MODE_MINSIZE, GAP)
+		_window.grow_horizontal = Control.GROW_DIRECTION_END
+		_window.grow_vertical = Control.GROW_DIRECTION_END
 	else:
-		# Wide screen (PC / landscape): a window in the middle.
+		# Wide screen, small question: a window in the middle.
 		_window.custom_minimum_size.x = WIDTH
 		_window.set_anchors_and_offsets_preset(Control.PRESET_CENTER, Control.PRESET_MODE_MINSIZE)
 		_window.grow_horizontal = Control.GROW_DIRECTION_BOTH

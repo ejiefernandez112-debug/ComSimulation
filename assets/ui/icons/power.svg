@@ -1,8 +1,1 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
-  <!-- Lightning bolt (power / electricity). -->
-  <defs>
-    <linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFF07A"/><stop offset="1" stop-color="#F2A516"/></linearGradient>
-  </defs>
-  <path d="M74 8 L24 72 L58 72 L48 120 L104 50 L68 50 Z" fill="url(#g)" stroke="#3A2408" stroke-width="6" stroke-linejoin="round"/>
-  <path d="M66 24 L40 60" fill="none" stroke="#fff" stroke-opacity="0.75" stroke-width="6" stroke-linecap="round"/>
-</svg>
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 24 24"><g fill="none" stroke="#ffffff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M13.5 3L5.5 13.5h6L10.5 21l8-10.5h-6z"/></g></svg>
