@@ -152,7 +152,7 @@ static func settle(state: Dictionary, data: Dictionary, now: float, moment := {}
 			_meter_use(state, data, "water", water_m3_per_hour * (next - t) / 3600.0, t)
 			_meter_use(state, data, "power", grid_mw * (next - t) / 3600.0, t)
 			grown += _grow_population(state, data, next, job_cap)
-			_add_to(life, _settle_life(state, data, t, next, life_rates, homes, homes_adults))
+			_add_to(life, _settle_life(state, data, t, next, life_rates, homes, homes_adults, _leave_pool(happy)))
 			t = next
 			water += _bill_if_due(state, data, "water", t)
 			if power_on(data):
@@ -361,14 +361,18 @@ static func _move_in_group(data: Dictionary) -> int:
 # --- Happiness (plan.md §5.6 "Needs & happiness") ------------------------------------
 
 ## How the village feels and what that does to births, the move-in speed and people leaving:
-## {"score" (0-1, what counts), "food", "jobs", "housing" (each need 0-1; jobs = share of ADULTS
-##  with a job; housing = share of households with a real home), "foods" (different foods
-##  selling), "homeless" / "households" (households), "homeless_penalty" (0-1 taken off the score
-##  for households in huts, happiness.homeless_penalty), "needs_count" (false below
+## {"score" (0-1, what counts), "percent" (the score as shown: whole percent rounded DOWN, so
+##  "19%" always means the band below 20%), "food", "jobs", "housing" (each need 0-1; jobs = share
+##  of ADULTS with a job; housing = share of households with a real home), "foods" (different
+##  foods selling), "homeless" / "households" (households), "homeless_penalty" (0-1 taken off the
+##  score for households in huts, happiness.homeless_penalty), "jobless" (adults without a job),
+##  "homeless_workers" (adults with a job living in huts), "needs_count" (false below
 ##  happiness.needs_from_population people, a small village doesn't complain, and during a new
 ##  village's first happiness.grace_hours: then the score is 1), "grace_left" (seconds of grace
-##  still to go), "growth_speed" (1.5 = people move in and babies come 1.5x as fast, 0 = none),
-##  "leave_per_hour" (share of people who leave the island each hour; 0 when happy enough)}.
+##  still to go), "growth_speed" (1.5 = babies come 1.5x as fast, 0 = none), "move_in_speed"
+##  (migrant workers), "leave_per_hour" (share of ADULTS who leave the island each hour, only the
+##  jobless; 0 when happy enough), "children_leave_per_hour" (share of children),
+##  "homeless_workers_leave" (true: adults in huts leave too, even with a job)}.
 ## Without a "happiness" block in game_config.json there are no needs: score 1, speed 1.
 ## `homes` (housing) and `e` (employment) at `now` can be handed in when already worked out.
 static func happiness(state: Dictionary, data: Dictionary, now: float, homes := {}, e := {}) -> Dictionary:
@@ -383,6 +387,43 @@ static func happiness(state: Dictionary, data: Dictionary, now: float, homes := 
 		homes = housing(state, data, now)
 	var households := int(homes.households)
 	var housed: float = 1.0 if households <= 0 else 1.0 - float(homes.homeless) / households
+	var grace_left := maxf(_grace_end(state, data) - now, 0.0) if _has_needs(data) else 0.0
+	var needs_count: bool = _has_needs(data) and grace_left <= 0.0 and int(e.population) >= int(config.get("needs_from_population", 0))
+	# Developer locks (dev_lock_happiness) replace what was worked out, and always count.
+	var locks := dev_locks(state)
+	food = float(locks.get("food", food))
+	jobs = float(locks.get("jobs", jobs))
+	housed = float(locks.get("housing", housed))
+	needs_count = needs_count or not locks.is_empty()
+	var score := 1.0
+	var homeless_penalty := 0.0
+	if needs_count:
+		var mixed := _mix(config, food, jobs, housed, int(homes.homeless), float(locks.get("penalty", -1.0)))
+		score = float(locks.get("score", mixed.score))
+		homeless_penalty = float(mixed.penalty)
+	var jobless_class := wealth_class_of(data, 0.0)
+	var homeless_workers := 0
+	for id in homes.get("classes", {}):
+		if id != jobless_class:
+			homeless_workers += int(homes.classes[id].get("homeless_adults", 0))
+	var band := _band_for(config, score)
+	var leave := float(band.get("leave_per_hour", 0.0))
+	return {"score": score, "percent": happiness_percent(score), "food": food, "jobs": jobs, "housing": housed,
+		"foods": foods, "homeless_penalty": homeless_penalty,
+		"homeless": int(homes.homeless), "households": households, "needs_count": needs_count,
+		"jobless": int(e.unemployed), "homeless_workers": homeless_workers,
+		"grace_left": grace_left, "growth_speed": float(band.get("speed", 1.0)),
+		"move_in_speed": float(band.get("move_in", band.get("speed", 1.0))),
+		"leave_per_hour": leave, "children_leave_per_hour": float(band.get("children_leave_per_hour", leave)),
+		"homeless_workers_leave": bool(band.get("homeless_workers_leave", false)),
+		"dev_locks": locks}
+
+
+## The needs mixed into one score (while they count): the weighted share of Food, Jobs and Housing
+## (happiness.weights), minus the penalty for `homeless` households in huts (up to its limit).
+## `penalty` 0 or more = take off exactly that instead (a developer lock).
+## Returns {"score" (0-1), "penalty" (0-1 taken off)}.
+static func _mix(config: Dictionary, food: float, jobs: float, housed: float, homeless: int, penalty := -1.0) -> Dictionary:
 	var weights: Dictionary = config.get("weights", {})
 	var needs := {"food": food, "jobs": jobs, "housing": housed}
 	var total_weight := 0.0
@@ -390,24 +431,44 @@ static func happiness(state: Dictionary, data: Dictionary, now: float, homes := 
 	for need in needs:
 		total_weight += float(weights.get(need, 0.0))
 		weighted += float(needs[need]) * float(weights.get(need, 0.0))
-	var grace_left := maxf(_grace_end(state, data) - now, 0.0) if _has_needs(data) else 0.0
-	var needs_count: bool = _has_needs(data) and grace_left <= 0.0 and int(e.population) >= int(config.get("needs_from_population", 0))
-	var score := 1.0
-	if needs_count and total_weight > 0.0:
-		score = weighted / total_weight
+	var score := weighted / total_weight if total_weight > 0.0 else 1.0
 	# On top of the needs, every household living in a hut takes a share off (up to a limit).
-	var homeless_penalty := 0.0
-	if needs_count:
-		var penalty: Dictionary = config.get("homeless_penalty", {})
-		homeless_penalty = minf(int(homes.homeless) * float(penalty.get("per_household", 0.0)), float(penalty.get("max", 0.0)))
-		score = clampf(score - homeless_penalty, 0.0, 1.0)
-	var band := _band_for(config, score)
-	return {"score": score, "food": food, "jobs": jobs, "housing": housed, "foods": foods,
-		"homeless_penalty": homeless_penalty,
-		"homeless": int(homes.homeless), "households": households, "needs_count": needs_count,
-		"grace_left": grace_left, "growth_speed": float(band.get("speed", 1.0)),
-		"move_in_speed": float(band.get("move_in", band.get("speed", 1.0))),
-		"leave_per_hour": float(band.get("leave_per_hour", 0.0))}
+	if penalty < 0.0:
+		var penalty_config: Dictionary = config.get("homeless_penalty", {})
+		penalty = minf(homeless * float(penalty_config.get("per_household", 0.0)), float(penalty_config.get("max", 0.0)))
+	return {"score": clampf(score - penalty, 0.0, 1.0), "penalty": penalty}
+
+
+## A happiness score as the whole percent shown on screen, rounded DOWN (0.196 -> 19), with the
+## same tiny allowance as _band_for, so the shown number always falls in the band that counts.
+static func happiness_percent(score: float) -> int:
+	return floori(score * 100.0 + 0.0001)
+
+
+## What each fix would add to happiness right now (0-1 each; 0 = nothing to gain): {"food" (one
+## more different food selling), "housing" (a home for every household in a hut, its penalty
+## gone too), "jobs" (a job for every jobless adult)}. All 0 while needs don't count.
+## `happy` = happiness() now.
+static func happiness_gains(data: Dictionary, happy: Dictionary) -> Dictionary:
+	var gains := {"food": 0.0, "housing": 0.0, "jobs": 0.0}
+	var locks: Dictionary = happy.get("dev_locks", {})
+	if not bool(happy.needs_count) or locks.has("score"):
+		return gains  # nothing to gain, or a developer lock decides the score
+	var config: Dictionary = data.config.get("happiness", {})
+	var food_scores: Array = config.get("food_scores", [1.0])
+	var food := float(happy.food)
+	var jobs := float(happy.jobs)
+	var housed := float(happy.housing)
+	var homeless := int(happy.homeless)
+	var now := float(happy.score)
+	var next_food := float(food_scores[mini(int(happy.foods) + 1, food_scores.size() - 1)])
+	gains.food = maxf(float(_mix(config, next_food, jobs, housed, homeless).score) - now, 0.0)
+	gains.housing = maxf(float(_mix(config, food, jobs, 1.0, 0).score) - now, 0.0)
+	gains.jobs = maxf(float(_mix(config, food, 1.0, housed, homeless).score) - now, 0.0)
+	for need in ["food", "housing", "jobs"]:
+		if locks.has(need):
+			gains[need] = 0.0  # a locked need doesn't move, whatever the player builds
+	return gains
 
 
 ## Different foods on sale right now: on a shelf of a store that is selling (built, not
@@ -536,20 +597,20 @@ static func people_stats(state: Dictionary) -> Dictionary:
 ## at the speed happiness gives, and only while a family has a free child place (2 per
 ## household; a house isn't needed, families in huts have babies too). Everyone dies at the same steady
 ## rate, so adults and children each lose their share. In an unhappy village people leave the
-## island (happiness leave_per_hour), adults and children alike, in groups (life_group_size).
-## Births and deaths are all 0
+## island in groups (life_group_size): adults at happiness leave_per_hour, but only while someone
+## may leave (_leave_pool: the jobless; at the lowest happiness also workers living in huts), and
+## children at children_leave_per_hour. Births and deaths are all 0
 ## without a "life" block in game_config.json. `happy` (happiness) and `homes` (housing) at t can be
 ## handed in when already worked out.
 static func _life_rates(state: Dictionary, data: Dictionary, t: float, happy := {}, homes := {}) -> Dictionary:
 	var life: Dictionary = data.config.get("life", {})
 	var rates := {"born": 0.0, "adult_deaths": 0.0, "child_deaths": 0.0, "adult_leaves": 0.0, "child_leaves": 0.0}
-	var leave := 0.0
 	if _has_needs(data):
 		if happy.is_empty():
 			happy = happiness(state, data, t, homes)
-		leave = float(happy.leave_per_hour) / 3600.0
-	rates.adult_leaves = adults(state) * leave
-	rates.child_leaves = children_count(state) * leave
+		if _leave_pool(happy) > 0:
+			rates.adult_leaves = adults(state) * float(happy.leave_per_hour) / 3600.0
+		rates.child_leaves = children_count(state) * float(happy.children_leave_per_hour) / 3600.0
 	if life.is_empty():
 		return rates
 	if homes.is_empty():
@@ -560,6 +621,16 @@ static func _life_rates(state: Dictionary, data: Dictionary, t: float, happy := 
 	rates.adult_deaths = adults(state) * death
 	rates.child_deaths = children_count(state) * death
 	return rates
+
+
+## The most adults who may leave the island now (`happy` = happiness then): the jobless, and at
+## the lowest happiness (the band's homeless_workers_leave) also the workers living in huts.
+## Workers with a real home never leave. While it's 0, nobody leaves however unhappy.
+static func _leave_pool(happy: Dictionary) -> int:
+	var pool := int(happy.get("jobless", 0))
+	if bool(happy.get("homeless_workers_leave", false)):
+		pool += int(happy.get("homeless_workers", 0))
+	return pool
 
 
 ## Part-people of births and deaths not yet happened: {"born", "adult_deaths", "child_deaths"}.
@@ -600,7 +671,9 @@ static func _next_life_event(state: Dictionary, data: Dictionary, t: float, rate
 ## `homes` = housing at t0 (after hiring) and `homes_adults` = the adults then: births need the
 ## child places of t1, which are still those of t0 as long as the number of adults is the same
 ## (nobody is hired or let go in between; only households, made of adults, decide them).
-static func _settle_life(state: Dictionary, data: Dictionary, t0: float, t1: float, rates: Dictionary, homes := {}, homes_adults := -1) -> Dictionary:
+## `leave_cap` = _leave_pool at t0: never more adults leave than that, less those who just died
+## (deaths take the jobless first too).
+static func _settle_life(state: Dictionary, data: Dictionary, t0: float, t1: float, rates: Dictionary, homes := {}, homes_adults := -1, leave_cap := NO_LIMIT) -> Dictionary:
 	var out := {"born": 0, "grew_up": 0, "died": 0, "moved_away": 0}
 	var pop: Dictionary = state.population
 	if not pop.has("children"):
@@ -620,7 +693,7 @@ static func _settle_life(state: Dictionary, data: Dictionary, t0: float, t1: flo
 	var adult_deaths := mini(int(events.adult_deaths), adults(state))
 	pop.current = int(pop.current) - adult_deaths
 	out.died = adult_deaths + _remove_children(state, int(events.child_deaths))
-	var adults_leaving := mini(int(events.get("adult_leaves", 0)), adults(state))
+	var adults_leaving := mini(int(events.get("adult_leaves", 0)), mini(adults(state), maxi(leave_cap - adult_deaths, 0)))
 	pop.current = int(pop.current) - adults_leaving
 	out.moved_away = adults_leaving + _remove_children(state, int(events.get("child_leaves", 0)))
 	var life: Dictionary = data.config.get("life", {})
@@ -776,7 +849,8 @@ static func _may_live(data: Dictionary, b: Dictionary, id: String) -> bool:
 ## for get first claim on it. Households left over are homeless and live in Makeshift Huts.
 ## Children live with the households in real homes first (2 places each). Returns:
 ## {"homes": {building_id: {"households", "adults", "children", "rent" (dollars an hour)}},
-##  "classes": {class: {"households", "adults", "homeless"}}, "homeless" (households),
+##  "classes": {class: {"households", "adults", "homeless" (households), "homeless_adults"}},
+##  "homeless" (households),
 ##  "rent_per_hour" (dollars), "child_places" (2 per household, house or hut alike),
 ##  "power_mw" (homes lived in), "households" (all)}.
 static func housing(state: Dictionary, data: Dictionary, now: float) -> Dictionary:
@@ -828,6 +902,7 @@ static func housing(state: Dictionary, data: Dictionary, now: float) -> Dictiona
 	var homeless_adults := 0
 	for id in ids:
 		out.classes[id].homeless = int(left[id][0])
+		out.classes[id].homeless_adults = int(left[id][1])
 		out.homeless += int(left[id][0])
 		homeless_adults += int(left[id][1])
 	# Children: 2 places in every household, house or hut. They fill the real homes first; any
@@ -2032,6 +2107,8 @@ static func can_demolish(state: Dictionary, data: Dictionary, building_id: Strin
 
 ## Why a building with a batch can't be demolished, suspended or upgraded.
 const BATCH_BUSY := "It has a batch. Let it finish (or cancel it) and collect everything first."
+## Why an upgrade can't start: it takes its materials only from the warehouse, never buys them.
+const MISSING_MATERIALS := "Not enough materials in the warehouse (missing %s). Buy them at the Trading Post or produce them first."
 
 
 ## What a building hands back when its work is stopped for good (demolish, suspend): goods left
@@ -2066,12 +2143,19 @@ static func _count_category(state: Dictionary, data: Dictionary, category: Strin
 ## {"ok", "error", "goods" (what goes to the warehouse)}. Suspending is a "soft demolish" that
 ## keeps the building: work in progress is lost, everything already made or paid for comes back,
 ## and its workers go home (no wages, no power) until it's resumed, for free (plan.md §5.10).
+## Whether this kind of building has a Suspend button at all: it needs workers, and
+## buildings.json can say "suspendable": false (the Warehouse and the Construction Office).
+static func can_be_suspended(data: Dictionary, type_id: String) -> bool:
+	var def: Dictionary = data.buildings.get(type_id, {})
+	return int(def.get("max_workers", 0)) > 0 and def.get("suspendable", true)
+
+
 static func can_suspend(state: Dictionary, data: Dictionary, building_id: String) -> Dictionary:
 	var b := find_building(state, building_id)
 	if b.is_empty():
 		return _fail("Building not found.")
-	if max_workers(data, b) <= 0:
-		return _fail("This building has nothing to switch off.")
+	if max_workers(data, b) <= 0 or not can_be_suspended(data, b.type):
+		return _fail("This building can't be switched off.")
 	if is_suspended(b):
 		return _fail("It's already suspended.")
 	if not is_built(b, float(state.get("settled_at", 0.0))):
@@ -2593,14 +2677,21 @@ static func can_upgrade(state: Dictionary, data: Dictionary, building_id: String
 	if not crew.is_empty():
 		return crew
 	var quote := construction_plan(state, data, b.type, building_level(b) + 1, now)
+	# Upgrades never buy materials: every unit must already be in the warehouse.
+	var missing: Array[String] = []
+	for line in quote.lines:
+		if line.id != "labor" and int(line.get("buy", 0)) > 0:
+			missing.append("%d %s" % [int(line.buy), line.name])
+	if not missing.is_empty():
+		return _fail(MISSING_MATERIALS % ", ".join(missing))
 	if state.profile.currency < int(quote.cost):
 		return _fail("Not enough money.")
 	quote["level"] = building_level(b) + 1
 	return _ok(quote)
 
 
-## Start the next upgrade: take the materials the warehouse has, buy the rest, and pay its crew
-## now; the building reaches the next level after its time.
+## Start the next upgrade: take its materials from the warehouse (all of them must be there) and
+## pay its crew now; the building reaches the next level after its time.
 ## A building that closes for it (see stays_open_while_upgrading) sends its workers home and
 ## pauses its work until then.
 static func upgrade(state: Dictionary, data: Dictionary, building_id: String, now: float) -> Dictionary:
@@ -3254,6 +3345,208 @@ static func dev_set_rent(state: Dictionary, data: Dictionary, type_id: String, d
 	return _ok()
 
 
+# Developer changes kept in the save until reset: state.dev = {"locks": {need: 0-1},
+# "config": {path: value}}. Each tool settles first, so time so far counts with the old rules and
+# the change only from now (time away still equals playing through).
+
+## The happiness parts a developer can lock: the score itself, each need, the hut penalty.
+const DEV_LOCKS := ["score", "food", "jobs", "housing", "penalty"]
+
+
+## Developer locks on happiness: {key: 0-1} (DEV_LOCKS). Read it; don't change it.
+static func dev_locks(state: Dictionary) -> Dictionary:
+	return state.get("dev", {}).get("locks", {})
+
+
+## Developer changes to game_config.json numbers: {"happiness.weights.food": 2, ...}. Applied onto
+## the config by the game (apply_config_overrides), never written to the file.
+static func dev_config(state: Dictionary) -> Dictionary:
+	return state.get("dev", {}).get("config", {})
+
+
+## True while any developer change is on: a happiness lock, a tuning change or a rent change.
+static func dev_active(state: Dictionary) -> bool:
+	return not dev_locks(state).is_empty() or not dev_config(state).is_empty() or not state.get("dev_rent", {}).is_empty()
+
+
+## state.dev[part] = what (an empty `what` removes it, and an empty state.dev too).
+static func _set_dev(state: Dictionary, part: String, what: Dictionary) -> void:
+	var dev: Dictionary = state.get("dev", {})
+	if what.is_empty():
+		dev.erase(part)
+	else:
+		dev[part] = what
+	if dev.is_empty():
+		state.erase("dev")
+	else:
+		state["dev"] = dev
+
+
+## Locks a part of happiness (DEV_LOCKS) at `value` (0-1); a negative value unlocks it. A locked
+## need replaces what the village really has; a locked score replaces the whole score. While any
+## lock is on, needs count (even in a new or small village).
+static func dev_lock_happiness(state: Dictionary, data: Dictionary, key: String, value: float, now: float) -> Dictionary:
+	if not DEV_LOCKS.has(key):
+		return _fail("Nothing called %s to lock." % key)
+	settle(state, data, now)
+	var locks := dev_locks(state).duplicate()
+	if value < 0.0:
+		locks.erase(key)
+	else:
+		locks[key] = clampf(value, 0.0, 1.0)
+	_set_dev(state, "locks", locks)
+	return _ok()
+
+
+## The value at `path` in the config ("happiness.growth_speeds.2.speed": dictionary keys and list
+## places, separated by dots), or null when there's nothing there.
+static func config_value(config: Dictionary, path: String) -> Variant:
+	var node: Variant = config
+	for part in path.split("."):
+		if node is Dictionary and node.has(part):
+			node = node[part]
+		elif node is Array and part.is_valid_int() and int(part) >= 0 and int(part) < node.size():
+			node = node[int(part)]
+		else:
+			return null
+	return node
+
+
+## Changes a game_config.json number (or true/false) from now on: `path` as in config_value. It
+## must hold the same kind of value, or be missing from a block that exists (a happiness band
+## without children_leave_per_hour gets one); null takes the change back. The game applies it onto
+## its config (apply_config_overrides); `data` is the config as it stands before the change.
+static func dev_set_config(state: Dictionary, data: Dictionary, path: String, value: Variant, now: float) -> Dictionary:
+	var current: Variant = config_value(data.config, path)
+	var parts := path.rsplit(".", true, 1)
+	var parent: Variant = data.config if parts.size() == 1 else config_value(data.config, parts[0])
+	if current == null and not parent is Dictionary:
+		return _fail("No setting called %s." % path)
+	if current != null and not (current is bool or current is int or current is float):
+		return _fail("%s isn't a number." % path)
+	if value != null and current != null and (value is bool) != (current is bool):
+		return _fail("%s takes %s." % [path, "true or false" if current is bool else "a number"])
+	if value != null and not (value is bool or value is int or value is float):
+		return _fail("%s takes a number." % path)
+	settle(state, data, now)  # time so far counts with the old numbers
+	var changes := dev_config(state).duplicate()
+	if value == null:
+		changes.erase(path)
+	else:
+		changes[path] = value if (value is bool or value is int) else float(value)
+	_set_dev(state, "config", changes)
+	return _ok()
+
+
+## Puts the config back to `original` (each top-level block copied afresh), then sets each change
+## in `overrides` ({path: value}, see dev_set_config) in place (a key missing from a block that
+## exists is added). Paths whose block no longer exists are skipped. The config dictionary itself
+## stays the same object, so everything holding it sees the new numbers.
+static func apply_config_overrides(config: Dictionary, original: Dictionary, overrides: Dictionary) -> void:
+	for key in original:
+		var block: Variant = original[key]
+		config[key] = block.duplicate(true) if (block is Dictionary or block is Array) else block
+	for path in overrides:
+		var parts: PackedStringArray = String(path).rsplit(".", true, 1)
+		var parent: Variant = config if parts.size() == 1 else config_value(config, parts[0])
+		var last: String = parts[-1]
+		if parent is Dictionary:
+			parent[last] = overrides[path]
+		elif parent is Array and last.is_valid_int() and int(last) >= 0 and int(last) < parent.size():
+			parent[int(last)] = overrides[path]
+
+
+## Adds `n` adults (a negative n takes them away, never below none). Workers are let go if need
+## be, the jobless first (_hire). Not counted as moving in or away: it's a developer change.
+static func dev_add_adults(state: Dictionary, data: Dictionary, n: int, now: float) -> Dictionary:
+	settle(state, data, now)
+	var change := maxi(n, -adults(state))
+	if change == 0:
+		return _fail("There are no adults to take away.")
+	state.population.current = int(state.population.current) + change
+	_hire(state, data, now)
+	return _ok({"changed": change})
+
+
+## Adds `n` children as a new age group, growing up after life.grow_up_hours.
+static func dev_add_children(state: Dictionary, data: Dictionary, n: int, now: float) -> Dictionary:
+	if n <= 0:
+		return _fail("Add at least one child.")
+	settle(state, data, now)
+	var pop: Dictionary = state.population
+	if not pop.has("children"):
+		pop["children"] = []
+	var hours := float(data.config.get("life", {}).get("grow_up_hours", 24.0))
+	pop.children.append({"count": n, "grows_up_at": now + hours * 3600.0})  # the youngest: last
+	pop.current = int(pop.current) + n
+	_hire(state, data, now)
+	return _ok()
+
+
+## Every child grows up into an adult now (counted as growing up).
+static func dev_children_grow_up(state: Dictionary, data: Dictionary, now: float) -> Dictionary:
+	settle(state, data, now)
+	var grown := children_count(state)
+	if grown <= 0:
+		return _fail("There are no children.")
+	state.population.children = []  # still counted in population.current: adults now
+	people_stats(state).grew_up = int(people_stats(state).grew_up) + grown
+	_hire(state, data, now)
+	return _ok({"grew_up": grown})
+
+
+## Ends a new village's grace period now, so the needs count from now on.
+static func dev_end_grace(state: Dictionary, data: Dictionary, now: float) -> Dictionary:
+	settle(state, data, now)
+	if _grace_end(state, data) <= now:
+		return _fail("The grace period is already over.")
+	state.started_at = now - float(data.config.get("happiness", {}).get("grace_hours", 0.0)) * 3600.0
+	return _ok()
+
+
+## Every building going up and every upgrade under way is finished now. Their construction
+## workers are free again.
+static func dev_finish_construction(state: Dictionary, data: Dictionary, now: float) -> Dictionary:
+	settle(state, data, now)
+	var finished := 0
+	for b in state.buildings:
+		var done := false
+		if b.has("upgrade_done_at") and float(b.upgrade_done_at) > now:
+			b.upgrade_done_at = now
+			done = true
+		if built_at(b) > now:
+			b.built_at = now
+			b.job_started_at = minf(float(b.job_started_at), now)
+			done = true
+		if done:
+			finished += 1
+	if finished == 0:
+		return _fail("Nothing is being built or upgraded.")
+	_hire(state, data, now)  # upgrades reach their level; new posts and homes count from now
+	return _ok({"finished": finished})
+
+
+## Puts `qty` of `resource_id` in the warehouse, as much as fits. Returns {"added"}.
+static func dev_add_item(state: Dictionary, data: Dictionary, resource_id: String, qty: int, now: float) -> Dictionary:
+	if not data.resources.has(resource_id) or qty <= 0:
+		return _fail("Pick an item and an amount.")
+	settle(state, data, now)
+	var added := mini(qty, maxi(warehouse_cap(state, data) - warehouse_total(state), 0))
+	if added <= 0:
+		return _fail("The warehouse is full.")
+	state.inventory[resource_id] = int(state.inventory.get(resource_id, 0)) + added
+	return _ok({"added": added})
+
+
+## Takes back every developer change: happiness locks, tuning and rent.
+static func dev_reset_all(state: Dictionary, data: Dictionary, now: float) -> Dictionary:
+	settle(state, data, now)
+	state.erase("dev")
+	state.erase("dev_rent")
+	_update_huts(state, data, now)
+	return _ok()
+
+
 # --- Questions the UI can ask -------------------------------------------------
 
 static func find_building(state: Dictionary, building_id: String) -> Dictionary:
@@ -3866,10 +4159,10 @@ static func utility_unit_price(state: Dictionary, data: Dictionary, kind: String
 
 
 # --- Electricity (plan.md §5.5) ---------------------------------------------------
-# Power is a flow in MW, Tropico-style. City Hall's link to the public grid (grid_mw) and your own
-# power plants (power_supply) feed one network. Each of them covers a circle of power_radius tiles
-# around itself; circles that overlap join, starting from City Hall, so Electric Substations
-# carry power further. A building that uses power (power_mw) gets it only inside the network, and
+# Power is a flow in MW, Tropico-style. Your own power plants (power_supply) and any public grid
+# link (grid_mw; since 2026-10-06 no building has one, City Hall included) feed one network. Each
+# of them covers a circle of power_radius tiles around itself; circles that overlap join, starting
+# from every plant, so Electric Substations carry power further. A building that uses power (power_mw) gets it only inside the network, and
 # only while there's enough left: buildings are served oldest first, and one that doesn't fit
 # gets none and stops (a home without power: nothing happens yet). Your own plants' power is
 # used first; what the public grid adds is metered and billed like water. Who gets power is
@@ -3893,7 +4186,7 @@ static func power_radius(data: Dictionary, b: Dictionary) -> float:
 	return float(level_stat(data, b, "power_radius", 0.0))
 
 
-## MW City Hall's public grid link can draw (0 for any other building).
+## MW a public grid link can draw (grid_mw; 0 for every building since City Hall lost its link).
 static func grid_link_mw(data: Dictionary, b: Dictionary) -> float:
 	return float(level_stat(data, b, "grid_mw", 0.0))
 
@@ -3915,9 +4208,10 @@ static func _carries_power(data: Dictionary, b: Dictionary, now: float) -> bool:
 	return power_radius(data, b) > 0.0 and is_built(b, now) and not is_suspended(b)
 
 
-## The power network as it stands: {"ids" {building id: true} (the grid link and every plant or
-## substation joined to it), "areas" [[cell, radius]] (their circles)}. It starts at the grid
-## link and takes in, again and again, everything whose circle overlaps one already in.
+## The power network as it stands: {"ids" {building id: true} (every plant, any grid link and
+## every substation joined to them), "areas" [[cell, radius]] (their circles)}. It starts at the
+## plants (and grid link) and takes in, again and again, everything whose circle overlaps one
+## already in.
 static func power_network(state: Dictionary, data: Dictionary, now: float) -> Dictionary:
 	var ids := {}
 	var areas := []
@@ -3925,7 +4219,7 @@ static func power_network(state: Dictionary, data: Dictionary, now: float) -> Di
 	for b in state.buildings:
 		if not _carries_power(data, b, now):
 			continue
-		if grid_link_mw(data, b) > 0.0:
+		if grid_link_mw(data, b) > 0.0 or is_power_source(data, b.type):
 			ids[b.id] = true
 			areas.append([centre_of(data, b), power_radius(data, b)])
 		else:
@@ -3950,6 +4244,13 @@ static func _in_reach(areas: Array, point: Vector2, radius: float) -> bool:
 		if (point - (area[0] as Vector2)).length_squared() <= reach * reach + 0.000001:
 			return true
 	return false
+
+
+## Whether this kind of building is where power starts: a plant (power_supply) or a grid link
+## (grid_mw). Its circle is part of the network wherever it stands.
+static func is_power_source(data: Dictionary, type_id: String) -> bool:
+	var def: Dictionary = data.buildings.get(type_id, {})
+	return float(def.get("power_supply", 0.0)) > 0.0 or float(def.get("grid_mw", 0.0)) > 0.0
 
 
 ## Whether the centre of `cell` is inside the network's reach (power_network).

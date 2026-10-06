@@ -15,8 +15,7 @@ signal switch_requested(building_id: String, recipe_id: String)
 signal collect_requested(building_id: String)
 signal cancel_requested(building_id: String)
 
-const TITLES := {"units": "Makes:", "ingredients": "Ingredients:", "labor": "Labor (paid now):",
-	"water": "Water (estimate):", "power": "Power (estimate):", "total": "Total cost:", "per_unit": "Cost per unit:", "price": "Sells for:"}
+const TITLES := {"units": "Makes:", "ingredients": "Ingredients:", "labor": "Labor:", "total": "Total cost:", "price": "Sells for:"}
 
 var building_id := ""
 var _hours := 0  # the length chosen for the next batch (0 = not chosen yet: offer the default)
@@ -27,19 +26,16 @@ var _width := 400.0
 # Idle: setting up the next batch.
 var _setup: VBoxContainer
 var _product_buttons := {}  # recipe id -> its Button (only for buildings with several products)
-var _product_note: Label
 var _bonus_buttons := {}  # bonus level -> its Button
 var _finish_text: Label
 var _lines := {}  # TITLES key -> its value Label
 var _start: Button
-var _note: Label
 # With a batch.
 var _running: VBoxContainer
 var _status: Label
 var _progress: ProgressBar
 var _ready_text: Label
 var _collect: Button
-var _locked: Label
 var _cancel: Button
 
 
@@ -76,8 +72,6 @@ func _build_setup() -> void:
 			button.pressed.connect(_on_product_pressed.bind(str(r.id)))
 			products.add_child(button)
 			_product_buttons[str(r.id)] = button
-		_product_note = _wrapped("", 15)
-		_setup.add_child(_product_note)
 	# Bonus: paid on top of the minimum wage for the whole batch, for more units. Locked in once
 	# the batch starts.
 	var row := HBoxContainer.new()
@@ -91,7 +85,6 @@ func _build_setup() -> void:
 		var extra := Economy.bonus_output(level)
 		var button := Button.new()
 		button.text = "None" if extra <= 0.0 else "+%d%%" % roundi(extra * 100.0)
-		button.tooltip_text = "%s bonus: wages +%d%%, the batch makes +%d%% units" % [level.capitalize(), roundi(float(wages[level]) * 100.0), roundi(extra * 100.0)]
 		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		UITheme.size_button(button, "small")
 		button.pressed.connect(func():
@@ -103,16 +96,15 @@ func _build_setup() -> void:
 	var length := HBoxContainer.new()
 	length.add_theme_constant_override("separation", 6)
 	_setup.add_child(length)
-	length.add_child(_step_button("−", -1, "One hour less"))
+	length.add_child(_step_button("−", -1))
 	_finish_text = _label("", 18)
 	_finish_text.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_finish_text.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	length.add_child(_finish_text)
-	length.add_child(_step_button("+", 1, "One hour more"))
+	length.add_child(_step_button("+", 1))
 	var all := Button.new()
 	all.theme_type_variation = ""
 	all.text = "All"
-	all.tooltip_text = "As long as your ingredients and cash allow"
 	UITheme.size_button(all, "small")
 	all.pressed.connect(func():
 		_hours = maxi(_most_hours(), 1)
@@ -121,8 +113,6 @@ func _build_setup() -> void:
 	# What it makes and costs, before starting.
 	for key in TITLES:
 		_lines[key] = _figure_row(_setup, TITLES[key])
-	_note = _wrapped("", 15)
-	_setup.add_child(_note)
 	_start = Button.new()
 	UITheme.size_button(_start, "big")
 	_start.custom_minimum_size.x = 300
@@ -155,8 +145,6 @@ func _build_running() -> void:
 	_collect.custom_minimum_size.x = 190
 	_collect.pressed.connect(func(): collect_requested.emit(building_id))
 	row.add_child(_collect)
-	_locked = _wrapped("", 15)
-	_running.add_child(_locked)
 	_cancel = Button.new()
 	_cancel.theme_type_variation = "DangerButton"
 	_cancel.text = "Cancel batch"
@@ -165,7 +153,6 @@ func _build_running() -> void:
 	UITheme.size_button(_cancel, "small")
 	_cancel.custom_minimum_size.x = 190
 	_cancel.size_flags_horizontal = Control.SIZE_SHRINK_END
-	_cancel.tooltip_text = "Stop it: the hours made are kept, part of the rest is given back"
 	_cancel.pressed.connect(func(): cancel_requested.emit(building_id))
 	_running.add_child(_cancel)
 
@@ -241,30 +228,20 @@ func _refresh_setup(b: Dictionary) -> void:
 		parts.append("%s %s" % [UITheme.number(int(line.qty)), BuildingInfo.resource_name(line.res)])
 		ingredients += float(line.cost)
 	_lines.ingredients.text = "%s · %s" % [", ".join(parts), UITheme.money(roundi(ingredients))] if not parts.is_empty() else "none"
-	_lines.labor.text = "%d × %s/h × %s h = %s" % [int(q.workers), UITheme.dollars(float(q.wage_each)), _amount(real_hours), UITheme.money(int(q.wages))]
-	_lines.water.text = UITheme.money(roundi(float(q.water)))
-	_lines.power.text = UITheme.money(roundi(float(q.get("power", 0.0))))
-	_lines.power.get_parent().visible = Economy.power_need(Economy.building(building_id)) > 0.0  # only Mills and Bakeries use power
-	_lines.total.text = UITheme.money(roundi(float(q.total)))
-	_lines.per_unit.text = _per_item(q.unit_costs)
+	_lines.labor.text = "%d workers · %s" % [int(q.workers), UITheme.money(int(q.wages))]
+	_lines.total.text = UITheme.money(roundi(float(q.total)))  # includes the water and power estimates
 	if q.units.size() > 1:  # by-products: each its own cost and price (plan.md §5.14)
 		_lines.price.text = _per_item(q.prices)
 	else:
 		var profit := int(q.price) - roundi(float(q.per_unit))
 		_lines.price.text = "%s each (%s %s)" % [UITheme.price(int(q.price)), UITheme.price(absi(profit)), "profit" if profit >= 0 else "loss"]
-	var notes: Array[String] = []
-	notes.append("Longest batch your stock and cash allow now: %d h." % most if most > 0 else "Not enough ingredients or cash for a batch yet.")
-	if q.estimated:
-		notes.append("Ingredients not in stock are priced at an estimate.")
-	notes.append("Every finished hour adds its share; collect any time.")
-	_note.text = " ".join(notes)
 	var check := Economy.can_start_batch(building_id, _recipe_id(b), _hours, _bonus)
 	_start.text = "Start %s h batch" % _amount(real_hours)
 	_start.theme_type_variation = "GoButton" if check.ok else "BackButton"
-	_start.tooltip_text = "Pays the ingredients and wages now" if check.ok else str(check.error)
+	_start.tooltip_text = "" if check.ok else str(check.error)  # only says why it can't start
 
 
-## The product buttons: the one it makes (or the pick) in yellow; and what choosing means here.
+## The product buttons: the one it makes (or the pick) in yellow.
 func _refresh_products(b: Dictionary) -> void:
 	var current := Economy.product_of(b)
 	var shown := _recipe_id(b)
@@ -276,16 +253,6 @@ func _refresh_products(b: Dictionary) -> void:
 		elif current != "" and not switchable:
 			variation = "BackButton"  # a factory's product is for good
 		_product_buttons[id].theme_type_variation = variation
-	var kind: String = GameData.buildings[b.type].name
-	var item := BuildingInfo.resource_name(BuildingInfo.output_of(BuildingInfo.recipe_of(b)))
-	if current == "" and switchable:
-		_product_note.text = "Pick what it grows. Its first batch chooses for free; switching later costs %s." % UITheme.money(Economy.switch_fee(b))
-	elif current == "":
-		_product_note.text = "Pick what it makes. Once its first batch starts, this %s makes it for good: build another one for something else." % kind
-	elif switchable:
-		_product_note.text = "Makes %s. Tap another to switch (%s)." % [item, UITheme.money(Economy.switch_fee(b))]
-	else:
-		_product_note.text = "Makes %s for good. Build another %s to make something else." % [item, kind]
 
 
 func _refresh_running(b: Dictionary) -> void:
@@ -295,33 +262,23 @@ func _refresh_running(b: Dictionary) -> void:
 	_progress.value = Economy.job_progress(b) * 100.0
 	var ready := Economy.ready_units(b)
 	var count := BuildingInfo.stored(b)
-	var per_hour := {}
-	for res in batch.units:
-		per_hour[res] = floori(float(batch.units[res]) / int(batch.hours))
 	if count > 0:
 		_ready_text.text = "Ready: %s" % _amounts(ready)
 	elif Economy.batch_running(b):
-		_ready_text.text = "Every finished hour adds about %s" % _amounts(per_hour)
+		_ready_text.text = "Nothing ready yet"
 	else:
 		_ready_text.text = "All collected"
 	var output: String = batch.units.keys()[0] if not batch.units.is_empty() else "item"
 	_collect.icon = UITheme.icon(output)
 	_collect.text = "Collect %s" % UITheme.number(count) if count > 0 else "Collect"
 	_collect.disabled = count == 0
-	var each := {}  # cost per unit of each thing it makes (by-products carry their share)
-	for res in batch.units:
-		each[res] = Economy.batch_unit_cost(batch, res)
-	var extra := Economy.bonus_output(str(batch.bonus))
-	var bonus_text := "no bonus" if extra <= 0.0 else "%s bonus (+%d%% units)" % [str(batch.bonus).capitalize(), roundi(extra * 100.0)]
-	_locked.text = "Locked in: %s h, %s, %s for %s = %s each." % [_amount(float(batch.hours)), bonus_text, UITheme.money(roundi(float(batch.cost))), _amounts(batch.units), _per_item(each)]
 	_cancel.visible = Economy.batch_running(b)
 
 
-func _step_button(text: String, step: int, tip: String) -> Button:
+func _step_button(text: String, step: int) -> Button:
 	var button := Button.new()
 	button.theme_type_variation = ""
 	button.text = text
-	button.tooltip_text = tip
 	UITheme.size_button(button, "small")
 	button.pressed.connect(func():
 		_hours = clampi(_hours + step, 1, Economy.batch_hours_limit())

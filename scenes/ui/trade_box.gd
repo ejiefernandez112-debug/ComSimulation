@@ -8,8 +8,7 @@ extends VBoxContainer
 signal trade_requested(side: String, resource_id: String, qty: int)
 
 const MOST_TO_BUY := 100000  # the slider's top when buying (cash and warehouse room limit it first)
-const TITLES := {"price": "Price:", "total": "Total:", "tax": "Sales tax (today's rate):", "earned": "You get:",
-	"cost": "They cost you to make:", "profit": "Profit:", "cash": "Cash after:"}
+const TITLES := {"price": "Price:", "total": "Total:", "earned": "You get:", "cash": "Cash after:"}
 
 var _width := 400.0
 var _side := "sell"  # "sell" (to the trader) or "buy" (from it)
@@ -24,7 +23,7 @@ var _shown_items: Array = []  # the items the grid shows, so it's only rebuilt w
 var _empty_note: Label
 var _slider: HSlider
 var _amount_label: Label
-var _lines := {}  # "price", "total", "tax", "earned", "cost", "profit", "cash" -> value Label
+var _lines := {}  # "price", "total", "earned", "cash" -> value Label
 var _go: Button
 
 
@@ -97,7 +96,7 @@ func setup(width: float) -> void:
 		refresh())
 	amount_row.add_child(all)
 	# What it brings or costs.
-	for key in ["price", "total", "tax", "earned", "cost", "profit", "cash"]:
+	for key in ["price", "total", "earned", "cash"]:
 		_lines[key] = _figure_row(key)
 	_go = Button.new()
 	UITheme.size_button(_go, "big")
@@ -182,8 +181,7 @@ func _most() -> int:
 
 func _refresh_lines() -> void:
 	var selling := _side == "sell"
-	for key in ["tax", "earned", "cost", "profit"]:
-		_lines[key].get_parent().visible = selling
+	_lines.earned.get_parent().visible = selling
 	_lines.cash.get_parent().visible = not selling
 	if _item == "":
 		for key in _lines:
@@ -192,30 +190,24 @@ func _refresh_lines() -> void:
 		_go.theme_type_variation = "BackButton"
 		return
 	var item_name := BuildingInfo.resource_name(_item)
-	var normal := Economy.unit_price(_item)
 	if selling:
 		var check := Economy.can_trade_sell(_item, maxi(_amount, 1))
 		var price := Economy.trade_price(_item, "sell")
-		_lines.price.text = "%s each (the village pays %s)" % [UITheme.price(price), UITheme.price(normal)]
+		_lines.price.text = "%s each" % UITheme.price(price)
 		_lines.total.text = UITheme.money(price * _amount)
-		_lines.tax.text = "-" + UITheme.money(int(check.get("tax", 0)))
-		_lines.earned.text = UITheme.money(int(check.get("earned", 0)))
-		_lines.cost.text = UITheme.money(int(check.get("cost", 0)))
-		var profit := int(check.get("profit", 0))
-		_lines.profit.text = ("" if profit >= 0 else "-") + UITheme.money(absi(profit))
-		UITheme.set_font_color(_lines.profit, UITheme.GOOD_TEXT if profit >= 0 else UITheme.BAD_TEXT)
+		_lines.earned.text = UITheme.money(int(check.get("earned", 0)))  # after sales tax
 		_go.text = "Sell %s %s" % [UITheme.number(_amount), item_name]
 		_go.theme_type_variation = "GoButton" if check.ok and _amount > 0 else "BackButton"
-		_go.tooltip_text = "Sold at once; the money reaches cash now" if check.ok else str(check.error)
+		_go.tooltip_text = "" if check.ok else str(check.error)
 	else:
 		var check := Economy.can_trade_buy(_item, maxi(_amount, 1))
 		var price := Economy.trade_price(_item, "buy")
-		_lines.price.text = "%s each (the village pays %s)" % [UITheme.price(price), UITheme.price(normal)]
+		_lines.price.text = "%s each" % UITheme.price(price)
 		_lines.total.text = UITheme.money(price * _amount)
 		_lines.cash.text = UITheme.money(Economy.currency() - price * _amount)
 		_go.text = "Buy %s %s" % [UITheme.number(_amount), item_name]
 		_go.theme_type_variation = "GoButton" if check.ok and _amount > 0 else "BackButton"
-		_go.tooltip_text = "Paid now; the goods go into your warehouse" if check.ok else str(check.error)
+		_go.tooltip_text = "" if check.ok else str(check.error)
 
 
 ## "Title ........ value". Returns the value label.

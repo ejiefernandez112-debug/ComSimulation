@@ -1,8 +1,7 @@
 extends RefCounted
 ## The money parts of the Statistics window (plan.md §5.19):
 ## - the Balance tab: what the company owns and owes, its value, and where that value came from
-## - on the Cash flow tab: the Cash check (start + money in − money out = cash now) and the
-##   Money log (money in and out per 30-minute block)
+## - on the Cash flow tab: the Money log (money in and out per 30-minute block)
 ## Built with the window's own helpers (_section, _value_row, _show, _body), so they look the
 ## same. Every number comes from Economy; this only shows them.
 
@@ -42,13 +41,13 @@ func build_balance(page: VBoxContainer) -> void:
 	_panel._values.bs_value.theme_type_variation = "BigLabel"
 	_panel._value_row(value, "Starting capital", "bs_capital")
 	_panel._value_row(value, "Profit kept since the start", "bs_profit")
-	page.add_child(_note("Company value = what you own − what you owe. Goods count at what they cost to make, buildings and roads at the price paid (the starter buildings and roads at their build cost, as part of the starting capital). Shop sales not paid yet = goods sold from Supermarket shelves, paid (after sales tax) when the shelf sells out or is taken down. Profit kept = how much the company has grown since the start."))
 
 
 func refresh_balance() -> void:
 	var sheet := Economy.balance_sheet()
 	_panel._show("bs_cash", UITheme.money(int(sheet.cash)))
 	_panel._show("bs_receivable", UITheme.money(int(sheet.receivable)))
+	_hide_when_zero("bs_receivable", int(sheet.receivable))
 	for res in GameData.resources:
 		var goods: Dictionary = sheet.goods.get(res, {"qty": 0, "value": 0})
 		var text := UITheme.money(int(goods.value))
@@ -59,43 +58,25 @@ func refresh_balance() -> void:
 	_panel._show("bs_in_production", UITheme.money(int(sheet.in_production)))
 	_panel._show("bs_buildings", UITheme.money(int(sheet.buildings)))
 	_panel._show("bs_being_built", UITheme.money(int(sheet.being_built)))
+	_hide_when_zero("bs_being_built", int(sheet.being_built))
 	_panel._show("bs_roads", UITheme.money(int(sheet.get("roads", 0))))
+	_hide_when_zero("bs_roads", int(sheet.get("roads", 0)))
 	_panel._show("bs_owned", UITheme.money(int(sheet.total_owned)), _panel.UP)
 	_panel._show("bs_debt", UITheme.money(int(sheet.debt)), _panel.DOWN if int(sheet.debt) > 0 else LineChart.INK)
+	_hide_when_zero("bs_debt", int(sheet.debt))
 	_panel._show("bs_water", UITheme.money(int(sheet.water_due)))
+	_hide_when_zero("bs_water", int(sheet.water_due))
 	_panel._show("bs_power", UITheme.money(int(sheet.get("power_due", 0))))
+	_hide_when_zero("bs_power", int(sheet.get("power_due", 0)))
 	_panel._show("bs_owed", UITheme.money(int(sheet.total_owed)), _panel.DOWN if int(sheet.total_owed) > 0 else LineChart.INK)
 	_panel._show("bs_value", UITheme.money(int(sheet.company_value)), _panel.DOWN if int(sheet.company_value) < 0 else LineChart.INK)
 	_panel._show("bs_capital", UITheme.money(int(sheet.capital)))
 	_panel._show("bs_profit", _signed(int(sheet.profit_kept)), _panel._signed_color(roundi(int(sheet.profit_kept) / 100.0)))
 
 
-# --- Cash check (Cash flow tab) ------------------------------------------------------
-
-func build_cash_check(page: VBoxContainer) -> void:
-	var box: VBoxContainer = _panel._section(page, "Cash check")
-	_panel._value_row(box, "Starting cash", "cc_start")
-	_panel._value_row(box, "+ All money in", "cc_in")
-	_panel._value_row(box, "− All money out", "cc_out")
-	_panel._value_row(box, "± Dev tools", "cc_dev")
-	_panel._value_row(box, "= Should have", "cc_expected")
-	_panel._value_row(box, "Cash now", "cc_cash")
-	box.add_child(_panel._value("cc_result"))
-
-
-func refresh_cash_check() -> void:
-	var check := Economy.cash_check()
-	_panel._show("cc_start", UITheme.money(int(check.start)))
-	_panel._show("cc_in", "+" + UITheme.money(int(check.money_in)), _panel.UP)
-	_panel._show("cc_out", "-" + UITheme.money(int(check.money_out)), _panel.DOWN)
-	_panel._values.cc_dev.get_parent().visible = int(check.dev) != 0  # only in test builds
-	_panel._show("cc_dev", _signed(int(check.dev)))
-	_panel._show("cc_expected", UITheme.money(int(check.expected)))
-	_panel._show("cc_cash", UITheme.money(int(check.cash)))
-	if check.ok:
-		_panel._show("cc_result", "It adds up: every cent is accounted for.", _panel.UP)
-	else:
-		_panel._show("cc_result", "Doesn't add up: %s unaccounted for. Please report this bug." % UITheme.price(int(check.cash) - int(check.expected)), _panel.DOWN)
+## Rows that are $0 most of the time (debt, bills, being built) only show when there's something.
+func _hide_when_zero(key: String, cents: int) -> void:
+	_panel._values[key].get_parent().visible = cents != 0
 
 
 # --- Money log (Cash flow tab) -----------------------------------------------------
@@ -136,7 +117,7 @@ func refresh_money_log() -> void:
 	for child in _log_rows.get_children():
 		child.queue_free()
 	if finished.is_empty():
-		_log_rows.add_child(_note("Each block of %d minutes shows up here once it's over." % roundi(float(GameData.config.get("money_log_minutes", 30)))))
+		_log_rows.add_child(_note("Nothing yet."))
 	var every := float(GameData.config.get("money_log_minutes", 30)) * 60.0
 	for row in finished:
 		var line := HBoxContainer.new()
@@ -171,8 +152,6 @@ func _money_in(row: Dictionary) -> Array:
 	for key in row.income:
 		if key != "sales":
 			out.append([NAMES.get(key, key.capitalize()), int(row.income[key])])
-	if row.dev > 0:
-		out.append(["Dev tools", int(row.dev)])
 	return out
 
 
@@ -181,8 +160,6 @@ func _money_out(row: Dictionary) -> Array:
 	var out := []
 	for key in row.spending:
 		out.append([NAMES.get(key, key.capitalize()), int(row.spending[key])])
-	if row.dev < 0:
-		out.append(["Dev tools", -int(row.dev)])
 	return out
 
 

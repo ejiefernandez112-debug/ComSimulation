@@ -3,16 +3,15 @@
 	"_upgrades": "Building upgrades (plan.md 5.15). upgrades = Level 2, Level 3, ... in order: the numbers that change at that level (max_workers, capacity, shelves, households; anything left out stays as the level below). Each level needs twice the materials and crew of the level below, and takes the time in game_config.json construction. Speed counts against Level 1's max_workers, so a farm with 12 of 8 workers works 1.5x as fast (each batch costs the same wages). Farms, mills, bakeries and shops close while upgrading; homes and warehouses stay in use. All PLACEHOLDERS.",
 	"city_hall": {
 		"name": "City Hall", "category": "civic", "size": 2,
-		"description": "Your town's headquarters. Every road starts here, and so does your power: its link to the public grid supplies up to 10 MW.",
-		"buildable": false, "max_workers": 0, "road_hub": true,
-		"grid_mw": 10, "power_radius": 5
+		"description": "Your town's headquarters. Every road starts here.",
+		"buildable": false, "max_workers": 0, "road_hub": true
 	},
 	"construction_office": {
 		"_comment": "Construction company (plan.md 5.15). construction_crew = its workers are the construction workers: building anything needs construction.crew of them (game_config.json; 1), each upgrade one more per level (crew_per_level), and they're busy until the work is done. Paid per project (the Labor line), never by the hour. Stays open while upgraded. Staffed first so the village can always build. Needs a road like any building with workers. The id was City Hall's until save version 11. All PLACEHOLDERS.",
 		"name": "Construction Office", "category": "construction", "menu_tab": "utilities", "size": 2,
 		"description": "Its construction workers build and upgrade everything (not roads). More workers = more building at once.",
 		"buildable": true, "max_workers": 4, "fixed_workers": true, "staffed_first": true, "fixed_wage": true, "worker_type": "low_skilled",
-		"construction_crew": true,
+		"construction_crew": true, "suspendable": false,
 		"materials": { "bricks": 400, "cement": 40, "steel": 10, "construction_materials": 20 },
 		"upgrades": [
 			{ "max_workers": 6 },
@@ -69,7 +68,7 @@
 		"description": "Stores your goods. Build more warehouses for more room.",
 		"buildable": true, "max_workers": 4, "fixed_workers": true, "staffed_first": true, "fixed_wage": true, "worker_type": "low_skilled",
 		"materials": { "bricks": 600, "cement": 60, "steel": 15, "construction_materials": 30 },
-		"capacity": 10000,
+		"capacity": 10000, "suspendable": false,
 		"upgrades": [
 			{ "max_workers": 8, "capacity": 20000 },
 			{ "max_workers": 12, "capacity": 30000 },
@@ -89,7 +88,7 @@
 			{ "max_workers": 10, "water_supply": 180 }
 		]
 	},
-	"_power": "Electricity (plan.md 5.5). power_mw = MW a building needs while it runs (a Mill or Bakery while making a batch, a home while anyone lives there). power_supply = MW a power plant makes (with workers: its share of them, 2 of 4 = half). power_radius = tiles around it that its power reaches; circles that overlap join one network, starting at City Hall (grid_mw = MW its public grid link can draw, billed like water: game_config.json power). Buildings outside the network get no power. When there isn't enough, buildings are served oldest first and one that doesn't fit gets none and stops. coming_soon = shown greyed out in the Build menu with this reason. All PLACEHOLDERS.",
+	"_power": "Electricity (plan.md 5.5). power_mw = MW a building needs while it runs (a Mill or Bakery while making a batch, a home while anyone lives there). power_supply = MW a power plant makes (with workers: its share of them, 2 of 4 = half). power_radius = tiles around it that its power reaches; circles that overlap join one network, starting at your power plants (since 2026-10-06 City Hall has no power: the village starts without any until a plant is built). grid_mw = MW a public grid link can draw, billed like water (game_config.json power); no building has one now. Buildings outside the network get no power. When there isn't enough, buildings are served oldest first and one that doesn't fit gets none and stops. coming_soon = shown greyed out in the Build menu with this reason. All PLACEHOLDERS.",
 	"wind_turbine": {
 		"name": "Wind Turbine", "category": "power", "menu_tab": "power",
 		"description": "Makes 5 MW of free power, day and night, with no workers. Its power reaches 3 tiles around it.",

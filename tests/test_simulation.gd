@@ -1267,6 +1267,27 @@ func test_power() -> void:
 	_check(not Sim.power_network(state, data, T0 + 3600).ids.has(free.id), "a substation whose circle touches nothing isn't joined")
 
 
+## Without any grid link (the real game since 2026-10-06: City Hall has no power), power starts at
+## the plants: a turbine anywhere powers what's in its circle, and a substation touching it joins.
+func test_power_starts_at_plants() -> void:
+	var data := _power_data()
+	data.buildings.office.erase("grid_mw")
+	data.buildings.office.erase("power_radius")
+	var state := Sim.new_game(data, T0)
+	var lamp := Sim.find_building(state, Sim.build(state, data, "lamp", Vector2i(6, 7), T0).building_id)
+	state.population.current = 10
+	state.inventory["wheat"] = 1000
+	Sim.settle(state, data, T0)
+	_batch(state, data, lamp, 100)
+	_check(Sim.power_problem(lamp) == "no_grid" and Sim.power_network(state, data, T0).ids.is_empty(), "no plant, no power")
+	var sub := Sim.find_building(state, Sim.build(state, data, "sub", Vector2i(5, 5), T0).building_id)
+	_check(not Sim.power_network(state, data, T0).ids.has(sub.id), "a substation alone carries nothing")
+	var turbine := Sim.find_building(state, Sim.build(state, data, "turbine", Vector2i(2, 2), T0).building_id)
+	var network := Sim.power_network(state, data, T0)
+	_check(network.ids.has(turbine.id) and network.ids.has(sub.id), "the turbine starts the network and the touching substation joins it")
+	_check(str(lamp.power) == "on" and is_equal_approx(float(Sim.power_summary(state, data, T0).public), 0.0), "the lamp gets the turbine's power, nothing from a public grid")
+
+
 ## Away = playing with power: the mill is short until the farm's batch ends, then gets its power.
 func test_power_away_matches_playing() -> void:
 	var data := _power_data()
@@ -1503,6 +1524,10 @@ func _real_town() -> Array:
 	var data := {"resources": GameDataScript.load_json("res://data/resources.json"),
 		"buildings": GameDataScript.load_json("res://data/buildings.json"),
 		"config": GameDataScript.load_json("res://data/game_config.json")}
+	# The real village starts with no power (plants must be built). These tests are about the
+	# chains, so here City Hall gets a big grid link that powers the middle of the land.
+	data.buildings.city_hall["grid_mw"] = 1000
+	data.buildings.city_hall["power_radius"] = 12
 	var state := Sim.new_game(data, T0)
 	Sim.dev_add_cash(state, 100000000)
 	return [state, data]
@@ -2782,6 +2807,130 @@ func test_dev_rent() -> void:
 	_check(not Sim.dev_set_rent(state, data, "crew_farm", 5.0, T0).ok, "only homes have rent")
 
 
+## Developer locks on happiness: the score or a need is forced, counts even in a new village, and
+## births, migrants and leaving follow. Time away = playing through with a lock on.
+func test_dev_happiness_locks() -> void:
+	var data := _band_data()
+	data.config.happiness["leave_group_size"] = 1
+	data.config.happiness["grace_hours"] = 100  # a new village: needs don't count yet
+	var state := _band_town(data, 20, 5, 10)  # 10 households, all with a home, all working
+	_check(not Sim.happiness(state, data, T0).needs_count and int(Sim.happiness(state, data, T0).percent) == 100, "a new village: 100%")
+	_check(not Sim.dev_lock_happiness(state, data, "mood", 0.5, T0).ok, "only score, food, jobs, housing and penalty can be locked")
+	_check(Sim.dev_lock_happiness(state, data, "score", 0.15, T0).ok and Sim.dev_active(state), "happiness locked at 15%")
+	var happy := Sim.happiness(state, data, T0)
+	_check(int(happy.percent) == 15 and happy.needs_count, "15%, even in the grace period")
+	_check(float(happy.growth_speed) == 0.0 and float(happy.move_in_speed) == 0.0 and is_equal_approx(float(happy.children_leave_per_hour), 0.05), "15%: no babies, no migrants, children leave")
+	_check(float(Sim.happiness_gains(data, happy).housing) == 0.0, "nothing to gain while the score is locked")
+	state.population.children = [{"count": 10, "grows_up_at": T0 + 1000 * 3600.0}]
+	state.population.current = 30
+	var played := state.duplicate(true)
+	Sim.settle(state, data, T0 + 4 * 3600)
+	var t := T0
+	while t < T0 + 4 * 3600:
+		t = minf(t + 30.0, T0 + 4 * 3600)
+		Sim.settle(played, data, t)
+	_check(Sim.children_count(state) == 9 and Sim.adults(state) == 20, "in 4 hours 1 child left; the adults all work and have homes, so they stay (%d children)" % Sim.children_count(state))
+	_check(str(Sim.people_stats(played)) == str(Sim.people_stats(state)), "4 hours away = 4 hours played")
+	Sim.dev_lock_happiness(state, data, "score", -1.0, T0 + 4 * 3600)
+	_check(Sim.dev_locks(state).is_empty() and not state.has("dev") and int(Sim.happiness(state, data, T0 + 4 * 3600).percent) == 100, "unlocked: back to the real 100%")
+	var needs := _all_needs_data()
+	var town := _band_town(needs, 20, 5, 10)  # no food, everyone works and has a home: 66%
+	_check(int(Sim.happiness(town, needs, T0).percent) == 66, "no food: 66%")
+	Sim.dev_lock_happiness(town, needs, "food", 1.0, T0)
+	_check(int(Sim.happiness(town, needs, T0).percent) == 100 and float(Sim.happiness_gains(needs, Sim.happiness(town, needs, T0)).food) == 0.0, "Food locked at 100%: 100%")
+	Sim.dev_lock_happiness(town, needs, "penalty", 0.3, T0)
+	_check(int(Sim.happiness(town, needs, T0).percent) == 70, "plus a 30-point hut penalty: 70%")
+	Sim.dev_lock_happiness(town, needs, "food", -1.0, T0)
+	_check(int(Sim.happiness(town, needs, T0).percent) == 36, "Food unlocked again: 36%")
+
+
+## Developer tuning: game_config.json numbers changed in memory, by path; they count only from
+## the moment they're made, and taking them back restores the file's numbers.
+func test_dev_config_overrides() -> void:
+	var original := {"happiness": {"growth_speeds": [{"from": 0, "speed": 0.0}, {"from": 0.5, "speed": 1.0}]}, "starting_cash": 100}
+	var config := original.duplicate(true)
+	_check(float(Sim.config_value(config, "happiness.growth_speeds.1.speed")) == 1.0 and Sim.config_value(config, "happiness.nope") == null, "a value found by its path (with a list place)")
+	Sim.apply_config_overrides(config, original, {"happiness.growth_speeds.1.speed": 2.0, "starting_cash": 5.0, "nope.x": 1.0})
+	_check(float(config.happiness.growth_speeds[1].speed) == 2.0 and float(config.starting_cash) == 5.0 and not config.has("nope"), "changes applied; an unknown path is skipped")
+	_check(float(original.happiness.growth_speeds[1].speed) == 1.0, "the original numbers stay as they were")
+	Sim.apply_config_overrides(config, original, {})
+	_check(float(config.happiness.growth_speeds[1].speed) == 1.0 and int(config.starting_cash) == 100, "no changes: back to the original")
+	var data := _life_data(0.1, 0.0)  # 10 adults: one baby an hour
+	var file_config: Dictionary = data.config.duplicate(true)
+	var state := Sim.new_game(data, T0)
+	_check(not Sim.dev_set_config(state, data, "nope.x", 1.0, T0).ok, "a setting in a block that doesn't exist is refused")
+	_check(not Sim.dev_set_config(state, data, "life", 1.0, T0).ok, "a whole block isn't a number")
+	_check(Sim.dev_set_config(state, data, "life.new_number", 2.0, T0).ok and Sim.dev_set_config(state, data, "life.new_number", null, T0).ok, "a missing number in a block that exists can be added (and taken back)")
+	_check(not Sim.dev_set_config(state, data, "life.birth_rate_per_hour", true, T0).ok, "a number takes a number")
+	_check(Sim.dev_set_config(state, data, "life.birth_rate_per_hour", 1.0, T0 + 1800).ok, "births x10 from half an hour in")
+	Sim.apply_config_overrides(data.config, file_config, Sim.dev_config(state))
+	_check(Sim.children_count(state) == 0 and float(data.config.life.birth_rate_per_hour) == 1.0, "no baby yet in the first half hour (the old rate counted until the change)")
+	Sim.settle(state, data, T0 + 1800 + 360)
+	_check(Sim.children_count(state) == 1, "half a baby from before + 10 an hour x 6 minutes: a baby")
+	Sim.dev_set_config(state, data, "life.birth_rate_per_hour", null, T0 + 2160)
+	Sim.apply_config_overrides(data.config, file_config, Sim.dev_config(state))
+	_check(float(data.config.life.birth_rate_per_hour) == 0.1 and not state.has("dev"), "taken back: the file's rate again")
+
+
+## Developer tools for people: adults in or out (the jobless go first, never below none),
+## children added, children grown up at once, the new-village grace period ended.
+func test_dev_people_tools() -> void:
+	var data := _life_data(0.0, 0.0)
+	var state := Sim.new_game(data, T0)  # 10 adults
+	var farm := Sim.find_building(state, Sim.build(state, data, "crew_farm", Vector2i(5, 5), T0).building_id)  # 2 posts
+	_check(Sim.dev_add_adults(state, data, 5, T0).ok and Sim.adults(state) == 15, "+5 adults")
+	_check(Sim.dev_add_adults(state, data, -14, T0).ok and Sim.adults(state) == 1 and Sim.hired(farm) == 1, "-14: 1 adult left, at the farm (the jobless went first)")
+	_check(Sim.dev_add_adults(state, data, -5, T0).ok and Sim.adults(state) == 0 and Sim.hired(farm) == 0, "never below none")
+	_check(not Sim.dev_add_adults(state, data, -1, T0).ok, "nobody left to take away")
+	_check(Sim.dev_add_children(state, data, 3, T0).ok and Sim.children_count(state) == 3, "3 children added")
+	_check(float(Sim.children_groups(state)[-1].grows_up_at) == T0 + 2 * 3600, "they grow up in 2 hours (grow_up_hours)")
+	_check(Sim.dev_children_grow_up(state, data, T0 + 60).ok and Sim.adults(state) == 3 and Sim.children_count(state) == 0, "grown up now: 3 adults")
+	_check(int(Sim.people_stats(state).grew_up) == 3 and Sim.hired(farm) == 2, "counted as growing up; 2 of them take the farm's posts")
+	var bands := _band_data()
+	bands.config.happiness["grace_hours"] = 3
+	var town := _band_town(bands, 22, 1, 0)
+	_check(not Sim.happiness(town, bands, T0 + 60).needs_count, "a new village: needs don't count yet")
+	_check(Sim.dev_end_grace(town, bands, T0 + 60).ok and Sim.happiness(town, bands, T0 + 60).needs_count, "grace ended: they count from now")
+	_check(not Sim.dev_end_grace(town, bands, T0 + 61).ok, "it's already over")
+
+
+## Developer: everything being built or upgraded is finished at once; the construction workers
+## are free again.
+func test_dev_finish_construction() -> void:
+	var data := _crew_data()
+	var state := Sim.new_game(data, T0)
+	state.population.current = 10
+	Sim._hire(state, data, T0)
+	var farm := Sim.find_building(state, Sim.build(state, data, "slow_farm", Vector2i(5, 5), T0).building_id)  # 5 s to build
+	_check(not Sim.is_built(farm, T0 + 1) and Sim.crew_busy(state, data, T0 + 1) == 1, "the farm is going up")
+	_check(Sim.dev_finish_construction(state, data, T0 + 1).ok and Sim.is_built(farm, T0 + 1) and Sim.crew_busy(state, data, T0 + 1) == 0, "finished now; its worker is free")
+	_check(Sim.upgrade(state, data, farm.id, T0 + 2).ok and Sim.is_upgrading(farm, T0 + 3), "an upgrade to Level 2 (50 s)")
+	_check(Sim.dev_finish_construction(state, data, T0 + 3).ok and Sim.building_level(farm) == 2 and not Sim.is_upgrading(farm, T0 + 3), "the upgrade is done at once")
+	_check(Sim.crew_busy(state, data, T0 + 3) == 0, "and its workers are free")
+	_check(not Sim.dev_finish_construction(state, data, T0 + 4).ok, "nothing left to finish")
+
+
+## Developer: items put in the warehouse (as much as fits); Reset all takes back every
+## developer change.
+func test_dev_add_item_and_reset_all() -> void:
+	var data := _data()  # the starter warehouse holds 1000
+	var state := Sim.new_game(data, T0)
+	_check(not Sim.dev_add_item(state, data, "nope", 10, T0).ok, "an unknown item is refused")
+	_check(int(Sim.dev_add_item(state, data, "wheat", 600, T0).get("added", 0)) == 600, "600 wheat in")
+	var flour := Sim.dev_add_item(state, data, "flour", 600, T0)
+	_check(flour.ok and int(flour.added) == 400 and int(state.inventory.flour) == 400, "only 400 flour fit")
+	_check(not Sim.dev_add_item(state, data, "wheat", 1, T0).ok, "the warehouse is full")
+	var town := _housing_town()
+	var home: Dictionary = town[0]
+	var rules: Dictionary = town[1]
+	Sim.dev_lock_happiness(home, rules, "food", 0.5, T0)
+	Sim.dev_set_config(home, rules, "life.birth_rate_per_hour", 0.5, T0)
+	Sim.dev_set_rent(home, rules, "regular", 20.0, T0)
+	_check(Sim.dev_active(home) and Sim.dev_config(home).size() == 1, "a lock, a tuning change and a rent change are on")
+	_check(Sim.dev_reset_all(home, rules, T0).ok and not Sim.dev_active(home) and not home.has("dev") and not home.has("dev_rent"), "Reset all: every developer change is gone")
+	_check(is_equal_approx(Sim.rent_per_household(home, rules, "regular"), 2.0), "the file's rent again")
+
+
 ## Life test data where only the Housing need counts (no grace, needs from 1 person), with the
 ## real bands' shape: below 20% no births and 3% an hour leave; 20-49% half speed and 1% leave;
 ## 50% and up nobody leaves. A "duo" home has room for 2 households.
@@ -2871,6 +3020,199 @@ func test_unhappy_people_leave_in_groups() -> void:
 	var left := int(Sim.people_stats(state).moved_away)
 	_check(left % 5 == 0 and left >= 10, "only whole groups leave (%d in 8 hours)" % left)
 	_check(int(played.population.current) == int(state.population.current) and str(Sim.people_stats(played)) == str(Sim.people_stats(state)), "8 hours away = 8 hours played (%d vs %d people)" % [int(state.population.current), int(played.population.current)])
+
+
+# --- Happiness bands: what the % on screen means, and who leaves (review 2026-10-06) ----
+
+## The real bands' shape (game_config.json) on the housing test data (wealth classes, free
+## "public" homes of 2 households, huts): only the Housing need counts, from 1 person, no grace;
+## no births or deaths, nobody moves in. Shown %: 0-10 workers in huts leave too, 11-15 children
+## leave too, 16-19 no babies (5% an hour of the jobless leave), 20 half-speed babies but no
+## migrants, 21-49 migrants come (2% an hour leave), 50 and up nobody leaves.
+func _band_data() -> Dictionary:
+	var data := _housing_data()
+	data.config["happiness"] = {"needs_from_population": 1, "food_scores": [1.0], "weights": {"housing": 1},
+		"growth_speeds": [
+			{"from": 0, "speed": 0.0, "move_in": 0.0, "leave_per_hour": 0.05, "children_leave_per_hour": 0.05, "homeless_workers_leave": true},
+			{"from": 0.11, "speed": 0.0, "move_in": 0.0, "leave_per_hour": 0.05, "children_leave_per_hour": 0.05},
+			{"from": 0.16, "speed": 0.0, "move_in": 0.0, "leave_per_hour": 0.05, "children_leave_per_hour": 0.0},
+			{"from": 0.2, "speed": 0.5, "move_in": 0.0, "leave_per_hour": 0.02, "children_leave_per_hour": 0.0},
+			{"from": 0.21, "speed": 0.5, "move_in": 1.0, "leave_per_hour": 0.02, "children_leave_per_hour": 0.0},
+			{"from": 0.5, "speed": 1.0, "move_in": 1.0, "leave_per_hour": 0.0}]}
+	return data
+
+
+## _band_data with all three needs and the real food scores and hut penalty (2 points a hut, at
+## most 30).
+func _all_needs_data() -> Dictionary:
+	var data := _band_data()
+	data.config.happiness.merge({"food_scores": [0.0, 0.4, 0.6, 0.75, 0.9, 1.0], "weights": {"food": 1, "jobs": 1, "housing": 1},
+		"homeless_penalty": {"per_household": 0.02, "max": 0.3}}, true)
+	return data
+
+
+## Builds `type_id` on the first free tile (huts can stand anywhere). Returns the result.
+func _build_anywhere(state: Dictionary, data: Dictionary, type_id: String, now := T0) -> Dictionary:
+	for y in 10:
+		for x in 10:
+			if Sim.can_build(state, data, type_id, Vector2i(x, y), now).ok:
+				return Sim.build(state, data, type_id, Vector2i(x, y), now)
+	return {"ok": false}
+
+
+## A town of `adults` with `homes` free Public homes (2 households each) and `farms` crew farms
+## (2 posts each); everyone without a home lives in a hut.
+func _band_town(data: Dictionary, adults: int, homes: int, farms: int) -> Dictionary:
+	var state := Sim.new_game(data, T0)
+	for i in homes:
+		_build_anywhere(state, data, "public")
+	for i in farms:
+		_build_anywhere(state, data, "crew_farm")
+	state.population.current = adults
+	Sim.settle(state, data, T0)  # hires, then houses everyone (huts for the rest)
+	return state
+
+
+## The % on screen is rounded down, so it always falls in the band that counts: 19.6% shows
+## "19%" (no babies), 20.4% "20%" (half-speed babies, no migrants), 21% "21%" (migrants come).
+func test_happiness_percent_rounds_down() -> void:
+	_check(Sim.happiness_percent(0.196) == 19 and Sim.happiness_percent(0.204) == 20, "19.6% shows 19%, 20.4% shows 20% (rounded down)")
+	_check(Sim.happiness_percent(0.21) == 21 and Sim.happiness_percent(0.29) == 29 and Sim.happiness_percent(1.0) == 100, "whole numbers stay whole (0.29 x 100 = 28.999...)")
+	var config: Dictionary = _band_data().config.happiness
+	var mismatch := -1.0
+	for i in 2001:
+		var score := i / 2000.0
+		if float(Sim._band_for(config, score).from) != float(Sim._band_for(config, Sim.happiness_percent(score) / 100.0).from):
+			mismatch = score
+			break
+	_check(mismatch < 0.0, "every score falls in the band of the %% it shows (first one that doesn't: %s)" % mismatch)
+	var data := _band_data()
+	var happy := Sim.happiness(_band_town(data, 22, 1, 0), data, T0)
+	_check(int(happy.percent) == 18 and float(happy.growth_speed) == 0.0, "2 of 11 households have a home: 18%, no babies")
+	happy = Sim.happiness(_band_town(data, 20, 1, 0), data, T0)
+	_check(int(happy.percent) == 20 and float(happy.growth_speed) == 0.5 and float(happy.move_in_speed) == 0.0, "2 of 10: 20%, babies at half speed, no migrants")
+
+
+## Below 20% no babies at all, even with most of a baby carried over; it comes as soon as
+## happiness is back at 20% or more.
+func test_no_babies_below_20_with_a_leftover_baby() -> void:
+	var data := _band_data()
+	data.config.life.birth_rate_per_hour = 0.1
+	data.config.happiness["leave_group_size"] = 1000  # nobody leaves in this test
+	var state := _band_town(data, 22, 1, 0)  # 11 households, 2 with a home: 18%
+	state.population.life_carry["born"] = 0.99
+	Sim.settle(state, data, T0 + 10 * 3600)
+	_check(int(Sim.people_stats(state).born) == 0, "18%: no babies in 10 hours, even with 0.99 of a baby waiting")
+	for i in 4:
+		_build_anywhere(state, data, "public", T0 + 10 * 3600)
+	var report := Sim.settle(state, data, T0 + 10 * 3600 + 60)
+	_check(int(report.get("born", 0)) == 1, "homes for 10 of 11 households (90%): the waiting baby comes within a minute")
+
+
+## 0% needs every need unmet: no food, no jobs, everyone in a hut. Each fix then adds what
+## happiness_gains said it would. With everyone working, the hut penalty (at most 30 points)
+## can't take it to 0.
+func test_happiness_floor_and_how_to_raise_it() -> void:
+	var data := _all_needs_data()
+	var state := _band_town(data, 20, 0, 0)  # 10 households in huts, no jobs, no food
+	var happy := Sim.happiness(state, data, T0)
+	_check(float(happy.score) == 0.0 and int(happy.percent) == 0, "no food, no jobs, everyone in a hut: 0%")
+	var gains := Sim.happiness_gains(data, happy)
+	_check(is_equal_approx(float(gains.housing), 1.0 / 3.0) and is_equal_approx(float(gains.jobs), 1.0 / 3.0 - 0.2), "homes for all would add 33 points, jobs for all 13 (the huts still take 20)")
+	_check(float(gains.food) == 0.0, "one food (+13) wouldn't get past the hut penalty (-20)")
+	for i in 5:
+		_build_anywhere(state, data, "public")
+	Sim.settle(state, data, T0)
+	happy = Sim.happiness(state, data, T0)
+	_check(is_equal_approx(float(happy.score), 1.0 / 3.0) and int(happy.percent) == 33, "homes for everyone: 33%%, as promised (%d%%)" % int(happy.percent))
+	for i in 10:
+		_build_anywhere(state, data, "crew_farm")
+	Sim.settle(state, data, T0)
+	happy = Sim.happiness(state, data, T0)
+	_check(is_equal_approx(float(happy.score), 2.0 / 3.0) and int(happy.percent) == 66, "and jobs for everyone: 66%% (%d%%)" % int(happy.percent))
+	gains = Sim.happiness_gains(data, happy)
+	_check(is_equal_approx(float(gains.food), 0.4 / 3.0) and float(gains.jobs) == 0.0 and float(gains.housing) == 0.0, "only food is left: 1 food +13 points")
+	happy = Sim.happiness(_band_town(data, 40, 0, 20), data, T0)  # everyone works, 20 households in huts
+	_check(is_equal_approx(float(happy.homeless_penalty), 0.3) and int(happy.percent) == 3, "everyone working but in huts: 3%%, the penalty stops at 30 points (%d%%)" % int(happy.percent))
+
+
+## happiness_gains with the numbers of the 2026-10-06 playtest village: no food, 76 of 79 adults
+## working, 10 of 40 households in huts.
+func test_happiness_gains() -> void:
+	var data := _all_needs_data()
+	var happy := {"needs_count": true, "food": 0.0, "foods": 0, "jobs": 76.0 / 79.0, "housing": 0.75, "homeless": 10}
+	happy["score"] = (76.0 / 79.0 + 0.75) / 3.0 - 0.2
+	_check(Sim.happiness_percent(happy.score) == 37, "the playtest village: 37%")
+	var gains := Sim.happiness_gains(data, happy)
+	_check(roundi(100.0 * gains.food) == 13 and roundi(100.0 * gains.housing) == 28 and roundi(100.0 * gains.jobs) == 1, "1 food +13, homes for the huts +28, jobs for the 3 jobless +1")
+	happy.needs_count = false
+	gains = Sim.happiness_gains(data, happy)
+	_check(float(gains.food) == 0.0 and float(gains.housing) == 0.0 and float(gains.jobs) == 0.0, "while needs don't count there's nothing to gain")
+
+
+## From 16% to 49% only the jobless leave, and children stay. Once everyone left has a job,
+## nobody leaves, even with workers still living in huts.
+func test_only_jobless_leave() -> void:
+	var data := _band_data()
+	data.config.happiness["leave_group_size"] = 1
+	var state := _band_town(data, 24, 2, 10)  # 20 work, 4 don't; 12 households, 4 with a home: 33%
+	state.population.children = [{"count": 4, "grows_up_at": T0 + 1000 * 3600.0}]
+	state.population.current = 28
+	Sim.settle(state, data, T0)
+	var happy := Sim.happiness(state, data, T0)
+	_check(int(happy.percent) == 33 and int(happy.jobless) == 4 and int(happy.homeless_workers) == 12, "33%: 4 jobless adults, 12 workers in huts")
+	Sim.settle(state, data, T0 + 48 * 3600)
+	_check(int(Sim.people_stats(state).moved_away) == 4 and Sim.adults(state) == 20, "in 2 days the 4 jobless left, and only them (%d left)" % int(Sim.people_stats(state).moved_away))
+	_check(int(Sim.employment(state, data, T0 + 48 * 3600).employed) == 20, "every worker kept their post")
+	_check(Sim.children_count(state) == 4, "children don't leave at 33%")
+	happy = Sim.happiness(state, data, T0 + 48 * 3600)
+	_check(int(happy.percent) == 40 and int(happy.homeless_workers) == 12, "40%: still unhappy, 6 households of workers in huts")
+	Sim.settle(state, data, T0 + 200 * 3600)
+	_check(Sim.adults(state) == 20, "but with nobody jobless, nobody leaves")
+
+
+## At 15% or less children leave too (5% an hour); from 16% they stay. Adults who all work
+## stay at 14%.
+func test_children_leave_at_15() -> void:
+	var data := _band_data()
+	data.config.happiness["leave_group_size"] = 1
+	var state := _band_town(data, 28, 1, 14)  # everyone works; 14 households, 2 with a home: 14%
+	state.population.children = [{"count": 10, "grows_up_at": T0 + 1000 * 3600.0}]
+	state.population.current = 38
+	Sim.settle(state, data, T0)
+	_check(int(Sim.happiness(state, data, T0).percent) == 14, "2 of 14 households have a home: 14%")
+	Sim.settle(state, data, T0 + 10 * 3600)
+	_check(Sim.children_count(state) == 6 and Sim.adults(state) == 28, "10 children at 5%% an hour: 4 left in 10 hours (%d children); the adults all work, so they stay" % Sim.children_count(state))
+	_build_anywhere(state, data, "public", T0 + 10 * 3600)  # 4 of 14 have a home: 28%
+	Sim.settle(state, data, T0 + 30 * 3600)
+	_check(Sim.children_count(state) == 6, "at 28%% the children stay (%d)" % Sim.children_count(state))
+
+
+## At 10% or less workers living in huts leave too: their posts open up, the households with a
+## home stay, and no migrant workers come to take the posts (20% or less). Time away = playing.
+func test_homeless_workers_leave_at_10() -> void:
+	var data := _band_data()
+	data.config.happiness["leave_group_size"] = 1
+	data.config["population_growth_seconds"] = 10  # migrant workers would come every 10 s...
+	data.config["move_in_only_for_jobs"] = true
+	data.config["move_in_needs_home"] = false
+	var state := _band_town(data, 40, 1, 20)  # everyone works; 20 households, 2 with a home: 10%
+	var happy := Sim.happiness(state, data, T0)
+	_check(int(happy.percent) == 10 and int(happy.jobless) == 0 and int(happy.homeless_workers) == 36, "10%: nobody jobless, 36 workers in huts")
+	var played := state.duplicate(true)
+	var report := Sim.settle(state, data, T0 + 4 * 3600)
+	_check(int(report.get("moved_away", 0)) == 4 and Sim.adults(state) == 36, "4 workers from the huts left, until 2 of 18 households have a home (11%)")
+	var e := Sim.employment(state, data, T0 + 4 * 3600)
+	_check(int(e.employed) == 36 and int(e.open_jobs) == 4, "their 4 posts are open")
+	var homes := Sim.housing(state, data, T0 + 4 * 3600)
+	_check(int(homes.households) - int(homes.homeless) == 2, "the 2 households with a home stayed")
+	var t := T0
+	while t < T0 + 4 * 3600:
+		t = minf(t + 7.0, T0 + 4 * 3600)
+		Sim.settle(played, data, t)
+	_check(int(played.population.current) == int(state.population.current) and str(Sim.people_stats(played)) == str(Sim.people_stats(state)), "4 hours away = 4 hours played (%d vs %d adults)" % [Sim.adults(state), Sim.adults(played)])
+	Sim.settle(state, data, T0 + 10 * 3600)
+	_check(Sim.adults(state) == 36, "...but at 11% no migrant workers come for the open posts")
 
 
 ## With births, deaths and leaving, the village can't outgrow its homes forever.
@@ -3146,13 +3488,21 @@ func test_building_buys_materials_and_pays_the_crew() -> void:
 	Sim.settle(state, data, t)
 	var up_materials := 200 * Sim.material_price(data, "bricks", t) + 4 * Sim.material_price(data, "steel", t)
 	var up := up_materials + roundi(up_materials * 0.1)
+	_check(Sim.construction_quote(data, "lodge", 2, t).cost == up and float(Sim.construction_quote(data, "lodge", 2, t).seconds) == 3600.0, "Level 2: twice the materials and crew, at that hour's prices, and 1 h")
+	state.inventory["bricks"] = 150
+	var short := Sim.can_upgrade(state, data, lodge.id, t)
+	_check(not short.ok and str(short.error) == Sim.MISSING_MATERIALS % "50 Bricks, 4 Steel", "an upgrade never buys materials: it says what's missing")
+	_check(not Sim.upgrade(state, data, lodge.id, t).ok and state.inventory.bricks == 150, "and doesn't start")
+	state.inventory["bricks"] = 200
+	state.inventory["steel"] = 4
+	var labor := roundi(up_materials * 0.1)
 	var check := Sim.can_upgrade(state, data, lodge.id, t)
-	_check(check.ok and int(check.cost) == up and float(check.seconds) == 3600.0, "Level 2: twice the materials and crew, at that hour's prices, and 1 h")
+	_check(check.ok and int(check.cost) == labor, "with them all in the warehouse, the money only pays the crew")
 	cash = state.profile.currency
 	Sim.upgrade(state, data, lodge.id, t)
-	_check(state.profile.currency == cash - up and int(lodge.paid) == expected + up, "the upgrade is paid at once and adds to the building's value")
+	_check(state.profile.currency == cash - labor and not state.inventory.has("bricks") and not state.inventory.has("steel"), "the upgrade uses the warehouse's materials and pays the crew at once")
 	Sim.settle(state, data, t + 3600.0)
-	_check(Sim.building_level(lodge) == 2 and float(Sim.can_upgrade(state, data, lodge.id, t + 3600.0).seconds) == 7200.0, "Level 3 takes 2 h")
+	_check(Sim.building_level(lodge) == 2 and float(Sim.construction_quote(data, "lodge", 3, t + 3600.0).seconds) == 7200.0, "Level 3 takes 2 h")
 	var poor := Sim.new_game(data, T0)
 	poor.profile.currency = expected - 1
 	_check(Sim.can_build(poor, data, "lodge", Vector2i(5, 5), T0).error == "Not enough money.", "it needs the money for the materials and crew")
@@ -3193,6 +3543,8 @@ func test_demolish_gives_materials_back() -> void:
 	var lodge := Sim.find_building(state, Sim.build(state, data, "lodge", Vector2i(5, 5), T0).building_id)
 	var t := T0 + 3600.0
 	Sim.settle(state, data, t)
+	state.inventory["bricks"] = 200  # upgrades take their materials from the warehouse
+	state.inventory["steel"] = 4
 	Sim.upgrade(state, data, lodge.id, t)
 	Sim.settle(state, data, t + 3600.0)
 	var cost: Dictionary = lodge.materials_cost.duplicate()

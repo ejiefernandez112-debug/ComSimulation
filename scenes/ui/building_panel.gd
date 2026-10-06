@@ -50,12 +50,11 @@ var _goods_grid: HFlowContainer  # warehouses: one [icon] amount tile per item i
 var _shown_stock := {}  # what the grid shows now, so it's only rebuilt when the stock changes
 # Supermarket (plan.md §5.16): its shelves, and the form that puts food on one.
 var _shelf_rows: Array[Dictionary] = []  # per shelf: {"icon", "title", "bar", "detail", "take_down"}
-var _shoppers_text: Label
 var _item_buttons := {}  # item -> its Button
 var _tag_buttons := {}  # price tag -> its Button
 var _amount_slider: HSlider
 var _amount_label: Label
-var _preview := {}  # "price", "speed", "time", "revenue", "cost", "tax", "profit" -> value Label
+var _preview := {}  # "price", "time", "profit" -> value Label
 var _stock_button: Button
 var _chosen_item := ""
 var _chosen_tag := ""
@@ -136,7 +135,7 @@ func _build_rows(b: Dictionary, def: Dictionary) -> void:
 		_batch_box.collect_requested.connect(func(id): collect_requested.emit(id))
 		_batch_box.cancel_requested.connect(func(id): cancel_batch_requested.emit(id))
 		box.add_child(_batch_box)
-	else:
+	elif def.category != "storage":  # a warehouse shows its room as a bar below instead
 		# "Now": what it's doing.
 		var now_box := _section("Now")
 		_status = _body("")
@@ -201,7 +200,7 @@ func _build_rows(b: Dictionary, def: Dictionary) -> void:
 	var spacer := Control.new()
 	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	tools.add_child(spacer)
-	if int(def.get("max_workers", 0)) > 0:  # only buildings with workers can be switched off
+	if Economy.can_be_suspended(b.type):  # only buildings with workers (not the Warehouse or Construction Office)
 		_suspend = _small_button("", "Suspend", "clock", func():
 			if Economy.is_suspended(Economy.building(building_id)):
 				resume_requested.emit(building_id)
@@ -219,7 +218,7 @@ func _refresh_road(b: Dictionary) -> void:
 	if section.visible != cut_off:
 		section.visible = cut_off
 		_layout.call_deferred()
-	_road_text.text = "No workers can get here, so it stops. It needs a road beside it that leads to City Hall: lay one with Build → Roads."
+	_road_text.text = "No road reaches it, so no workers can come. Lay one (Build → Roads)."
 
 
 ## Without power (plan.md §5.5) it doesn't work at all: say why. Hidden while it has power.
@@ -246,27 +245,15 @@ func _build_upgrade() -> void:
 	_upgrade_needs = _wrapped("")
 	_upgrade_needs.theme_type_variation = "SmallLabel"
 	box.add_child(_upgrade_needs)
-	# A later upgrade, shown so players know it's coming (plan.md §5.15); nothing behind it yet.
-	var robots := Button.new()
-	robots.text = "Robotic workers: coming soon"
-	robots.theme_type_variation = "BackButton"
-	robots.disabled = true
-	UITheme.size_button(robots, "small")
-	box.add_child(robots)
 
 
-## "12 workers (1.5x as fast)", "room for 20,000 goods": what the next level changes.
+## "12 workers", "room for 20,000 goods": what the next level changes.
 func _upgrade_changes(b: Dictionary, next: Dictionary) -> String:
 	var parts: Array[String] = []
-	var full := int(GameData.buildings[b.type].get("max_workers", 0))
 	var names := {"capacity": "room for %s goods", "shelves": "%s shelves", "households": "%s households", "water_supply": "cleans %s m³ of water an hour",
 		"power_supply": "makes %s MW", "power_radius": "reaches %s tiles"}
 	if next.has("max_workers"):
-		var workers := int(next.max_workers)
-		var text := "%d workers" % workers
-		if GameData.buildings[b.type].category in ["extractor", "processor"] and full > 0:
-			text += " (%sx as fast)" % str(snappedf(float(workers) / full, 0.01))
-		parts.append(text)
+		parts.append("%d workers" % int(next.max_workers))
 	for key in names:
 		if next.has(key):
 			parts.append(names[key] % UITheme.number(int(next[key])))
@@ -277,8 +264,7 @@ func _refresh_upgrade(b: Dictionary) -> void:
 	var level := Economy.building_level(b)
 	var next := Economy.next_upgrade(b)
 	if Economy.is_upgrading(b):
-		var open := " It keeps working meanwhile." if Economy.stays_open_while_upgrading(b) else " Closed meanwhile: no workers, no wages; work in progress waits."
-		_upgrade_text.text = "Upgrading to Level %d: %s left.%s" % [level + 1, UITheme.duration(Economy.upgrade_left(b)), open]
+		_upgrade_text.text = "Upgrading to Level %d: %s left." % [level + 1, UITheme.duration(Economy.upgrade_left(b))]
 		_upgrade_button.visible = false
 		_upgrade_needs.visible = false
 		return
@@ -287,15 +273,21 @@ func _refresh_upgrade(b: Dictionary) -> void:
 	if next.is_empty():
 		_upgrade_text.text = "Level %d: the highest level." % level
 		return
-	var how := "It keeps working while it's upgraded." if Economy.stays_open_while_upgrading(b) else "It closes while it's upgraded (its workers go to other buildings); finish or cancel its batch and collect it first."
-	_upgrade_text.text = "Level %d brings %s. %s" % [level + 1, _upgrade_changes(b, next), how]
+	_upgrade_text.text = "Level %d brings %s." % [level + 1, _upgrade_changes(b, next)]
 	var check := Economy.can_upgrade(building_id)
 	var quote := Economy.upgrade_quote(b)
-	_upgrade_button.text = "Upgrade to Level %d · ≈ %s · %s" % [level + 1, UITheme.money(int(quote.cost)), UITheme.duration(float(quote.seconds))]
-	_upgrade_needs.text = "Needs %s. Your warehouse's materials are used first; the rest is bought at today's prices (they change in %s)." % [BuildingInfo.construction_needs(quote), UITheme.duration(Economy.price_change_in())]
+	# Upgrades never buy materials (they come from the warehouse), so the money is the crew only.
+	var money := int(quote.cost)
+	for line in quote.lines:
+		if line.id != "labor":
+			money -= int(line.cost)
+	_upgrade_button.text = "Upgrade to Level %d · ≈ %s · %s" % [level + 1, UITheme.money(money), UITheme.duration(float(quote.seconds))]
+	_upgrade_needs.text = "Needs %s." % BuildingInfo.construction_needs(quote)
+	if not check.ok:
+		_upgrade_needs.text += "\n" + str(check.error)
 	# Greyed when it can't start, but still tappable, so the player is told why.
 	_upgrade_button.theme_type_variation = "GoButton" if check.ok else "BackButton"
-	_upgrade_button.tooltip_text = "Pay now; it reaches Level %d when the time is up" % (level + 1) if check.ok else str(check.error)
+	_upgrade_button.tooltip_text = "" if check.ok else str(check.error)  # only says why it can't start
 
 
 ## Workers: the staffing choice (Low / Medium / High, with how many workers each means), who's
@@ -304,13 +296,7 @@ func _refresh_upgrade(b: Dictionary) -> void:
 func _build_workers(b: Dictionary, def: Dictionary) -> void:
 	var box := _section("Workers")
 	if def.get("fixed_workers", false):
-		var text := "Always %d workers" % int(Economy.level_stat(b, "max_workers"))
-		if def.get("fixed_wage", false):
-			text += " at the minimum wage"
-		if def.get("staffed_first", false):
-			text += ", hired before any other building"
-		var later := " Upgrading adds more." if int(Economy.next_upgrade(b).get("max_workers", 0)) > 0 else ""
-		var fixed := _wrapped(text + "." + later)
+		var fixed := _wrapped("Always %d workers." % int(Economy.level_stat(b, "max_workers")))
 		fixed.theme_type_variation = "SmallLabel"
 		box.add_child(fixed)
 	else:
@@ -344,7 +330,6 @@ func _build_staffing_buttons(box: VBoxContainer, most: int) -> void:
 	for level in levels:
 		var button := Button.new()
 		button.text = "%s  %d" % [level.capitalize(), roundi(most * float(levels[level]))]
-		button.tooltip_text = "Employ %d of %d workers. Fewer workers = slower (a batch costs the same, it just takes longer)" % [roundi(most * float(levels[level])), most]
 		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		UITheme.size_button(button, "small")
 		button.custom_minimum_size.x = 0
@@ -371,8 +356,6 @@ func _refresh_workers(b: Dictionary, def: Dictionary) -> void:
 	var w := Economy.workers(b)
 	for level in _staff_buttons:
 		_staff_buttons[level].theme_type_variation = "ChipOnButton" if level == w.level else "ChipButton"
-	var batches := Economy.makes_batches(b)
-	var producing: bool = Economy.is_built(b) and Economy.is_producing(b)
 	# Short: posts it asked for that nobody has taken (open posts, waiting for free people).
 	var short: bool = Economy.is_built(b) and not Economy.is_suspended(b) and int(w.hired) < int(w.wanted)
 	# Workers tied to it / most it can employ, e.g. "6/8" (always whole people).
@@ -395,43 +378,19 @@ func _refresh_workers(b: Dictionary, def: Dictionary) -> void:
 		_power_text.text = "%s · %s / hour" % [BuildingInfo.mw(Economy.power_need(b)), UITheme.dollars(Economy.power_cost_per_hour(b))] if on else "%s while it runs" % BuildingInfo.mw(Economy.power_need(b))
 	var speed := Economy.building_speed(b)
 	_rate_text.text = "%d%%" % floori(speed * 100.0 + 0.001)
-	# The details: why it isn't full speed and what that rate makes.
-	var note := "%s workers, paid %s" % [w.type, "for the whole batch when it starts" if batches else "per hour"]
+	# Rate details for the buildings that show them as "x of y".
 	if def.category == "construction":
 		var crew := Economy.crew()
 		_rate_text.text = "%d of %d" % [int(crew.free), int(crew.total)]
-		note = "%s workers, paid per project (the Labor cost when building or upgrading starts), nothing while they wait. Building anything needs 1, an upgrade 1 per level (Level 3 = 3). Free counts every Construction Office" % w.type
 	elif def.category == "storage":
 		_rate_text.text = "%s of %s" % [UITheme.number(Economy.storage_capacity(b)), UITheme.number(int(Economy.level_stat(b, "capacity")))]
-		note += " · short of workers = less room"
 	elif def.category == "utility":
 		_rate_text.text = "%s of %s m³/h" % [UITheme.number(roundi(Economy.water_supply(b))), UITheme.number(int(Economy.level_stat(b, "water_supply")))]
-		var price := float(Economy.water_summary().own_price)
-		note += " · short of workers = less water"
-		if price > 0.0:
-			note += " · its water costs %s a m³ (public: %s)" % [UITheme.dollars(price), UITheme.dollars(float(GameData.config.get("water", {}).get("price_per_m3", 0.0)))]
-	elif def.category == "retail":
-		note += " while a shelf is selling · short of people = shelves sell slower"
-	else:
-		var r := BuildingInfo.recipe_of(b)
-		var per_hour := 0.0
-		for res in r.outputs:
-			per_hour += int(r.outputs[res]) * 3600.0 / float(r.duration) * speed
-		note += " · %s %s / hour (before any bonus)" % [UITheme.number(roundi(per_hour)), BuildingInfo.resource_name(BuildingInfo.output_of(r))]
-	if Economy.is_upgrading(b) and not Economy.is_built(b):
-		note = "Closed for its upgrade: its workers were freed for other buildings. It hires again when it's done. " + note
-	elif not Economy.is_built(b):
-		note = "It hires when it's built (%d asked for). " % w.wanted + note
-	elif Economy.is_suspended(b):
-		note = "Suspended: its workers were freed for other buildings. Resume to hire again. " + note
-	elif not producing and def.category == "retail":
-		note = "Idle: shelves empty. Its workers wait, unpaid, until you put food on a shelf. " + note
-	elif not producing:
-		note = "Idle: no batch being made. Its workers wait for the next batch. " + note
-	elif short and def.get("staffed_first", false):
-		note = "Only %d of the %d asked for: it gets free people before any other building, so the town just needs more people. Build houses. " % [int(w.hired), int(w.wanted)] + note
-	elif short:
-		note = "Only %d of the %d asked for: free people go to warehouses first, then take turns. Build houses. %s" % [int(w.hired), int(w.wanted), "Its batch costs the same, it just takes longer. " if batches else ""] + note
+	# A note only when workers are missing (otherwise nothing needs saying).
+	var note := "Only %d of the %d workers it needs: build houses." % [int(w.hired), int(w.wanted)] if short else ""
+	if _workers_note.visible != (note != ""):
+		_workers_note.visible = note != ""
+		_layout.call_deferred()
 	_workers_note.text = note
 
 
@@ -479,11 +438,10 @@ func _refresh() -> void:
 		var off := Economy.is_suspended(b)
 		_suspend.text = "Resume" if off else "Suspend"
 		_suspend.theme_type_variation = "GoButton" if off else ""
-		_suspend.tooltip_text = "Switch it back on (free)" if off else "Switch it off: workers go home, no wages. Goods inside go to the warehouse (a batch must be finished or cancelled first)"
 	if _upgrade_text:
 		_refresh_upgrade(b)
 	if _built_with:
-		_built_with.text = "Built with %s. Demolishing it puts all of that back in the warehouse (no money)." % BuildingInfo.built_with(b)
+		_built_with.text = "Built with %s." % BuildingInfo.built_with(b)
 	if _stock_bar:
 		var cap := Economy.warehouse_cap()
 		_stock_bar.value = 100.0 * Economy.warehouse_total() / maxf(cap, 1.0)
@@ -520,19 +478,16 @@ func _fill_goods_grid() -> void:
 		row.add_child(amount)
 		_goods_grid.add_child(tile)
 	if _goods_grid.get_child_count() == 0:
-		var empty := _body("Nothing stored yet. Collect goods from your buildings.")
+		var empty := _body("Nothing stored yet.")
 		empty.theme_type_variation = "SmallLabel"
 		_goods_grid.add_child(empty)
 	_layout.call_deferred()  # the window may need to grow or shrink for the new rows
 
 
 ## Supermarket: one row per shelf with its food, price tag and price, a bar of how much has sold,
-## and a red X to take it down. The heading shows the shoppers bonus.
+## and a red X to take it down.
 func _build_shelves(b: Dictionary) -> void:
 	var box := _section("Shelves")
-	_shoppers_text = _body("")
-	_shoppers_text.theme_type_variation = "SmallLabel"
-	box.get_child(0).add_child(_shoppers_text)
 	for i in int(Economy.level_stat(b, "shelves")):
 		var row := HBoxContainer.new()
 		row.add_theme_constant_override("separation", 10)
@@ -555,7 +510,6 @@ func _build_shelves(b: Dictionary) -> void:
 		column.add_child(detail)
 		var take_down := RoundButton.make("red", "close", "", UITheme.ROUND_ICON_SIZE - 10)
 		take_down.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		take_down.tooltip_text = "Take it down: what's sold is paid for, the rest goes back to the warehouse"
 		take_down.pressed.connect(func(): clear_shelf_requested.emit(building_id, i))
 		row.add_child(take_down)
 		_shelf_rows.append({"icon": icon, "title": title, "bar": bar, "detail": detail, "take_down": take_down})
@@ -617,7 +571,6 @@ func _build_stock_form() -> void:
 		var change := roundi((float(tags[tag].price) - 1.0) * 100.0)
 		var button := Button.new()
 		button.text = "%s\n%s" % [tags[tag].name, "price" if change == 0 else "%+d%%" % change]
-		button.tooltip_text = "Price x%.2f: sells %.2fx as fast" % [float(tags[tag].price), float(tags[tag].speed)]
 		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		UITheme.size_button(button, "small")
 		button.custom_minimum_size = Vector2(0, 62)  # two lines: the tag's name and its price change
@@ -629,11 +582,7 @@ func _build_stock_form() -> void:
 		_tag_buttons[tag] = button
 
 	_preview["price"] = _figure_row(box, "Price each:")
-	_preview["speed"] = _figure_row(box, "The village buys:")
 	_preview["time"] = _figure_row(box, "Sells out in about:")
-	_preview["revenue"] = _figure_row(box, "Sales:")
-	_preview["cost"] = _figure_row(box, "Cost to make them:")
-	_preview["tax"] = _figure_row(box, "Sales tax (today's rate):")
 	_preview["profit"] = _figure_row(box, "Profit:")
 	_stock_button = Button.new()
 	_stock_button.theme_type_variation = ""
@@ -666,10 +615,7 @@ func _choose_item(res: String) -> void:
 
 func _refresh_shelves(b: Dictionary) -> void:
 	var list := Economy.shelves(b)
-	var bonus := Economy.shoppers(b) - 1.0
-	_shoppers_text.text = "Shoppers +%d%%" % roundi(bonus * 100.0) if bonus > 0.001 else "More products = more shoppers"
 	var tags: Dictionary = GameData.config.get("retail", {}).get("price_tags", {})
-	var selling := Economy.selling_counts()
 	for i in _shelf_rows.size():
 		var row: Dictionary = _shelf_rows[i]
 		var shelf: Dictionary = list[i] if i < list.size() else {}
@@ -679,8 +625,9 @@ func _refresh_shelves(b: Dictionary) -> void:
 			row.icon.texture = UITheme.icon("item")
 			row.icon.modulate.a = 0.3
 			row.title.text = "Empty shelf"
-			row.detail.text = "Put food on it below."
+			row.detail.visible = false
 			continue
+		row.detail.visible = true
 		row.icon.texture = UITheme.icon(shelf.res)
 		row.icon.modulate.a = 1.0
 		row.title.text = "%s · %s · %s each" % [BuildingInfo.resource_name(shelf.res), tags.get(shelf.tag, {}).get("name", shelf.tag), UITheme.price(int(shelf.price))]
@@ -689,9 +636,6 @@ func _refresh_shelves(b: Dictionary) -> void:
 		var left := Economy.shelf_time_left(b, i)
 		row.detail.text = "%s of %s sold · %s" % [UITheme.number(floori(sold)), UITheme.number(int(shelf.qty)),
 			"sells out in %s" % UITheme.duration(left) if left < INF else "not selling: no workers"]
-		var stores := int(selling.get(shelf.res, 0))
-		if left < INF and stores > 1:
-			row.detail.text += " · shared with %d other store%s" % [stores - 1, "" if stores == 2 else "s"]
 
 
 func _refresh_stock_form() -> void:
@@ -716,14 +660,7 @@ func _refresh_stock_form() -> void:
 	_amount_label.text = UITheme.number(_chosen_amount)
 	var p := Economy.stock_preview(building_id, _chosen_item, _chosen_amount, _chosen_tag)
 	_preview.price.text = UITheme.price(int(p.price))
-	var others := int(p.get("other_stores", 0))
-	_preview.speed.text = "%s an hour" % UITheme.number(roundi(p.per_hour))
-	if others > 0:  # the village's shoppers for it are shared with the other stores selling it
-		_preview.speed.text += " (shared with %d other store%s)" % [others, "" if others == 1 else "s"]
 	_preview.time.text = UITheme.duration(p.seconds) if p.seconds < INF else "nobody would buy"
-	_preview.revenue.text = UITheme.money(int(p.gross))
-	_preview.cost.text = "-" + UITheme.money(int(p.cost))
-	_preview.tax.text = "-" + UITheme.money(int(p.tax))
 	_preview.profit.text = UITheme.money(int(p.profit))
 	UITheme.set_font_color(_preview.profit, UITheme.GOOD_TEXT if int(p.profit) >= 0 else UITheme.BAD_TEXT)
 	var item := BuildingInfo.resource_name(_chosen_item)

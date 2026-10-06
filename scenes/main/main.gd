@@ -13,7 +13,6 @@ extends Node
 @onready var settings_panel: ModalWindow = $UI/Root/SettingsPanel
 @onready var stats_panel: ModalWindow = $UI/Root/StatsPanel
 @onready var confirm_dialog: ModalWindow = $UI/Root/ConfirmDialog
-@onready var test_panel: Control = $UI/Root/TestPanel
 var _warehouse_panel: ModalWindow  # made in code (_ready)
 
 
@@ -52,7 +51,6 @@ func _ready() -> void:
 	menu_bar.coming_soon.connect(func(title): hud.toast("%s is coming soon" % title))
 	# The bottom menu steps aside for anything else that uses the bottom of the screen.
 	menu_bar.hide_while_visible([building_bar, build_menu.placing_bar, build_menu.window()])
-	test_panel.message.connect(hud.toast)
 	hud.happiness_pressed.connect(func(): stats_panel.show_stats("people"))
 	settings_panel.new_game_requested.connect(_ask_new_game)
 	Economy.water_bill_paid.connect(func(cost: int, m3: float):
@@ -182,30 +180,19 @@ func _ask_start_batch(building_id: String, recipe_id: String, hours: int, bonus:
 	var finish := "when workers come" if is_inf(float(check.finishes_at)) else "about %s" % UITheme.clock(float(check.finishes_at), TimeService.now())
 	var work := float(check.seconds) / 3600.0  # hours of work (whole in the real data)
 	var hours_text := str(roundi(work)) if is_equal_approx(work, roundf(work)) else "%.1f" % work
-	lines.append("Makes %s in %s h of work (done %s), a share every hour." % [BuildingInfo.amounts(check.units), hours_text, finish])
+	lines.append("Makes %s in %s h (done %s)." % [BuildingInfo.amounts(check.units), hours_text, finish])
 	for line in check.ingredients:
 		lines.append("Ingredients: %s %s · %s" % [UITheme.number(int(line.qty)), BuildingInfo.resource_name(line.res), UITheme.money(roundi(float(line.cost)))])
-	lines.append("Labor: %d workers × %s/h · %s" % [int(check.workers), UITheme.dollars(float(check.wage_each)), UITheme.money(int(check.wages))])
-	lines.append("Water (on the water bill, estimate): %s" % UITheme.money(roundi(float(check.water))))
-	if float(check.get("power", 0.0)) > 0.0:
-		lines.append("Power (on the power bill, estimate): %s" % UITheme.money(roundi(float(check.power))))
+	lines.append("Labor: %d workers · %s" % [int(check.workers), UITheme.money(int(check.wages))])
 	if Economy.power_problem(Economy.building(building_id)) == "no_grid":
-		lines.append("
-[No power] It's outside your power network: it won't work until a Substation reaches it.")
-	if check.units.size() > 1:  # by-products: each carries its own share of the cost (plan.md §5.14)
-		var parts: Array[String] = []
-		for res in check.units:
-			parts.append("%s per %s (sells for %s)" % [UITheme.price(roundi(float(check.unit_costs[res]))), BuildingInfo.resource_name(res), UITheme.price(int(check.prices[res]))])
-		lines.append("Total: %s → %s" % [UITheme.money(roundi(float(check.total))), " · ".join(parts)])
-	else:
-		lines.append("Total: %s → %s per %s (sells for %s)" % [UITheme.money(roundi(float(check.total))), UITheme.price(roundi(float(check.per_unit))), item, UITheme.price(int(check.price))])
-	lines.append("\nThe ingredients and wages are paid now; the bonus and the cost are locked in.")
+		lines.append("No power: it won't work until a Substation reaches it.")
+	lines.append("Total: %s" % UITheme.money(roundi(float(check.total))))  # includes water and power
 	# Its first batch chooses what it makes (plan.md §5.21): say so when that's for good.
 	if BuildingInfo.choosing(b):
 		if Economy.is_switchable(b.type):
-			lines.append("This chooses %s. Switching later costs %s." % [item, UITheme.money(Economy.switch_fee(b))])
+			lines.append("Switching later costs %s." % UITheme.money(Economy.switch_fee(b)))
 		else:
-			lines.append("This %s will make %s for good: build another one to make something else." % [GameData.buildings[b.type].name, item])
+			lines.append("It will make %s for good." % item)
 	confirm_dialog.ask("Start this batch?", "\n".join(lines), 0, {}, "Start",
 		_start_batch.bind(building_id, recipe_id, hours, bonus), "Back", "GoButton")
 
@@ -219,7 +206,7 @@ func _ask_switch_product(building_id: String, recipe_id: String) -> void:
 	var b := Economy.building(building_id)
 	var item := BuildingInfo.resource_name(BuildingInfo.output_of(BuildingInfo.recipe_of({"type": b.type, "product": recipe_id})))
 	var now_item := BuildingInfo.resource_name(BuildingInfo.output_of(BuildingInfo.recipe_of(b)))
-	confirm_dialog.ask("Switch to %s?" % item, "This %s stops making %s and makes %s from its next batch.\nSwitching costs %s, paid now." % [GameData.buildings[b.type].name, now_item, item, UITheme.money(int(check.fee))],
+	confirm_dialog.ask("Switch to %s?" % item, "Stops making %s. Switching costs %s." % [now_item, UITheme.money(int(check.fee))],
 		0, {}, "Switch", _switch_product.bind(building_id, recipe_id), "Back", "GoButton")
 
 
@@ -228,7 +215,6 @@ func _switch_product(building_id: String, recipe_id: String) -> void:
 	if not result.ok:
 		hud.toast(result.error, true)
 		return
-	hud.toast("Switched for %s." % UITheme.money(int(result.fee)))
 
 
 func _start_batch(building_id: String, recipe_id: String, hours: int, bonus: String) -> void:
@@ -241,7 +227,6 @@ func _start_batch(building_id: String, recipe_id: String, hours: int, bonus: Str
 		used[line.res] = -int(line.qty)
 	if not used.is_empty():
 		village.show_gain(building_id, used)  # "-960 [wheat]" rises from the building
-	hud.toast("Batch started: %s for %s." % [BuildingInfo.amounts(result.units), UITheme.money(roundi(float(result.total)))])
 
 
 ## Cancelling keeps the hours already made; the rest gives back only part, so ask first.
@@ -251,7 +236,7 @@ func _ask_cancel_batch(building_id: String) -> void:
 		hud.toast(check.error, true)
 		return
 	confirm_dialog.ask("Cancel this batch?",
-		"What it has made so far stays, to collect. Of the %d hours not made yet, you get back %d%% of their ingredients and wages." % [int(check.hours_left), roundi(100.0 * float(GameData.config.get("cancel_refund_in_progress", 0.0)))],
+		"What it made so far stays. You get back %d%% of the ingredients and wages of the %d hours not made yet." % [roundi(100.0 * float(GameData.config.get("cancel_refund_in_progress", 0.0))), int(check.hours_left)],
 		int(check.money), check.refund, "Cancel batch", _cancel_batch.bind(building_id))
 
 
@@ -275,16 +260,14 @@ func _ask_demolish(building_id: String) -> void:
 	for res in check.goods:
 		back[res] = int(back.get(res, 0)) + int(check.goods[res])
 	confirm_dialog.ask("Demolish %s?" % building_name,
-		"The building is gone for good. No money comes back, but all of its building materials and the goods inside go to your warehouse:",
+		"No money comes back, but its building materials and the goods inside go to your warehouse:",
 		0, back, "Demolish", _demolish.bind(building_id))
 
 
 func _demolish(building_id: String) -> void:
-	var building_name: String = GameData.buildings[Economy.building(building_id).type].name
 	var result := Economy.demolish(building_id)
 	if result.ok:
 		building_panel.close()
-		hud.toast("%s demolished. Its materials went to the warehouse." % building_name)
 	else:
 		hud.toast(result.error, true)
 
@@ -314,14 +297,9 @@ func _start_roads() -> void:
 ## (or remove) the road drawn, and stay in Road Mode for the next stretch.
 func _place() -> void:
 	if village.road_mode:
-		var removing: bool = village.road_removing
 		var done: Dictionary = village.confirm_road()
 		if not done.ok:
 			build_menu.show_hint(done.error)
-		elif removing:
-			hud.toast("Road removed: %d tiles." % done.cells.size())
-		else:
-			hud.toast("Road built: %d tiles for %s." % [done.new_cells.size(), UITheme.money(int(done.cost))])
 		return
 	var cell: Vector2i = village.ghost_cell
 	if village.moving_id != "":
@@ -337,33 +315,23 @@ func _place() -> void:
 	if result.ok:
 		village.stop_placement()
 		build_menu.end_placement()
-		var room := int(GameData.buildings[type_id].get("households", 0))
-		var building_name: String = GameData.buildings[type_id].name
-		var done := "Construction started: %s ready in %s (%s paid for materials and crew)." % [building_name, UITheme.duration(float(result.seconds)), UITheme.money(int(result.cost))] if float(result.seconds) > 0.0 else "%s built!" % building_name
-		if room > 0:  # a home only adds room; households move in when it's for them and they can afford it
-			hud.toast("%s Room for %d more households." % [done, room])
-		else:
-			hud.toast(done)
 		var built := Economy.building(str(result.get("building_id", "")))
 		if not built.is_empty() and not Economy.on_road(built):
-			hud.toast("No road reaches it yet, so it gets no workers. Lay one with Build → Roads.", true)
+			hud.toast("No road reaches it yet, so it gets no workers.", true)
 		# Heads-up: once finished, its jobs won't all be filled: there aren't enough adults.
 		var levels: Dictionary = GameData.config.get("staffing_levels", {})
 		var share := float(levels.get(GameData.config.get("default_staffing", "high"), 1.0))
 		var workers := roundi(int(GameData.buildings[type_id].get("max_workers", 0)) * share)
 		if workers > 0 and Economy.employment().jobs + workers > Economy.adults():
 			var seconds := float(GameData.config.get("population_growth_seconds", 0))
-			var group := maxi(int(GameData.config.get("move_in_group_size", 1)), 1)
 			var homes_full: bool = Economy.employment().jobs + workers > Economy.adult_room()
 			var needs_home := bool(GameData.config.get("move_in_needs_home", true))
 			if seconds > 0.0 and homes_full and needs_home:
-				hud.toast("Not enough adults for all the jobs, and no free homes for migrant workers: build homes.", true)
+				hud.toast("Not enough people for its jobs: build homes.", true)
 			elif seconds > 0.0 and homes_full:
-				hud.toast("Migrant workers will come for the jobs: up to %d every %s. With no free homes they'll live in huts, which lowers happiness: build homes." % [group, UITheme.duration(seconds)], true)
-			elif seconds > 0.0:
-				hud.toast("Migrant workers will move in to fill the jobs: up to %d every %s while the village is happy." % [group, UITheme.duration(seconds)])
-			else:
-				hud.toast("Not enough adults for all the jobs: work will slow down until children grow up.", true)
+				hud.toast("No free homes for new workers: they'll live in huts. Build homes.", true)
+			elif seconds <= 0.0:
+				hud.toast("Not enough adults for all the jobs.", true)
 	else:
 		build_menu.show_hint(result.error)  # stay in Placement Mode so the player can try another tile
 
@@ -376,7 +344,7 @@ func _ask_suspend(building_id: String) -> void:
 		return
 	var building_name: String = GameData.buildings[Economy.building(building_id).type].name
 	confirm_dialog.ask("Suspend %s?" % building_name,
-		"It switches off: the workers go home and cost nothing. Goods inside go to your warehouse. Resume any time, for free.",
+		"The workers go home. Goods inside go to your warehouse.",
 		0, check.goods, "Suspend", _suspend.bind(building_id))
 
 
@@ -397,27 +365,21 @@ func _ask_upgrade(building_id: String) -> void:
 	if not check.ok:
 		hud.toast(check.error, true)
 		return
-	var b := Economy.building(building_id)
-	var building_name: String = GameData.buildings[b.type].name
-	var meanwhile := "It keeps working while it's upgraded." if Economy.stays_open_while_upgrading(b) else "It closes until then: its workers go to other buildings and cost nothing."
+	var building_name: String = GameData.buildings[Economy.building(building_id).type].name
 	confirm_dialog.ask("Upgrade %s to Level %d?" % [building_name, int(check.level)],
-		"It needs %s. At today's prices that's about %s, paid now, and it takes %s. %s" % [BuildingInfo.construction_needs(check), UITheme.money(int(check.cost)), UITheme.duration(float(check.seconds)), meanwhile],
+		"It needs %s. About %s, takes %s." % [BuildingInfo.construction_needs(check), UITheme.money(int(check.cost)), UITheme.duration(float(check.seconds))],
 		0, {}, "Upgrade", _upgrade.bind(building_id))
 
 
 func _upgrade(building_id: String) -> void:
 	var result := Economy.upgrade(building_id)
-	if result.ok:
-		hud.toast("Upgrade started: Level %d in %s." % [int(result.level), UITheme.duration(float(result.seconds))])
-	else:
+	if not result.ok:
 		hud.toast(result.error, true)
 
 
 func _resume(building_id: String) -> void:
 	var result := Economy.resume(building_id)
-	if result.ok:
-		hud.toast("%s is back to work." % GameData.buildings[Economy.building(building_id).type].name)
-	else:
+	if not result.ok:
 		hud.toast(result.error, true)
 
 
@@ -427,7 +389,6 @@ func _stock(building_id: String, resource_id: String, qty: int, tag: String) -> 
 	var result := Economy.stock_shelf(building_id, resource_id, qty, tag)
 	if result.ok:
 		village.show_gain(building_id, {resource_id: -qty})
-		hud.toast("%s %s on the shelf at %s each" % [UITheme.number(qty), GameData.resources[resource_id].name, UITheme.price(result.price)])
 		building_panel.choose_defaults()  # the form moves on to the next food not on a shelf yet
 	else:
 		hud.toast(result.error, true)
@@ -435,7 +396,6 @@ func _stock(building_id: String, resource_id: String, qty: int, tag: String) -> 
 
 ## Selling to or buying from the Trading Post's trader (plan.md §5.22): instant.
 func _trade(side: String, resource_id: String, qty: int) -> void:
-	var item := BuildingInfo.resource_name(resource_id)
 	var post: String = building_panel.building_id
 	if side == "sell":
 		var sold := Economy.trade_sell(resource_id, qty)
@@ -443,15 +403,12 @@ func _trade(side: String, resource_id: String, qty: int) -> void:
 			hud.toast(sold.error, true)
 			return
 		village.show_gain(post, {resource_id: -qty})
-		var tax := " (%s sales tax)" % UITheme.money(int(sold.tax)) if int(sold.tax) > 0 else ""
-		hud.toast("Sold %s %s to the trader for %s%s." % [UITheme.number(qty), item, UITheme.money(int(sold.earned)), tax])
 	else:
 		var bought := Economy.trade_buy(resource_id, qty)
 		if not bought.ok:
 			hud.toast(bought.error, true)
 			return
 		village.show_gain(post, {resource_id: qty})
-		hud.toast("Bought %s %s from the trader for %s." % [UITheme.number(qty), item, UITheme.money(int(bought.cost))])
 
 
 ## Taking a shelf down ends its sale early, so ask first and show what comes back.
@@ -461,7 +418,7 @@ func _ask_clear_shelf(building_id: String, index: int) -> void:
 		hud.toast(check.error, true)
 		return
 	confirm_dialog.ask("Take it off the shelf?",
-		"The %s already sold are paid for now (minus sales tax). The rest goes back to your warehouse." % UITheme.number(check.sold),
+		"The %s sold are paid now (minus sales tax). The rest goes back to your warehouse." % UITheme.number(check.sold),
 		check.paid, check.back, "Take it down", _clear_shelf.bind(building_id, index))
 
 

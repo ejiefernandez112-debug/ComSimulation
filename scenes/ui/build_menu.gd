@@ -221,7 +221,6 @@ func _make_window() -> void:
 		button.icon = UITheme.icon(tab.icon)
 		button.expand_icon = true
 		button.custom_minimum_size = TAB_SIZE
-		button.tooltip_text = tab.name
 		button.pressed.connect(_show_tab.bind(tab.id))
 		tabs.add_child(button)
 		_tab_buttons[tab.id] = button
@@ -281,7 +280,6 @@ func _add_card(type_id: String) -> void:
 	var card := Button.new()
 	card.theme_type_variation = "CardButton"
 	card.custom_minimum_size = CARD_SIZE
-	card.tooltip_text = def.name
 	card.pressed.connect(_on_card_pressed.bind(type_id))
 	card.mouse_entered.connect(_show_details.bind(type_id))
 	card.mouse_exited.connect(func(): _show_details(_selected))
@@ -393,7 +391,6 @@ func _show_details(type_id: String) -> void:
 		_makes.add_child(_body("Grows one of" if def.category == "extractor" else "Makes one of"))
 		for each in recipes:
 			_makes.add_child(_icon(BuildingInfo.output_of(each), 26))
-		_makes.add_child(_body("(switch for a fee)" if Economy.is_switchable(type_id) else "(picked once)"))
 		if Economy.power_on() and float(def.get("power_mw", 0.0)) > 0.0:
 			_makes.add_child(_icon("power", 24))
 			_makes.add_child(_body(BuildingInfo.mw(float(def.power_mw))))
@@ -431,30 +428,29 @@ func _show_details(type_id: String) -> void:
 			_makes.add_child(_body("Room for %s goods (%d workers)" % [UITheme.number(int(def.get("capacity", 0))), int(def.get("max_workers", 0))]))
 		"construction":
 			_makes.add_child(_icon("build", 26))
-			_makes.add_child(_body("%d construction workers: building anything needs 1, an upgrade 1 per level. They're busy until the work is done" % int(def.get("max_workers", 0))))
+			_makes.add_child(_body("%d construction workers" % int(def.get("max_workers", 0))))
 		"utility":
 			_makes.add_child(_icon("water", 26))
 			_makes.add_child(_body("Cleans %s m³ of water an hour for your buildings (%d workers)" % [UITheme.number(int(def.get("water_supply", 0))), int(def.get("max_workers", 0))]))
 		"power":
-			# "5 MW · no workers · reaches 3 tiles" (plan.md §5.5)
+			# "Makes 5 MW · reaches 3 tiles" (plan.md §5.5)
 			_makes.add_child(_icon("power", 26))
 			var parts: Array[String] = []
 			if float(def.get("power_supply", 0.0)) > 0.0:
 				parts.append("Makes %s" % BuildingInfo.mw(float(def.power_supply)))
 				var workers := int(def.get("max_workers", 0))
-				parts.append("no workers" if workers <= 0 else "%d %s workers" % [workers, str(GameData.config.get("worker_types", {}).get(def.get("worker_type", ""), {}).get("name", ""))])
+				if workers > 0:
+					parts.append("%d workers" % workers)
 			else:
 				parts.append("Makes no power: carries it")
 			parts.append("reaches %s tiles" % str(def.get("power_radius", 0)))
 			_makes.add_child(_body(" · ".join(parts)))
 		"road":
 			_makes.add_child(_icon("road", 26))
-			_makes.add_child(_body("%s a tile · ready at once · removing is free" % UITheme.money(Economy.road_price())))
+			_makes.add_child(_body("%s a tile" % UITheme.money(Economy.road_price())))
 		"trade":
-			# "Buys anything at 60%, sells anything at 150% of its price" (plan.md §5.22)
-			var shares: Dictionary = GameData.config.get("trade", {})
 			_makes.add_child(_icon("market", 26))
-			_makes.add_child(_body("Buys anything at %d%%, sells anything at %d%% of its price · no workers" % [roundi(float(shares.get("sell_share", 1.0)) * 100.0), roundi(float(shares.get("buy_share", 1.0)) * 100.0)]))
+			_makes.add_child(_body("Buys and sells anything"))
 		"retail":
 			# "Sells Food on 4 shelves" (its "sells" categories), or the goods' icons if it has no list.
 			var kinds: Array[String] = []
@@ -465,12 +461,6 @@ func _show_details(type_id: String) -> void:
 				for res in Economy.store_products(type_id):
 					_makes.add_child(_icon(res, 26))
 			_makes.add_child(_body("on %d shelves (%d workers)" % [int(def.get("shelves", 0)), int(def.get("max_workers", 0))]))
-	if def.get("category", "") in ["extractor", "processor"]:
-		var spacer := Control.new()
-		spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		_makes.add_child(spacer)
-		_makes.add_child(_icon("clock", 24))
-		_makes.add_child(_body("Batches of 1-%d h" % Economy.batch_hours_limit()))
 	_refresh()
 
 
@@ -499,7 +489,7 @@ func _refresh() -> void:
 		var quote := Economy.build_quote(_shown)
 		_cost.text = "≈ " + UITheme.money(int(quote.cost))
 		_needs.visible = not locked and not quote.lines.is_empty()
-		_needs.text = "Needs %s. Material prices change in %s." % [BuildingInfo.construction_needs(quote), UITheme.duration(Economy.price_change_in())]
+		_needs.text = "Needs %s." % BuildingInfo.construction_needs(quote)
 	var short := _shortfall(_shown)
 	UITheme.set_font_color(_cost, UITheme.BAD_TEXT if short > 0 and not locked else UITheme.TEXT_DARK)
 	_cost_note.text = str(_def(_shown).get("coming_soon", "Not available yet")) if locked else ("Need %s more" % UITheme.money(short) if short > 0 else "")
@@ -524,7 +514,7 @@ func _shortfall(type_id: String) -> int:
 func _def(type_id: String) -> Dictionary:
 	if type_id == ROAD:
 		return {"name": "Road", "category": "road", "buildable": true,
-			"description": "Workers need a way in: a building with workers only works with a road beside it that leads to City Hall. Drag across the map to lay road; corners and crossroads appear by themselves."}
+			"description": "Buildings with workers need a road beside them that leads to City Hall. Drag across the map to lay road."}
 	return GameData.buildings[type_id]
 
 

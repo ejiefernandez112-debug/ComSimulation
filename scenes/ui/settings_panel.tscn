@@ -295,7 +295,7 @@ text = "About"
 [node name="About" type="Label" parent="Window/Column/Scroll/Content"]
 layout_mode = 2
 theme_type_variation = &"SmallLabel"
-text = "Company Sim - early prototype. Settings are saved on this device.
+text = "Company Sim - early prototype
 Building models: Kenney (kenney.nl), CC0
 Font: Fredoka (SIL Open Font License)"
 

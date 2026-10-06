@@ -147,6 +147,8 @@ func save_game() -> bool:
 ## Throws the current game away and starts over (Settings → Start over). The old save stays
 ## as the backup until the next save replaces it.
 func start_new_game() -> void:
+	GameData.apply_dev_config({})  # the old game's developer tuning goes with it
+	_data.get("cache", {}).clear()
 	state = Simulation.new_game(data(), TimeService.now())
 	_memo.clear()
 	_hiring = {}
@@ -178,6 +180,7 @@ func _load_game() -> void:
 		return
 	state = result.state
 	save_notes.append_array(result.warnings)
+	_apply_dev_config()  # developer tuning kept in the save counts for the time away too
 	var settled := float(state.get("settled_at", now))
 	if settled > now and OS.is_debug_build():
 		# The save was made after the dev panel skipped time ahead: skip ahead again, or nothing
@@ -255,6 +258,11 @@ func resume(building_id: String) -> Dictionary:
 ## Whether it could be suspended ({"ok", "error", "goods" going to the warehouse}); changes nothing.
 func can_suspend(building_id: String) -> Dictionary:
 	return Simulation.can_suspend(state, data(), building_id)
+
+
+## Whether this kind of building can be switched off at all (shows the Suspend button).
+func can_be_suspended(type_id: String) -> bool:
+	return Simulation.can_be_suspended(data(), type_id)
 
 
 func is_suspended(building: Dictionary) -> bool:
@@ -369,6 +377,75 @@ func rent_per_household(type_id: String) -> float:
 ## True when the developer changed this home type's rent.
 func rent_changed(type_id: String) -> bool:
 	return state.get("dev_rent", {}).has(type_id)
+
+
+## Developer: locks a part of happiness ("score", "food", "jobs", "housing", "penalty") at
+## `value` (0-1); a negative value unlocks it.
+func dev_lock_happiness(key: String, value: float) -> Dictionary:
+	return _after(Simulation.dev_lock_happiness(state, data(), key, value, TimeService.now()))
+
+
+## Developer locks on happiness: {key: 0-1}. Read it; don't change it.
+func dev_locks() -> Dictionary:
+	return Simulation.dev_locks(state)
+
+
+## Developer: changes a game_config.json number (or true/false) from now on, e.g.
+## "life.birth_rate_per_hour"; null puts the file's value back. The file itself is never written.
+func dev_set_config(path: String, value: Variant) -> Dictionary:
+	var result := Simulation.dev_set_config(state, data(), path, value, TimeService.now())
+	if result.ok:
+		_apply_dev_config()
+	return _after(result)
+
+
+## Developer tuning changes: {path: value}. Read it; don't change it.
+func dev_config() -> Dictionary:
+	return Simulation.dev_config(state)
+
+
+## Developer: n adults more (or fewer, when negative).
+func dev_add_adults(n: int) -> Dictionary:
+	return _after(Simulation.dev_add_adults(state, data(), n, TimeService.now()))
+
+
+func dev_add_children(n: int) -> Dictionary:
+	return _after(Simulation.dev_add_children(state, data(), n, TimeService.now()))
+
+
+func dev_children_grow_up() -> Dictionary:
+	return _after(Simulation.dev_children_grow_up(state, data(), TimeService.now()))
+
+
+func dev_end_grace() -> Dictionary:
+	return _after(Simulation.dev_end_grace(state, data(), TimeService.now()))
+
+
+func dev_finish_construction() -> Dictionary:
+	return _after(Simulation.dev_finish_construction(state, data(), TimeService.now()))
+
+
+func dev_add_item(resource_id: String, qty: int) -> Dictionary:
+	return _after(Simulation.dev_add_item(state, data(), resource_id, qty, TimeService.now()))
+
+
+## Developer: takes back every developer change (happiness locks, tuning, rent).
+func dev_reset_all() -> Dictionary:
+	var result := Simulation.dev_reset_all(state, data(), TimeService.now())
+	_apply_dev_config()
+	return _after(result)
+
+
+## True while any developer change is on (the Developer window shows a "DEV" tag then).
+func dev_active() -> bool:
+	return Simulation.dev_active(state)
+
+
+## Puts the save's developer tuning onto GameData.config (the file's numbers when there is none),
+## and forgets prices worked out with the old numbers.
+func _apply_dev_config() -> void:
+	GameData.apply_dev_config(Simulation.dev_config(state))
+	_data.get("cache", {}).clear()
 
 
 ## level: "low", "medium" or "high" (see staffing_levels in game_config.json).
@@ -624,6 +701,8 @@ func powered_cells() -> Dictionary:
 ## Whether a plant or substation of this kind, reaching `radius` tiles, would join the network
 ## standing at `cell` (its position).
 func would_join_network(type_id: String, cell: Vector2i, radius: float) -> bool:
+	if Simulation.is_power_source(data(), type_id):
+		return true  # a plant starts its own part of the network wherever it stands
 	return Simulation.would_join_network(power_network(), Simulation.centre_at(data(), type_id, cell), radius)
 
 
@@ -833,12 +912,24 @@ func people_stats() -> Dictionary:
 	return Simulation.people_stats(state)
 
 
-## Village happiness: {"score", "food", "jobs", "foods", "needs_count", "growth_speed" (births),
+## Village happiness: {"score", "percent" (as shown: rounded down), "food", "jobs", "foods",
+## "needs_count", "growth_speed" (births),
 ## "move_in_speed" (migrant workers), "homeless_penalty" (taken off for households in huts),
 ## "leave_per_hour", ...}
 ## (see Simulation.happiness).
 func happiness() -> Dictionary:
 	return _remember("happiness", func(): return Simulation.happiness(state, data(), TimeService.now(), housing(), employment()))
+
+
+## A happiness score (0-1) as the whole percent shown on screen (rounded down, like the bands).
+func happiness_percent(score: float) -> int:
+	return Simulation.happiness_percent(score)
+
+
+## What each fix would add to happiness right now (0-1): {"food" (one more food selling),
+## "housing" (homes for every household in a hut), "jobs" (jobs for every jobless adult)}.
+func happiness_gains() -> Dictionary:
+	return Simulation.happiness_gains(data(), happiness())
 
 
 func warehouse_total() -> int:

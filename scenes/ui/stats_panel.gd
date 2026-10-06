@@ -91,27 +91,17 @@ func _people_page() -> VBoxContainer:
 	_population_bar = _bar(town, "BlueBar")
 	var groups := _section(page, "Population by group")
 	_value_row(groups, "Adults", "group_adults")
-	_value_row(groups, "    with a job", "group_employed")
-	_value_row(groups, "    without a job", "group_unemployed")
 	_value_row(groups, "Children", "group_children")
 	_adults_bar = _bar(groups, "GoldBar")  # gold = adults' share, the dark rest = children
-	groups.add_child(_value("group_note"))
 	var homes := _section(page, "Housing")
 	for type_id in GameData.buildings:
 		var def: Dictionary = GameData.buildings[type_id]
 		if int(def.get("households", 0)) > 0:
 			_value_row(homes, def.name, "home_" + type_id)
 	_value_row(homes, "Rent coming in", "rent_rate")
-	_value_row(homes, "Homes' power use", "homes_power")
 	var wealth := _section(page, "Households by wealth")
 	for c in Economy.wealth_classes():
 		_value_row(wealth, str(c.name), "wealth_" + str(c.id))
-	var wealth_note := _body("Wealth comes from the wage: no job = Broke, the minimum wage = Poor, a wage bonus = Well off. Rich classes need skilled jobs (schools, later).")
-	wealth_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	wealth_note.custom_minimum_size.x = WIDTH - 90
-	wealth_note.theme_type_variation = "SmallLabel"
-	wealth_note.modulate.a = 0.8
-	wealth.add_child(wealth_note)
 	var kids := _section(page, "Children by age")
 	kids.add_child(_value("children_by_age"))
 	var flow := _section(page, "Comings and goings")
@@ -131,27 +121,12 @@ func _people_page() -> VBoxContainer:
 	_value_row(mood, "Homeless", "need_homeless")
 	_value_row(mood, "Births & newcomers", "move_in")
 	mood.add_child(_value("leaving"))
-	var why := _body(_happiness_explanation())
-	why.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	why.custom_minimum_size.x = WIDTH - 90
-	why.theme_type_variation = "SmallLabel"
-	why.modulate.a = 0.8
-	mood.add_child(why)
+	mood.add_child(_value("raise"))
 	var work := _section(page, "Work")
 	for row in [["employed", "Employed"], ["unemployed", "Unemployed"], ["open_jobs", "Open jobs"], ["jobs", "Jobs in total"]]:
 		_value_row(work, row[1], row[0])
 	_employed_bar = _bar(work, "GoldBar")
-	work.add_child(_value("employed_share"))
 	work.add_child(_value("work_speed"))
-	var by_type := _section(page, "Jobs by building")
-	for type_id in GameData.buildings:
-		if int(GameData.buildings[type_id].get("max_workers", 0)) > 0:
-			_value_row(by_type, GameData.buildings[type_id].name, "jobs_" + type_id)
-	var note := _body("When there are more jobs than adults, every building that needs workers runs slower. Migrant workers move in to fill open jobs while the village is happy enough; with no free home they live in Makeshift Huts, which lowers happiness. Children don't work: they grow up into workers. Build houses so migrants and babies have room.")
-	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	note.custom_minimum_size.x = WIDTH - 70
-	note.modulate.a = 0.8
-	page.add_child(note)
 	return page
 
 
@@ -181,97 +156,22 @@ func _cash_page() -> VBoxContainer:
 	_value_row(money_out, "Switching products", "out_switch_fees")
 	_value_row(money_out, "Trading Post purchases", "out_purchases")
 	_value_row(money_out, "Total", "out_total")
-	_money.build_cash_check(page)
 	_money.build_money_log(page)
 	var tax := _section(page, "Sales tax")
 	_value_row(tax, "Sold to the Retailer, last 24 h", "tax_sold")
 	_value_row(tax, "Your next sale is taxed at", "tax_rate")
-	var how := _body("Progressive: the first $5,000 sold in 24 hours is tax-free, then each part of a sale pays its bracket's rate (8%, 15%, 22%). Selling more never leaves you with less.")
-	how.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	how.custom_minimum_size.x = WIDTH - 90
-	how.theme_type_variation = "SmallLabel"
-	how.modulate.a = 0.8
-	tax.add_child(how)
 	var water := _section(page, "Water bill")
 	_value_row(water, "Using now", "water_now")
 	_value_row(water, "This cycle so far", "water_so_far")
 	_value_row(water, "Charged in", "water_due")
 	_value_row(water, "Last bill", "water_last")
-	var water_how := _body(_water_explanation())
-	water_how.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	water_how.custom_minimum_size.x = WIDTH - 90
-	water_how.theme_type_variation = "SmallLabel"
-	water_how.modulate.a = 0.8
-	water.add_child(water_how)
 	if Economy.power_on():
 		var power := _section(page, "Power bill")
 		_value_row(power, "Using now", "power_now")
 		_value_row(power, "This cycle so far", "power_so_far")
 		_value_row(power, "Charged in", "power_due")
 		_value_row(power, "Last bill", "power_last")
-		var power_how := _body(_power_explanation())
-		power_how.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		power_how.custom_minimum_size.x = WIDTH - 90
-		power_how.theme_type_variation = "SmallLabel"
-		power_how.modulate.a = 0.8
-		power.add_child(power_how)
 	return page
-
-
-## "Power comes first from your own plants; City Hall's link to the public grid adds the rest at
-## $25 per MWh, billed every 12 hours." Numbers from game_config.json.
-func _power_explanation() -> String:
-	var power: Dictionary = GameData.config.get("power", {})
-	var text := "Your own power plants' power is used first; City Hall's link to the public grid adds the rest (up to its MW) at %s per MWh. A meter records what the grid supplies, and the bill is charged every %d hours. When even that isn't enough, buildings get power oldest first, and one that doesn't fit gets none and stops." % [UITheme.money(roundi(float(power.get("price_per_mwh", 0.0)) * 100.0)), int(power.get("billing_hours", 12))]
-	var tiers: Array = power.get("tiers", [])
-	for i in range(1, tiers.size()):
-		text += " The part above %s MWh in a cycle costs %d%% more." % [UITheme.number(int(tiers[i].from)), roundi(float(tiers[i].extra) * 100.0)]
-	return text
-
-
-## "Water comes from the public supply… billed every 12 hours. The part above 1,200 m³ in a
-## cycle costs 25% more." Numbers from game_config.json, so the text follows any retuning.
-func _water_explanation() -> String:
-	var water: Dictionary = GameData.config.get("water", {})
-	var text := "Water comes from the public supply at %s per m³. A meter records what your buildings use beyond your own Water Treatment Plants' water, and the bill is charged every %d hours." % [UITheme.price(roundi(float(water.get("price_per_m3", 0.0)) * 100.0)), int(water.get("billing_hours", 12))]
-	var tiers: Array = water.get("tiers", [])
-	for i in range(1, tiers.size()):
-		text += " The part above %s m³ in a cycle costs %d%% more." % [UITheme.number(int(tiers[i].from)), roundi(float(tiers[i].extra) * 100.0)]
-	return text
-
-
-## "Happiness is Food and Jobs mixed half and half…" Numbers from game_config.json, so the text
-## follows any retuning.
-func _happiness_explanation() -> String:
-	var h: Dictionary = GameData.config.get("happiness", {})
-	var weights: Dictionary = h.get("weights", {})
-	var total := 0.0
-	for need in weights:
-		total += float(weights[need])
-	var shares: Array[String] = []
-	for need in [["food", "Food"], ["jobs", "Jobs"], ["housing", "Housing"]]:
-		if float(weights.get(need[0], 0.0)) > 0.0:
-			shares.append("%s (%d%%)" % [need[1], roundi(100.0 * float(weights[need[0]]) / maxf(total, 0.001))])
-	var text := "Happiness mixes %s. Food comes from different foods selling at a Supermarket with workers; Jobs is the share of adults with a job; Housing is the share of households with a home (not a hut)." % ", ".join(shares)
-	var penalty: Dictionary = h.get("homeless_penalty", {})
-	if float(penalty.get("per_household", 0.0)) > 0.0:
-		text += " On top of that, each household living in a hut takes %s%% off (at most %s%%)." % [
-			str(snappedf(float(penalty.per_household) * 100.0, 0.1)), str(snappedf(float(penalty.get("max", 0.0)) * 100.0, 0.1))]
-	text += " Happier villages have more babies and attract migrant workers; unhappy ones lose people:"
-	var bands: Array = h.get("growth_speeds", [])
-	for i in range(bands.size() - 1, -1, -1):
-		var speed := float(bands[i].speed)
-		var move_in := float(bands[i].get("move_in", speed))
-		var leave := float(bands[i].get("leave_per_hour", 0.0))
-		text += " from %d%% babies %s, migrant workers %s%s;" % [roundi(100.0 * float(bands[i].from)), _speed_text(speed),
-			_speed_text(move_in), ", %s%% leave an hour" % str(snappedf(leave * 100.0, 0.1)) if leave > 0.0 else ""]
-	text = text.trim_suffix(";") + "."
-	var arrive_group := maxi(int(GameData.config.get("move_in_group_size", 1)), 1)
-	var leave_group := maxi(int(h.get("leave_group_size", 1)), 1)
-	if arrive_group > 1 or leave_group > 1:
-		text += " Migrant workers arrive in groups of up to %d; people leave in groups of %d." % [arrive_group, leave_group]
-	text += " Needs only count from %d people, and not in a new village's first %s hours." % [int(h.get("needs_from_population", 0)), str(h.get("grace_hours", 0))]
-	return text
 
 
 ## A growth speed (babies or migrant workers) in words: "none", "half speed",
@@ -284,6 +184,43 @@ func _speed_text(speed: float) -> String:
 	if is_equal_approx(speed, 0.5):
 		return "half speed"
 	return "%sx as fast" % str(speed)
+
+
+## Who is leaving the island right now, e.g. "Leaving the island, 5% an hour: jobless adults ·
+## children"; "" when nobody is. Only the jobless adults leave, plus the workers in huts at the
+## lowest happiness (Simulation._leave_pool); children have their own share.
+func _leaving_text(happy: Dictionary, children: int) -> String:
+	var who: Array[String] = []
+	var adult_rate := float(happy.leave_per_hour)
+	if adult_rate > 0.0 and int(happy.jobless) > 0:
+		who.append("jobless adults")
+	if adult_rate > 0.0 and bool(happy.homeless_workers_leave) and int(happy.homeless_workers) > 0:
+		who.append("workers in huts")
+	var rate := adult_rate if not who.is_empty() else float(happy.children_leave_per_hour)
+	var child_rate := float(happy.children_leave_per_hour)
+	if child_rate > 0.0 and children > 0:
+		who.append("children" if is_equal_approx(child_rate, rate) else "children (%s%%)" % str(snappedf(child_rate * 100.0, 0.1)))
+	if who.is_empty():
+		return ""
+	return "Leaving the island, %s%% an hour: %s" % [str(snappedf(rate * 100.0, 0.1)), " · ".join(who)]
+
+
+## "To raise it: 1 more food +13% · homes for 10 households in huts +28% · jobs for 3 adults +1%",
+## the biggest gain first (Simulation.happiness_gains); "" when there's nothing to gain.
+func _raise_text(happy: Dictionary) -> String:
+	var gains := Economy.happiness_gains()
+	var homeless := int(happy.homeless)
+	var jobless := int(happy.jobless)
+	var fixes := [
+		[float(gains.food), "1 more food"],
+		[float(gains.housing), "homes for %d household%s in huts" % [homeless, "" if homeless == 1 else "s"]],
+		[float(gains.jobs), "jobs for %d adult%s" % [jobless, "" if jobless == 1 else "s"]]]
+	fixes.sort_custom(func(a, b): return a[0] > b[0])
+	var parts: Array[String] = []
+	for fix in fixes:
+		if roundi(100.0 * fix[0]) >= 1:  # less than a point isn't worth saying
+			parts.append("%s +%d%%" % [fix[1], roundi(100.0 * fix[0])])
+	return "" if parts.is_empty() else "To raise it: " + " · ".join(parts)
 
 
 func _graphs_page() -> VBoxContainer:
@@ -303,14 +240,8 @@ func _graphs_page() -> VBoxContainer:
 	_highlight(_range_buttons, str(_range))
 	_chart = LineChart.new()
 	_chart.custom_minimum_size = Vector2(WIDTH - 50, 270)
-	_chart.empty_text = "Not enough data yet: a point is added every minute."
+	_chart.empty_text = "Not enough data yet."
 	page.add_child(_chart)
-	var hint := _body("Point at (or drag across) the graph to see the values at that time. Per-minute rates are 10-minute averages.")
-	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	hint.custom_minimum_size.x = WIDTH - 70
-	hint.theme_type_variation = "SmallLabel"
-	hint.modulate.a = 0.8
-	page.add_child(hint)
 	return page
 
 
@@ -326,7 +257,6 @@ func _refresh() -> void:
 			_refresh_people()
 		"cash":
 			_refresh_cash()
-			_money.refresh_cash_check()
 			_money.refresh_money_log()
 		"balance":
 			_money.refresh_balance()
@@ -363,7 +293,8 @@ func _refresh_people() -> void:
 	_population_bar.value = 100.0 * e.population / maxf(cap, 1)
 	_refresh_groups(e)
 	var happy := Economy.happiness()
-	_show("happiness", "%d%% happy" % roundi(100.0 * float(happy.score)))
+	# Rounded down, like the bands; a Developer-window lock says so.
+	_show("happiness", "%d%% happy%s" % [int(happy.percent), " · dev lock" if not happy.get("dev_locks", {}).is_empty() else ""])
 	_happiness_bar.value = 100.0 * float(happy.score)
 	var foods := int(happy.foods)
 	var food_text := "%d%% · %d food%s selling" % [roundi(100.0 * float(happy.food)), foods, "" if foods == 1 else "s"]
@@ -383,54 +314,32 @@ func _refresh_people() -> void:
 		_show("need_homeless", "%d household%s in huts (doesn't count yet)" % [homeless, "" if homeless == 1 else "s"])
 	else:
 		_show("need_homeless", "none")
-	var leave := float(happy.leave_per_hour)
-	if leave > 0.0:
-		var group := maxi(int(GameData.config.get("happiness", {}).get("leave_group_size", 1)), 1)
-		_show("leaving", "People are leaving the island: %s%% an hour%s (the homeless and jobless first). Make the village happier to stop it." % [
-			str(snappedf(leave * 100.0, 0.1)), " in groups of %d" % group if group > 1 else ""], DOWN)
-	else:
-		_show("leaving", "Nobody is leaving the island.")
+	var leaving := _leaving_text(happy, int(e.children))
+	_show("leaving", leaving, DOWN)
+	_values.leaving.visible = leaving != ""  # nothing to say while nobody leaves
+	var raise := _raise_text(happy)
+	_show("raise", raise)
+	_values.raise.visible = raise != ""
 	var speed := float(happy.growth_speed)
 	var move_in := "babies %s · migrants %s" % [_speed_text(speed), _speed_text(float(happy.move_in_speed))]
-	var child_room: bool = int(e.children) < int(Economy.housing().child_places)
-	if not child_room:
-		move_in += " · every family has 2 children"
-	elif float(happy.grace_left) > 0.0:
-		move_in += " · new village: needs count in %s" % UITheme.duration(float(happy.grace_left))
-	elif not happy.needs_count:
-		move_in += " · small village, needs don't count yet"
-	_show("move_in", move_in, DOWN if speed < 1.0 or not child_room else LineChart.INK)
+	_show("move_in", move_in, DOWN if speed < 1.0 else LineChart.INK)
 	_show("employed", str(e.employed))
 	_show("unemployed", str(e.unemployed), DOWN if e.unemployed > 0 else LineChart.INK)
 	_show("open_jobs", str(e.open_jobs))
 	_show("jobs", str(e.jobs))
 	_employed_bar.value = 100.0 * e.employed / maxf(e.adults, 1)
-	_show("employed_share", "%d%% of adults have a job" % roundi(100.0 * e.employed / maxf(e.adults, 1)))
 	if e.open_jobs <= 0:
 		_show("work_speed", "Every post is filled")
 	else:
-		_show("work_speed", "%d post%s open: free people go to the biggest wage bonus first" % [e.open_jobs, "" if e.open_jobs == 1 else "s"], DOWN)
-	var counts := {}
-	var jobs := {}  # type -> jobs asked for at the chosen staffing levels
-	for building in Economy.state.buildings:
-		if Economy.is_built(building):
-			counts[building.type] = int(counts.get(building.type, 0)) + 1
-			jobs[building.type] = int(jobs.get(building.type, 0)) + Economy.workers_wanted(building)
-	for type_id in GameData.buildings:
-		if _values.has("jobs_" + type_id):
-			var n := int(counts.get(type_id, 0))
-			_show("jobs_" + type_id, "%d built · %d jobs" % [n, int(jobs.get(type_id, 0))])
+		_show("work_speed", "%d post%s open" % [e.open_jobs, "" if e.open_jobs == 1 else "s"], DOWN)
 
 
 ## Population by group, children by age, and who came and went.
 func _refresh_groups(e: Dictionary) -> void:
 	var people := maxf(e.population, 1)
 	_show("group_adults", "%d · %d%%" % [e.adults, roundi(100.0 * e.adults / people)])
-	_show("group_employed", str(e.employed))
-	_show("group_unemployed", str(e.unemployed), DOWN if e.unemployed > 0 else LineChart.INK)
 	_show("group_children", "%d · %d%%" % [e.children, roundi(100.0 * e.children / people)])
 	_adults_bar.value = 100.0 * e.adults / people
-	_show("group_note", "Adults work and have babies. Children don't work yet.")
 	_refresh_housing()
 	var lines: Array[String] = []
 	var groups := Economy.children_groups()
@@ -516,10 +425,11 @@ func _refresh_housing() -> void:
 		if GameData.buildings[type_id].get("hut", false):
 			var homeless := int(h.homeless)
 			_show("home_" + type_id, "%d homeless household%s" % [homeless, "" if homeless == 1 else "s"], DOWN if homeless > 0 else LineChart.INK)
+			_values["home_" + type_id].get_parent().visible = homeless > 0 or int(room.get(type_id, 0)) > 0
 		else:
 			_show("home_" + type_id, "%d of %d households" % [int(used.get(type_id, 0)), int(room.get(type_id, 0))])
+			_values["home_" + type_id].get_parent().visible = int(room.get(type_id, 0)) > 0  # only home types you have
 	_show("rent_rate", "%s an hour" % UITheme.money(roundi(float(h.rent_per_hour) * 100.0)), UP if float(h.rent_per_hour) > 0.0 else LineChart.INK)
-	_show("homes_power", "%s MW (once electricity exists)" % str(snappedf(float(h.power_mw), 0.1)))
 	for id in h.classes:
 		if not _values.has("wealth_" + str(id)):
 			continue
@@ -755,6 +665,8 @@ func _value(key: String, right := false) -> Label:
 
 
 func _show(key: String, text: String, color := LineChart.INK) -> void:
+	if not _values.has(key):  # a row this window doesn't show
+		return
 	var label: Label = _values[key]
 	label.text = text
 	UITheme.set_font_color(label, color)

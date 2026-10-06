@@ -311,10 +311,19 @@ def happiness_facts(cfg: dict, buildings: dict) -> dict:
 	for i, band in enumerate(bands):
 		top = bands[i + 1]["from"] if i + 1 < len(bands) else 1.0
 		move = band.get("move_in", band.get("speed", 0))
+		# Who leaves: adults only while jobless (plus workers in huts with homeless_workers_leave);
+		# children at their own share (the adults' when left out).
+		adults = band.get("leave_per_hour", 0)
+		children = band.get("children_leave_per_hour", adults)
+		who = []
+		if adults:
+			who.append(f"jobless adults{' + workers in huts' if band.get('homeless_workers_leave') else ''} {pct(adults)} an hour")
+		if children:
+			who.append(f"children {pct(children)} an hour")
 		band_rows.append([f"{pct(band['from'])} – {round(top * 100) - (1 if i + 1 < len(bands) else 0)}%",
 			f"×{band.get('speed', 0):g}" if band.get("speed") else "no babies",
 			f"×{move:g}" if move else "nobody comes",
-			f"{pct(band.get('leave_per_hour', 0))} an hour" if band.get("leave_per_hour") else "nobody"])
+			", ".join(who) if who else "nobody"])
 	return {"facts": facts, "tables": [
 		{"title": "Food need: different foods selling", "head": ["Foods", "Food need"], "rows": food},
 		{"title": "What happiness does", "head": ["Happiness", "Births", "Job seekers", "People leaving"], "rows": list(reversed(band_rows))},

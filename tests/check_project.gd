@@ -28,7 +28,7 @@ const BUILDING_KEYS := ["name", "category", "description", "menu_tab", "build_co
 	"build_time", "max_workers", "worker_type", "fixed_workers", "staffed_first", "fixed_wage",
 	"households", "housing_tier", "hut", "wealth", "rent_per_household", "power_mw",
 	"capacity", "water_per_hour", "water_supply", "recipes", "shelves", "upgrades", "materials", "crew", "road_hub",
-	"construction_crew", "power_supply", "power_radius", "grid_mw", "coming_soon", "sells", "switch_fee", "max_count", "size"]
+	"construction_crew", "power_supply", "power_radius", "grid_mw", "coming_soon", "sells", "switch_fee", "max_count", "size", "suspendable"]
 ## What a level in "upgrades" may change (plus an optional fixed "cost" and own "time"), and the
 ## least each may be.
 const UPGRADE_STATS := {"max_workers": 0, "capacity": 1, "shelves": 1, "households": 1, "water_supply": 1, "power_supply": 1, "power_radius": 1}
@@ -591,10 +591,13 @@ func _check_happiness(h: Dictionary, where: String) -> void:
 		else:
 			last = float(from)
 		_share(from, where + " growth_speeds from", true)
-		_unknown_keys(band, ["from", "speed", "move_in", "leave_per_hour"], where + " growth_speeds")
+		_unknown_keys(band, ["from", "speed", "move_in", "leave_per_hour", "children_leave_per_hour", "homeless_workers_leave"], where + " growth_speeds")
 		_number_at_least(band, "speed", 0.0, where + " growth_speeds", true)
 		_number_at_least(band, "move_in", 0.0, where + " growth_speeds", false)
 		_share(band.get("leave_per_hour", 0.0), where + " growth_speeds leave_per_hour", false)
+		_share(band.get("children_leave_per_hour", 0.0), where + " growth_speeds children_leave_per_hour", false)
+		if band.has("homeless_workers_leave") and typeof(band.homeless_workers_leave) != TYPE_BOOL:
+			_fail("%s growth_speeds homeless_workers_leave: must be true or false" % where)
 
 
 ## Brackets / tiers: start at 0, each "from" higher than the last, `value_key` a share 0-1.

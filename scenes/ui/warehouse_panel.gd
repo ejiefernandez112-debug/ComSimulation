@@ -33,10 +33,6 @@ func show_stock() -> void:
 	_list = VBoxContainer.new()
 	_list.add_theme_constant_override("separation", 6)
 	content.add_child(_list)
-	var hint := _label("More room: build another Warehouse, or give your warehouses more workers.", 15)
-	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	hint.custom_minimum_size.x = WIDTH - 70
-	content.add_child(hint)
 	open("Warehouse")
 	_refresh()
 
@@ -67,7 +63,7 @@ func _refresh() -> void:
 		for res in items:
 			_list.add_child(_row(res))
 		if items.is_empty():
-			var empty := _label("Nothing in stock yet. Collect goods from your buildings to fill it.", 17)
+			var empty := _label("Nothing in stock yet.", 17)
 			_list.add_child(empty)
 	for res in items:
 		var qty := int(inventory[res])
@@ -77,7 +73,7 @@ func _refresh() -> void:
 		labels.worth.text = "worth %s" % UITheme.money(qty * Economy.unit_price(res))
 
 
-## [icon] Wheat (made for $0.30 each) ... 1,250   sells $0.64   worth $800 (the numbers that
+## [icon] Wheat (made for $0.30 each) ... 1,250   worth $800 (the numbers that
 ## change are filled in by _refresh).
 func _row(res: String) -> PanelContainer:
 	var box := PanelContainer.new()
@@ -96,10 +92,6 @@ func _row(res: String) -> PanelContainer:
 	names.add_child(tag)
 	var qty := _label("", 20)
 	row.add_child(qty)
-	var each := _label("sells %s" % UITheme.price(Economy.unit_price(res)), 16)
-	each.custom_minimum_size.x = 100
-	each.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	row.add_child(each)
 	var worth := _label("", 16)
 	worth.custom_minimum_size.x = 130
 	worth.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT

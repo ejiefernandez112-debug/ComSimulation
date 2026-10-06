@@ -158,7 +158,7 @@ func _refresh() -> void:
 	_population.text = "%d / %d" % [pop, pop_cap]
 	_population_bar.value = 100.0 * pop / maxf(pop_cap, 1)
 	var happy := Economy.happiness()
-	_happiness.text = "%d%% happy" % roundi(100.0 * float(happy.score))
+	_happiness.text = "%d%% happy" % int(happy.percent)  # rounded down, like the bands
 	_happiness_bar.value = 100.0 * float(happy.score)
 	# Green: babies come at normal speed or faster; gold: slower; red: no babies, or people are
 	# leaving the island.

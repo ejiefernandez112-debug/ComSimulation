@@ -1,8 +1,7 @@
-[gd_scene load_steps=12 format=3]
+[gd_scene load_steps=11 format=3]
 
 [ext_resource type="Script" path="res://scenes/main/main.gd" id="1"]
 [ext_resource type="PackedScene" path="res://scenes/village/village.tscn" id="2"]
-[ext_resource type="Script" path="res://scenes/ui/test_panel.gd" id="3"]
 [ext_resource type="PackedScene" path="res://scenes/ui/build_menu.tscn" id="4"]
 [ext_resource type="Script" path="res://scenes/ui/hud.gd" id="5"]
 [ext_resource type="Script" path="res://scenes/ui/building_bar.gd" id="6"]
@@ -27,16 +26,6 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
-
-[node name="TestPanel" type="Control" parent="UI/Root"]
-layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-grow_horizontal = 2
-grow_vertical = 2
-mouse_filter = 2
-script = ExtResource("3")
 
 [node name="HUD" type="Control" parent="UI/Root"]
 layout_mode = 1
