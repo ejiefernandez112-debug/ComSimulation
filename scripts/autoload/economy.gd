@@ -558,7 +558,7 @@ func power_summary() -> Dictionary:
 	return Simulation.power_summary(state, data(), TimeService.now())
 
 
-## The power network: {"ids" (buildings joined), "areas" [[cell, radius]]}.
+## The power network: {"ids" (buildings joined), "areas" [[centre (Vector2, in tiles), radius]]}.
 func power_network() -> Dictionary:
 	return Simulation.power_network(state, data(), TimeService.now())
 
@@ -566,6 +566,11 @@ func power_network() -> Dictionary:
 ## Whether `cell` is inside the power network's reach.
 func is_powered_cell(cell: Vector2i) -> bool:
 	return Simulation.is_powered_cell(power_network(), cell)
+
+
+## Whether a point in tiles (e.g. a building's middle, centre_at) is inside the network's reach.
+func is_powered_point(point: Vector2) -> bool:
+	return Simulation.is_powered_point(power_network(), point)
 
 
 ## Every tile of the plot inside the power network's reach: Vector2i -> true (for the map).
@@ -580,9 +585,10 @@ func powered_cells() -> Dictionary:
 	return cells
 
 
-## Whether a plant or substation reaching `radius` tiles would join the network standing on `cell`.
-func would_join_network(cell: Vector2i, radius: float) -> bool:
-	return Simulation.would_join_network(power_network(), cell, radius)
+## Whether a plant or substation of this kind, reaching `radius` tiles, would join the network
+## standing at `cell` (its position).
+func would_join_network(type_id: String, cell: Vector2i, radius: float) -> bool:
+	return Simulation.would_join_network(power_network(), Simulation.centre_at(data(), type_id, cell), radius)
 
 
 ## What this building's power costs per hour right now (dollars).
@@ -811,8 +817,31 @@ func can_build(type_id: String, cell: Vector2i) -> Dictionary:
 	return Simulation.can_build(state, data(), type_id, cell, TimeService.now())
 
 
+## The building standing on this tile (any tile of its footprint), or {}.
 func building_at(cell: Vector2i) -> Dictionary:
-	return Simulation.building_at(state, cell)
+	return Simulation.building_at(state, data(), cell)
+
+
+## How many tiles wide and deep this kind of building stands (1 or 2).
+func size_of(type_id: String) -> int:
+	return Simulation.size_of(data(), type_id)
+
+
+## The middle of a building of this kind standing at `cell`, in tiles (see Simulation.centre_at):
+## Iso.to_world() of it is where its picture is centred.
+func centre_at(type_id: String, cell: Vector2i) -> Vector2:
+	return Simulation.centre_at(data(), type_id, cell)
+
+
+## The tiles a building of this kind covers standing at `cell`.
+func footprint(type_id: String, cell: Vector2i) -> Array[Vector2i]:
+	return Simulation.footprint(data(), type_id, cell)
+
+
+## Whether a building of this kind would fit at `cell`: its whole footprint on the plot, with no
+## building or road on it (`ignore_id` = a building allowed there: the one being moved).
+func fits(type_id: String, cell: Vector2i, ignore_id := "") -> bool:
+	return Simulation._footprint_problem(state, data(), type_id, cell, ignore_id) == ""
 
 
 ## The building with this id, or {} if there is none. Read it; don't change it.

@@ -97,7 +97,7 @@ func _on_economy_changed() -> void:
 ## Placement Mode for a new building: show the grid and a see-through ghost of type_id on a free
 ## tile near the middle of the screen.
 func start_placement(type_id: String) -> void:
-	_begin_placement(type_id, _free_cell_near(Iso.to_cell(camera.position)))
+	_begin_placement(type_id, _free_spot_near(type_id, _spot_under(type_id, camera.position)))
 
 
 ## Placement Mode for an existing building: it fades where it stands and the ghost starts right on
@@ -131,15 +131,16 @@ func ghost_check() -> Dictionary:
 	if check.ok and Economy.needs_road({"type": placing_type}):
 		var linked := Economy.linked_roads()
 		var near_road := false
-		for side in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
-			near_road = near_road or linked.has(ghost_cell + side)
+		for tile in Economy.footprint(placing_type, ghost_cell):  # beside any side of it
+			for side in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+				near_road = near_road or linked.has(tile + side)
 		if not near_road:
 			check["hint"] = "No road here: it gets no workers until a road reaches it. Tap the tick to place it anyway"
 	if check.ok and not check.has("hint") and _shows_power(placing_type):
 		var ghost := {"type": placing_type}
-		if Economy.power_radius(ghost) > 0.0 and moving_id == "" and not Economy.would_join_network(ghost_cell, Economy.power_radius(ghost)):
+		if Economy.power_radius(ghost) > 0.0 and moving_id == "" and not Economy.would_join_network(placing_type, ghost_cell, Economy.power_radius(ghost)):
 			check["hint"] = "Its circle doesn't touch your power network here (the yellow tiles), so it won't be connected. Tap the tick to place it anyway"
-		elif Economy.power_need(ghost) > 0.0 and not Economy.powered_cells().has(ghost_cell):
+		elif Economy.power_need(ghost) > 0.0 and not Economy.is_powered_point(Economy.centre_at(placing_type, ghost_cell)):
 			check["hint"] = "No power here: it won't work until your power network (the yellow tiles) reaches it. Tap the tick to place it anyway"
 	return check
 
@@ -153,17 +154,19 @@ func _shows_power(type_id: String) -> bool:
 
 
 ## Tints the tiles the power network reaches, plus `circle_radius` tiles around `circle_at` (a
-## power building's own reach: green when it joins the network, orange when it doesn't).
-func _draw_power(canvas: CanvasItem, circle_at: Vector2i, circle_radius: float, joins: bool) -> void:
+## power building's middle, in tiles: its own reach, green when it joins the network, orange
+## when it doesn't).
+func _draw_power(canvas: CanvasItem, circle_at: Vector2, circle_radius: float, joins: bool) -> void:
 	for cell in Economy.powered_cells():
 		canvas.draw_colored_polygon(Iso.diamond(cell), POWER_AREA)
 	if circle_radius <= 0.0:
 		return
-	var r := ceili(circle_radius)
+	var r := ceili(circle_radius) + 1
+	var middle := Vector2i(circle_at.round())
 	for dy in range(-r, r + 1):
 		for dx in range(-r, r + 1):
-			var cell := circle_at + Vector2i(dx, dy)
-			if dx * dx + dy * dy <= circle_radius * circle_radius + 0.000001 and cell.x >= 0 and cell.y >= 0 and cell.x < island.plot_size.x and cell.y < island.plot_size.y:
+			var cell := middle + Vector2i(dx, dy)
+			if (Vector2(cell) - circle_at).length_squared() <= circle_radius * circle_radius + 0.000001 and cell.x >= 0 and cell.y >= 0 and cell.x < island.plot_size.x and cell.y < island.plot_size.y:
 				canvas.draw_colored_polygon(Iso.diamond(cell), POWER_JOINS if joins else POWER_ALONE)
 
 
@@ -241,18 +244,30 @@ func _ghost_changed() -> void:
 	ghost_moved.emit(ghost_check())
 
 
-## The free building-area tile closest to `near` (or `near` itself if there is none).
-func _free_cell_near(near: Vector2i) -> Vector2i:
+## The free spot for a building of this kind closest to `near` (or `near` itself if there is none).
+func _free_spot_near(type_id: String, near: Vector2i) -> Vector2i:
 	var best := near
 	var best_dist := INF
 	for x in island.plot_size.x:
 		for y in island.plot_size.y:
 			var cell := Vector2i(x, y)
 			var dist := Vector2(cell - near).length()
-			if dist < best_dist and Economy.building_at(cell).is_empty() and not Economy.is_road(cell):
+			if dist < best_dist and Economy.fits(type_id, cell):
 				best = cell
 				best_dist = dist
 	return best
+
+
+## The position a building of this kind gets when its middle is under the screen point `world`
+## (a 2x2 building's position is its top tile, half a tile up-left of its middle on the grid).
+func _spot_under(type_id: String, world: Vector2) -> Vector2i:
+	var half := (Economy.size_of(type_id) - 1) / 2.0
+	return Vector2i((Iso.to_cell_f(world) - Vector2(half, half)).round())
+
+
+## Where a building's picture is centred on screen: the middle of its footprint.
+func _world_of(b: Dictionary) -> Vector2:
+	return Iso.to_world(Economy.centre_at(b.type, Vector2i(int(b.position[0]), int(b.position[1]))))
 
 
 ## Placement Mode, finger down: on the ghost, grab it where it was touched; anywhere else, the
@@ -265,12 +280,12 @@ func _on_finger_down(world_pos: Vector2) -> void:
 		_road_changed()
 		return
 	_ghost_before_press = ghost_cell
-	var at := Iso.to_world(Vector2(ghost_cell))
+	var at := Iso.to_world(Economy.centre_at(placing_type, ghost_cell))
 	if BuildingView.preview_rect(placing_type, at).grow(8.0).has_point(world_pos):
 		_grip = at - world_pos
 	else:
 		_grip = Vector2.ZERO
-		_move_ghost(Iso.to_cell(world_pos))
+		_move_ghost(_spot_under(placing_type, world_pos))
 
 
 func _on_finger_moved(world_pos: Vector2) -> void:
@@ -280,7 +295,7 @@ func _on_finger_moved(world_pos: Vector2) -> void:
 			_road_line = line
 			_road_changed()
 		return
-	_move_ghost(Iso.to_cell(world_pos + _grip))
+	_move_ghost(_spot_under(placing_type, world_pos + _grip))
 
 
 ## That finger was the start of a two-finger pan/zoom: undo the ghost's jump (or the new road).
@@ -292,11 +307,16 @@ func _on_finger_cancelled() -> void:
 	_move_ghost(_ghost_before_press)
 
 
-## The ghost only stands on land, so it stops at the shore instead of sliding into the sea.
+## The ghost only stands on land (all of its tiles), so it stops at the shore instead of sliding
+## into the sea.
 func _move_ghost(cell: Vector2i) -> void:
-	if cell != ghost_cell and island.is_land(cell):
-		ghost_cell = cell
-		_ghost_changed()
+	if cell == ghost_cell:
+		return
+	for tile in Economy.footprint(placing_type, cell):
+		if not island.is_land(tile):
+			return
+	ghost_cell = cell
+	_ghost_changed()
 
 
 func select(building_id: String) -> void:
@@ -340,7 +360,7 @@ func _sync_buildings() -> void:
 			_remove_view(id)
 	for b in Economy.state.buildings:
 		if _views.has(b.id):
-			var at := Iso.to_world(Vector2(b.position[0], b.position[1]))
+			var at := _world_of(b)
 			if _views[b.id].position != at:
 				_views[b.id].position = at
 				_views[b.id].pop_in()
@@ -350,7 +370,7 @@ func _sync_buildings() -> void:
 		var view := BuildingView.new()
 		view.type_id = b.type
 		view.building_id = b.id
-		view.position = Iso.to_world(Vector2(b.position[0], b.position[1]))
+		view.position = _world_of(b)
 		objects.add_child(view)
 		_views[b.id] = view
 		if _started:
@@ -411,21 +431,22 @@ func _on_tapped(world_pos: Vector2) -> void:
 		empty_tapped.emit()
 
 
-## A glowing ring on the ground around the selected building's tile.
+## A glowing ring on the ground around the selected building's tiles.
 func _draw_marker() -> void:
 	if _selected == "" or not _views.has(_selected):
 		return
 	var at: Vector2 = _views[_selected].position
-	var half := Vector2(Iso.TILE_W, Iso.TILE_H) * 0.62  # a little bigger than the tile
+	var b := Economy.building(_selected)
+	var tiles := Economy.size_of(b.type) if not b.is_empty() else 1
+	var half := Vector2(Iso.TILE_W, Iso.TILE_H) * (tiles / 2.0 + 0.12)  # a little bigger than its tiles
 	var ring := PackedVector2Array([at + Vector2(0, -half.y), at + Vector2(half.x, 0),
 		at + Vector2(0, half.y), at + Vector2(-half.x, 0), at + Vector2(0, -half.y)])
 	marker.draw_polyline(ring, Color(MARKER, 0.35), 9.0, true)
 	marker.draw_polyline(ring, MARKER, 3.0, true)
 	# A power building (or one that uses power) shows where the power network reaches.
-	var b := Economy.building(_selected)
 	if not b.is_empty() and _shows_power(b.type):
 		var cell := Vector2i(int(b.position[0]), int(b.position[1]))
-		_draw_power(marker, cell, Economy.power_radius(b), Economy.power_network().ids.has(b.id))
+		_draw_power(marker, Economy.centre_at(b.type, cell), Economy.power_radius(b), Economy.power_network().ids.has(b.id))
 
 
 ## The plot's tile lines, like Clash of Clans shows while you move a building.
@@ -446,7 +467,7 @@ func _draw_grid() -> void:
 	if _shows_power(placing_type):
 		var ghost := {"type": placing_type}
 		var radius := Economy.power_radius(ghost)
-		_draw_power(grid, ghost_cell, radius, radius > 0.0 and Economy.would_join_network(ghost_cell, radius))
+		_draw_power(grid, Economy.centre_at(placing_type, ghost_cell), radius, radius > 0.0 and Economy.would_join_network(placing_type, ghost_cell, radius))
 
 
 ## The ghost: a green (free) or red (blocked) tile with a see-through picture of the building.
@@ -457,11 +478,11 @@ func _draw_cursor() -> void:
 	if placing_type == "":
 		return
 	var free: bool = ghost_check().ok
-	var diamond := Iso.diamond(ghost_cell)
-	cursor.draw_colored_polygon(diamond, OK_COLOR if free else BLOCKED_COLOR)
-	cursor.draw_polyline(diamond + PackedVector2Array([diamond[0]]), Color.WHITE, 2.0, true)
+	var square := Iso.square(ghost_cell, Economy.size_of(placing_type))
+	cursor.draw_colored_polygon(square, OK_COLOR if free else BLOCKED_COLOR)
+	cursor.draw_polyline(square + PackedVector2Array([square[0]]), Color.WHITE, 2.0, true)
 	var tint := Color(1, 1, 1, 0.6) if free else Color(1, 0.4, 0.4, 0.6)
-	BuildingView.draw_preview(cursor, Iso.to_world(Vector2(ghost_cell)), placing_type, tint)
+	BuildingView.draw_preview(cursor, Iso.to_world(Economy.centre_at(placing_type, ghost_cell)), placing_type, tint)
 
 
 ## Road Mode: the road being drawn. Green = new road, faint = already road, red = blocked (or, when

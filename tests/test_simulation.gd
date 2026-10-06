@@ -399,7 +399,7 @@ func test_move() -> void:
 	_batch(state, data, farm, 2)
 	Sim.settle(state, data, T0 + 30)  # half way through an hour
 	_check(Sim.move(state, data, farm.id, Vector2i(7, 2), T0 + 30).ok, "can move to a free tile")
-	_check(Sim.building_at(state, Vector2i(7, 2)).id == farm.id, "farm is on its new tile")
+	_check(Sim.building_at(state, data, Vector2i(7, 2)).id == farm.id, "farm is on its new tile")
 	_check(Sim.can_build(state, data, "farm", Vector2i(5, 5), T0).ok, "old tile is free again")
 	Sim.settle(state, data, T0 + 60)
 	_check(_ready(farm, "wheat") == 10, "production carries on through a move")
@@ -1494,8 +1494,8 @@ func test_real_data_files() -> void:
 
 # --- Whole production chains with the real data (plan.md §5.21) -----------------
 # Raw goods to the shop shelf, with the real data/*.json: buildings need a road, power and a
-# construction worker, like in the game. Test buildings stand beside the starting road (y = 10),
-# inside the power network around City Hall, with a Wind Turbine for extra power.
+# construction worker, like in the game. Test buildings stand beside the starting road, as near
+# City Hall as there's room (inside its power network), with a Wind Turbine for extra power.
 
 ## A new game with the real data and $1,000,000 more cash (a developer top-up, so the cash check
 ## still adds up). Returns [state, data].
@@ -1508,11 +1508,34 @@ func _real_town() -> Array:
 	return [state, data]
 
 
-## Builds `type_id` at `x` beside the starting road (y = 9, above it). Returns the building.
-func _real_build(state: Dictionary, data: Dictionary, type_id: String, x: int, now: float) -> Dictionary:
-	var result := Sim.build(state, data, type_id, Vector2i(x, 9), now)
+## Builds `type_id` on the free spot nearest City Hall with a road beside it and, if it uses
+## power, inside the power network (any size of building fits). Returns the building.
+func _real_build(state: Dictionary, data: Dictionary, type_id: String, now: float) -> Dictionary:
+	var result := Sim.build(state, data, type_id, _real_spot(state, data, type_id, now), now)
 	_check(result.ok, "real chain: build %s (%s)" % [type_id, result.get("error", "")])
 	return Sim.find_building(state, str(result.get("building_id", "")))
+
+
+func _real_spot(state: Dictionary, data: Dictionary, type_id: String, now: float) -> Vector2i:
+	var network := Sim.power_network(state, data, now)
+	var linked := Sim.linked_roads(state, data)
+	var needs_power := float(data.buildings[type_id].get("power_mw", 0.0)) > 0.0
+	var hall := Vector2.ZERO
+	for b in state.buildings:
+		if Sim.is_road_hub(data, b):
+			hall = Sim.centre_of(data, b)
+	var grid: Array = state.plot.grid_size
+	var best := Vector2i(-1, -1)
+	var best_distance := INF
+	for y in int(grid[1]):
+		for x in int(grid[0]):
+			var cell := Vector2i(x, y)
+			var centre := Sim.centre_at(data, type_id, cell)
+			var distance := (centre - hall).length_squared()
+			if distance < best_distance and Sim._footprint_problem(state, data, type_id, cell) == "" 					and Sim._beside(linked, Sim.footprint(data, type_id, cell)) 					and (not needs_power or Sim._in_reach(network.areas, centre, 0.0)):
+				best = cell
+				best_distance = distance
+	return best
 
 
 ## Runs a batch of `hours` of `recipe_id`, waits (an hour at a time) until it's made, and
@@ -1548,15 +1571,15 @@ func test_real_chain_corn_to_cereal() -> void:
 	var state: Dictionary = town[0]
 	var data: Dictionary = town[1]
 	var t := T0
-	_real_build(state, data, "wind_turbine", 7, t)
-	var corn := _real_build(state, data, "wheat_farm", 8, t)
-	var cane := _real_build(state, data, "wheat_farm", 10, t)
-	var mill := _real_build(state, data, "flour_mill", 11, t)
+	_real_build(state, data, "wind_turbine", t)
+	var corn := _real_build(state, data, "wheat_farm", t)
+	var cane := _real_build(state, data, "wheat_farm", t)
+	var mill := _real_build(state, data, "flour_mill", t)
 	t += 3600.0  # a Construction Office has 4 workers: 4 buildings at a time, an hour each
 	Sim.settle(state, data, t)
-	var sugar_mill := _real_build(state, data, "sugar_mill", 13, t)
-	var factory := _real_build(state, data, "food_factory", 14, t)
-	var market := _real_build(state, data, "supermarket", 16, t)
+	var sugar_mill := _real_build(state, data, "sugar_mill", t)
+	var factory := _real_build(state, data, "food_factory", t)
+	var market := _real_build(state, data, "supermarket", t)
 	t += 3600.0
 	Sim.settle(state, data, t)
 	t = _real_batch(state, data, corn, "grow_corn", 2, t)
@@ -1581,15 +1604,15 @@ func test_real_chain_soy_oil_to_chips() -> void:
 	var state: Dictionary = town[0]
 	var data: Dictionary = town[1]
 	var t := T0
-	_real_build(state, data, "wind_turbine", 7, t)
-	var soy := _real_build(state, data, "wheat_farm", 8, t)
-	var spuds := _real_build(state, data, "wheat_farm", 10, t)
-	var press := _real_build(state, data, "oil_press", 11, t)
+	_real_build(state, data, "wind_turbine", t)
+	var soy := _real_build(state, data, "wheat_farm", t)
+	var spuds := _real_build(state, data, "wheat_farm", t)
+	var press := _real_build(state, data, "oil_press", t)
 	t += 3600.0
 	Sim.settle(state, data, t)
-	var factory := _real_build(state, data, "food_factory", 13, t)
-	var market := _real_build(state, data, "supermarket", 14, t)
-	_real_build(state, data, "trading_post", 16, t)
+	var factory := _real_build(state, data, "food_factory", t)
+	var market := _real_build(state, data, "supermarket", t)
+	_real_build(state, data, "trading_post", t)
 	t += 3600.0
 	Sim.settle(state, data, t)
 	t = _real_batch(state, data, soy, "grow_soybeans", 1, t)
@@ -1621,16 +1644,16 @@ func test_real_chain_feed_to_burgers() -> void:
 	var state: Dictionary = town[0]
 	var data: Dictionary = town[1]
 	var t := T0
-	_real_build(state, data, "wind_turbine", 7, t)
-	var corn := _real_build(state, data, "wheat_farm", 8, t)
-	var feed := _real_build(state, data, "feed_mill", 10, t)
-	var ranch := _real_build(state, data, "ranch", 11, t)
+	_real_build(state, data, "wind_turbine", t)
+	var corn := _real_build(state, data, "wheat_farm", t)
+	var feed := _real_build(state, data, "feed_mill", t)
+	var ranch := _real_build(state, data, "ranch", t)
 	t += 3600.0
 	Sim.settle(state, data, t)
-	var slaughter := _real_build(state, data, "slaughterhouse", 13, t)
-	var meat := _real_build(state, data, "meat_plant", 14, t)
-	var market := _real_build(state, data, "supermarket", 16, t)
-	_real_build(state, data, "trading_post", 17, t)
+	var slaughter := _real_build(state, data, "slaughterhouse", t)
+	var meat := _real_build(state, data, "meat_plant", t)
+	var market := _real_build(state, data, "supermarket", t)
+	_real_build(state, data, "trading_post", t)
 	t += 3600.0
 	Sim.settle(state, data, t)
 	t = _real_batch(state, data, corn, "grow_corn", 1, t)
@@ -1657,10 +1680,10 @@ func test_real_chain_bought_beans_to_coffee() -> void:
 	var state: Dictionary = town[0]
 	var data: Dictionary = town[1]
 	var t := T0
-	_real_build(state, data, "wind_turbine", 7, t)
-	_real_build(state, data, "trading_post", 8, t)
-	var plant := _real_build(state, data, "beverage_plant", 10, t)
-	var market := _real_build(state, data, "supermarket", 11, t)
+	_real_build(state, data, "wind_turbine", t)
+	_real_build(state, data, "trading_post", t)
+	var plant := _real_build(state, data, "beverage_plant", t)
+	var market := _real_build(state, data, "supermarket", t)
 	t += 3600.0
 	Sim.settle(state, data, t)
 	var bought := Sim.trade_buy(state, data, "coffee_beans", 30, t)
@@ -3477,7 +3500,7 @@ func test_roads() -> void:
 	Sim.settle(state, data, T0)
 	_check(Sim.needs_road(data, farm) and not Sim.on_road(data, farm), "a building with workers needs a road and has none")
 	_check(Sim.posts(data, farm, T0) == 0 and Sim.hired(farm) == 0, "no road: no posts, no workers")
-	_check(not Sim.needs_road(data, Sim.building_at(state, Vector2i(1, 0))) and not Sim.needs_road(data, state.buildings[0]), "homes and the hub need no road")
+	_check(not Sim.needs_road(data, Sim.building_at(state, data, Vector2i(1, 0))) and not Sim.needs_road(data, state.buildings[0]), "homes and the hub need no road")
 
 	var path := Sim.road_path_for(state, data, farm.id)
 	_check(path.size() == 9 and Sim._touches({Vector2i(5, 5): true}, path[0]) and Sim._touches({Vector2i(0, 0): true}, path[-1]), "the shortest road: 9 tiles from beside the farm to beside the office")
@@ -3500,8 +3523,8 @@ func test_roads() -> void:
 	state.profile.currency = 500
 	_check(not Sim.road_quote(state, data, _cells([[9, 9]])).ok, "no road without the money")
 	state.profile.currency = cash
-	var hut_spot := Sim._free_cell_near_centre(state, data)
-	_check(Sim.is_free_cell(state, hut_spot) and not Sim.is_road(state, hut_spot), "huts go up on free tiles, never on roads")
+	var hut_spot := Sim._free_spot_near_centre(state, data, Sim.hut_type_of(data))
+	_check(Sim.is_free_cell(state, data, hut_spot) and not Sim.is_road(state, hut_spot), "huts go up on free tiles, never on roads")
 
 	# Cut the road: the farm stops and lets its workers go. Mend it: it hires again.
 	var middle: Vector2i = path[4]
@@ -3518,7 +3541,7 @@ func test_roads() -> void:
 
 	# A warehouse can't be cut off while the goods wouldn't fit without it.
 	_check(path[-1] == Vector2i(0, 1), "the road reaches the office at (0, 1) (the house is at (1, 0))")
-	var store_spot := Vector2i(1, 1) if Sim.is_free_cell(state, Vector2i(1, 1)) else Vector2i(0, 2)  # beside (0, 1)
+	var store_spot := Vector2i(1, 1) if Sim.is_free_cell(state, data, Vector2i(1, 1)) else Vector2i(0, 2)  # beside (0, 1)
 	var store := Sim.find_building(state, Sim.build(state, data, "crew_store", store_spot, T0).building_id)
 	state.population.current = 6
 	Sim.settle(state, data, T0)
@@ -3528,6 +3551,86 @@ func test_roads() -> void:
 	_check(not Sim.can_move(state, data, store.id, Vector2i(9, 8)).ok, "and so would moving it off the road")
 	state.inventory["wheat"] = 500
 	_check(Sim.can_remove_roads(state, data, [Vector2i(0, 1)]).ok, "with room left in the other warehouse it's fine")
+
+
+## Footprints (plan.md §4): a building with "size": 2 stands on a 2x2 square; its position is the
+## square's tile with the smallest x and y.
+func test_footprints() -> void:
+	var data := _road_data()
+	data.buildings.crew_farm["size"] = 2
+	var state := Sim.new_game(data, T0)
+	_check(Sim.footprint(data, "crew_farm", Vector2i(5, 5)) == [Vector2i(5, 5), Vector2i(6, 5), Vector2i(5, 6), Vector2i(6, 6)], "a 2x2 covers its position and the 3 tiles right and below")
+	_check(Sim.size_of(data, "farm") == 1 and Sim.centre_at(data, "crew_farm", Vector2i(5, 5)) == Vector2(5.5, 5.5), "no size = 1x1; a 2x2's middle is where its 4 tiles meet")
+	var farm := Sim.find_building(state, Sim.build(state, data, "crew_farm", Vector2i(5, 5), T0).building_id)
+	_check(Sim.building_at(state, data, Vector2i(6, 6)).get("id", "") == farm.id and Sim.building_at(state, data, Vector2i(7, 7)).is_empty(), "every tile of the square is the farm's, and only those")
+	_check(Sim.can_build(state, data, "farm", Vector2i(6, 5), T0).error == "That spot is taken.", "nothing else can go on any of its tiles")
+	_check(Sim.can_build(state, data, "crew_farm", Vector2i(4, 4), T0).error == "That spot is taken.", "nor another 2x2 that would overlap it")
+	_check(Sim.can_build(state, data, "crew_farm", Vector2i(9, 3), T0).error == "That spot is outside your land.", "a 2x2 can't hang off the edge of the land")
+	_check(not Sim.road_quote(state, data, _cells([[6, 6]])).ok, "no road on any of its tiles")
+	_check(Sim.can_move(state, data, farm.id, Vector2i(6, 5)).ok, "it can move onto its own old tiles (a nudge)")
+
+	# A road beside any side of the square links it.
+	var path := Sim.road_path_for(state, data, farm.id)
+	_check(path.size() == 9 and Sim._beside({path[0]: true}, Sim.cells_of(data, farm)) and Sim._touches({Vector2i(0, 0): true}, path[-1]), "the shortest road starts beside the square and ends beside the office")
+	Sim.build_roads(state, data, path, T0)
+	state.population.current = 2
+	Sim.settle(state, data, T0)
+	_check(Sim.on_road(data, farm) and Sim.hired(farm) == 2, "linked: it hires")
+	var road := _cells([[7, 6], [8, 6], [8, 7]])  # leaves from its right side instead
+	Sim.build_roads(state, data, road, T0)
+	_check(Sim.remove_roads(state, data, [path[0]], T0).ok and not Sim.on_road(data, farm), "cut off on the left: no road")
+	_check(Sim.remove_roads(state, data, [Vector2i(8, 7)], T0).ok, "(a stray tile removed)")
+	var around := _cells([[7, 4], [7, 3], [7, 2], [7, 1], [6, 1], [5, 1], [4, 1], [3, 1], [2, 1], [1, 1], [0, 1]])
+	Sim.build_roads(state, data, around + _cells([[7, 5]]), T0)
+	_check(Sim.on_road(data, farm) and Sim.hired(farm) == 2, "a road reaching the tile beside its right side links it again")
+
+
+## Power reach is measured from a building's middle: a 2x2's is where its 4 tiles meet.
+func test_power_from_the_middle() -> void:
+	var data := _power_data()
+	data.buildings.crew_farm["size"] = 2
+	var state := Sim.new_game(data, T0)
+	var farm := Sim.find_building(state, Sim.build(state, data, "crew_farm", Vector2i(2, 1), T0).building_id)
+	state.population.current = 10
+	Sim.settle(state, data, T0)
+	_batch(state, data, farm, 10)
+	_check(not Sim.is_powered_cell(Sim.power_network(state, data, T0), Vector2i(3, 2)), "its far tile (3, 2) is outside City Hall's 3 tiles...")
+	_check(str(farm.power) == "on", "...but its middle (2.5, 1.5) is inside, so it's powered")
+	_check(Sim.would_join_network(Sim.power_network(state, data, T0), Sim.centre_at(data, "crew_farm", Vector2i(5, 5)), 0.5) == false, "a point far away doesn't join")
+
+
+## Saves from before sizes (version 14): buildings are fitted to their footprints.
+func test_fit_footprints() -> void:
+	var data := _road_data()
+	var state := Sim.new_game(data, T0)
+	Sim.dev_add_cash(state, 100000)
+	var big := Sim.find_building(state, Sim.build(state, data, "crew_farm", Vector2i(5, 5), T0).building_id)
+	var small := Sim.find_building(state, Sim.build(state, data, "farm", Vector2i(6, 5), T0).building_id)
+	Sim.build_roads(state, data, _cells([[5, 6], [6, 6], [4, 6]]), T0)
+	var cash := int(state.profile.currency)
+	data.buildings.crew_farm["size"] = 2  # the crew farm grows to 2x2: it now overlaps the farm and 2 road tiles
+	var notes := Sim.fit_footprints(state, data)
+	_check(Sim._cell_of(big) == Vector2i(5, 5), "the older building keeps its place")
+	_check(not Sim.is_road(state, Vector2i(5, 6)) and not Sim.is_road(state, Vector2i(6, 6)) and Sim.is_road(state, Vector2i(4, 6)), "the road tiles under it are gone, the others stay")
+	_check(int(state.profile.currency) == cash + 2000 and int(Sim.stats(state).income.demolish) == 2000 and Sim.cash_check(state).ok, "their $20 comes back, counted like a demolish refund")
+	_check(Sim._cell_of(small) != Vector2i(6, 5) and Sim._footprint_problem(state, data, "farm", Sim._cell_of(small), small.id) == "", "the newer building it overlapped moved to a free tile")
+	_check((Vector2(Sim._cell_of(small)) - Vector2(6, 5)).length() <= 2.0, "...nearby")
+	_check(notes.size() >= 2 and "$20" in notes[0] and "farm" in notes[1], "the player is told what changed: %s" % [notes])
+	_check(Sim.fit_footprints(state, data).is_empty(), "running it again changes nothing")
+
+
+## Version 14 grows the land and moves the village to its middle.
+func test_grow_plot() -> void:
+	var data := _road_data()
+	var state := Sim.new_game(data, T0)
+	Sim.build_roads(state, data, _cells([[0, 1]]), T0)
+	data.config.grid_size = [14, 16]
+	SaveFormat._grow_plot(state, data)
+	_check(state.plot.grid_size == [14, 16], "the land grows to the config's size")
+	_check(Sim._cell_of(state.buildings[0]) == Vector2i(2, 3) and Sim.is_road(state, Vector2i(2, 4)), "buildings and roads move by half the growth: (2, 3)")
+	data.config.grid_size = [8, 8]
+	SaveFormat._grow_plot(state, data)
+	_check(state.plot.grid_size == [14, 16] and Sim._cell_of(state.buildings[0]) == Vector2i(2, 3), "it never shrinks")
 
 
 ## A building with no road waits; time away gives the same as playing through it.
@@ -3612,7 +3715,7 @@ func test_construction_workers() -> void:
 	_check(Sim.can_build(state, data, "farm", Vector2i(5, 5), T0).ok, "a building that needs no crew can still be built")
 	state.population.current = 10
 	Sim._hire(state, data, T0)
-	var office := Sim.building_at(state, Vector2i(3, 0))
+	var office := Sim.building_at(state, data, Vector2i(3, 0))
 	_check(Sim.hired(office) == 2 and Sim.crew_total(state, data, T0) == 2 and Sim.crew_free(state, data, T0) == 2, "the office hires its 2 construction workers")
 	var needs := [int(Sim.construction_needs(data, "slow_farm", 1).crew), int(Sim.construction_needs(data, "slow_farm", 2).crew), int(Sim.construction_needs(data, "slow_farm", 3).crew)]
 	_check(needs == [1, 2, 3], "1 worker to build, one more for each level (%s)" % str(needs))

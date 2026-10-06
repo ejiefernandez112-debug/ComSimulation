@@ -5,8 +5,8 @@ extends SceneTree
 ##
 ## Make the building sprites listed in tools/sprite_studio.json (writes assets/buildings/):
 ##   "C:\Program Files\Godot\Godot.exe.exe" --path . --rendering-method forward_plus -s tools/sprite_studio.gd
-## Make a contact sheet of every model in the kit, to choose from:
-##   ... -s tools/sprite_studio.gd -- sheet <output.png>
+## Make a contact sheet of every model in the kit (or in another folder, e.g. art/models), to choose from:
+##   ... -s tools/sprite_studio.gd -- sheet <output.png> [folder]
 ##
 ## It needs a real graphics card (not --headless). forward_plus is the high-quality renderer; the game
 ## itself keeps the lighter Compatibility renderer, since it only shows the finished pictures.
@@ -34,7 +34,7 @@ func _initialize() -> void:
 	_build_studio()
 	var args := OS.get_cmdline_user_args()
 	if args.size() >= 2 and args[0] == "sheet":
-		_make_sheet.call_deferred(args[1])
+		_make_sheet.call_deferred(args[1], args[2] if args.size() >= 3 else "")
 	else:
 		_make_sprites.call_deferred()
 
@@ -46,9 +46,12 @@ func _make_sprites() -> void:
 	var out_folder: String = "res://" + config.output_folder
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(out_folder))
 	var manifest := {"_note": "Written by tools/sprite_studio.gd - do not edit by hand.", "pixels_per_tile": PX_PER_TILE, "sprites": {}}
+	# How many tiles wide each building stands: its "size" in data/buildings.json (1 if none).
+	var buildings: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://data/buildings.json"))
 	for building_id in config.buildings:
 		var entry: Dictionary = config.buildings[building_id]
-		var photo := await _photograph(_kit_path(config, entry), int(entry.get("turn", 0)), int(entry.get("tiles", 1)), "")
+		var tiles := int(entry.get("tiles", buildings.get(building_id, {}).get("size", 1)))
+		var photo := await _photograph(_kit_path(config, entry), int(entry.get("turn", 0)), tiles, "")
 		if photo.is_empty():
 			continue
 		var crop := photo.get_used_rect()
@@ -63,9 +66,10 @@ func _make_sprites() -> void:
 	quit()
 
 
-func _make_sheet(out_path: String) -> void:
+## `kit_folder` = the folder to show ("" = the kit_folder in sprite_studio.json).
+func _make_sheet(out_path: String, kit_folder: String) -> void:
 	var config: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(CONFIG_PATH))
-	var folder := ProjectSettings.globalize_path("res://" + config.kit_folder)
+	var folder := ProjectSettings.globalize_path("res://" + (kit_folder if kit_folder != "" else String(config.kit_folder)))
 	var models := Array(DirAccess.get_files_at(folder)).filter(func(f: String): return f.ends_with(".glb"))
 	var cell := CANVAS / 2
 	var rows := ceili(models.size() / float(SHEET_COLUMNS))

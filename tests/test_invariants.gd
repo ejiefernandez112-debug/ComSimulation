@@ -162,7 +162,7 @@ func _random_action(rng: RandomNumberGenerator, state: Dictionary, now: float, e
 	var text := ""
 	if roll < 12:
 		var type: String = _pick(rng, _buildable())
-		var cell := _free_cell(rng, state) if rng.randf() < 0.85 else Vector2i(rng.randi_range(-1, 21), rng.randi_range(-1, 21))
+		var cell := _free_cell(rng, state) if rng.randf() < 0.85 else Vector2i(rng.randi_range(-1, int(state.plot.grid_size[0])), rng.randi_range(-1, int(state.plot.grid_size[1])))
 		result = Sim.build(state, _data, type, cell, now)
 		text = "build %s at %s" % [type, cell]
 	elif roll < 30:
@@ -242,7 +242,7 @@ func _random_action(rng: RandomNumberGenerator, state: Dictionary, now: float, e
 		text = "take shelf %d down at %s" % [index, _name(b)]
 	elif roll < 92:
 		var b := _some_building(rng, state, [])
-		var cell := Vector2i(rng.randi_range(-1, 21), rng.randi_range(-1, 21))
+		var cell := Vector2i(rng.randi_range(-1, int(state.plot.grid_size[0])), rng.randi_range(-1, int(state.plot.grid_size[1])))
 		result = Sim.move(state, _data, b.get("id", "none"), cell, now)
 		text = "move %s to %s" % [_name(b), cell]
 	elif roll < 95:
@@ -391,16 +391,16 @@ func _invariants(state: Dictionary, now: float, before: Dictionary, baseline: in
 		if ids.has(b.id):
 			return "two buildings share the id %s" % b.id
 		ids[b.id] = true
-		var cell := Vector2i(int(b.position[0]), int(b.position[1]))
-		if cells.has(cell):
-			return "%s and %s stand on the same tile %s" % [cells[cell], name, cell]
-		if Sim.is_road(state, cell):
-			return "%s stands on a road at %s" % [name, cell]
-		if Sim.needs_road(_data, b) and Sim.on_road(_data, b) != Sim._touches(linked, cell):
+		for cell in Sim.cells_of(_data, b):  # every tile of its footprint
+			if cells.has(cell):
+				return "%s and %s stand on the same tile %s" % [cells[cell], name, cell]
+			if Sim.is_road(state, cell):
+				return "%s stands on a road at %s" % [name, cell]
+			cells[cell] = name
+			if not Sim._in_plot(state, cell):
+				return "%s stands outside the plot at %s" % [name, cell]
+		if Sim.needs_road(_data, b) and Sim.on_road(_data, b) != Sim._beside(linked, Sim.cells_of(_data, b)):
 			return "%s says it's %s the road, but it isn't" % [name, "on" if Sim.on_road(_data, b) else "off"]
-		cells[cell] = name
-		if not Sim._in_plot(state, cell):
-			return "%s stands outside the plot at %s" % [name, cell]
 		broken = _goods_ok(name, b.get("storage", {}), b.get("storage_cost", {}))
 		if broken != "":
 			return broken
@@ -448,7 +448,7 @@ func _invariants(state: Dictionary, now: float, before: Dictionary, baseline: in
 	for b in state.buildings:
 		if Sim.is_hut(_data, b):
 			huts += 1
-	if huts > int(homes.homeless) or (huts < int(homes.homeless) and Sim._free_cell_near_centre(state, _data).x >= 0):
+	if huts > int(homes.homeless) or (huts < int(homes.homeless) and Sim._free_spot_near_centre(state, _data, Sim.hut_type_of(_data)).x >= 0):
 		return "%d huts for %d homeless households" % [huts, homes.homeless]
 	for id in homes.homes:
 		var home: Dictionary = Sim.find_building(state, id)
@@ -856,7 +856,7 @@ func _free_cell(rng: RandomNumberGenerator, state: Dictionary) -> Vector2i:
 	var grid: Array = state.plot.grid_size
 	for attempt in 50:
 		var cell := Vector2i(rng.randi_range(0, int(grid[0]) - 1), rng.randi_range(0, int(grid[1]) - 1))
-		if Sim.building_at(state, cell).is_empty():
+		if Sim.building_at(state, _data, cell).is_empty():
 			return cell
 	return Vector2i(0, 0)
 

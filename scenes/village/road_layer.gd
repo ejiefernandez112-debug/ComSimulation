@@ -51,10 +51,9 @@ func _on_economy_changed() -> void:
 
 func _draw() -> void:
 	var roads := Economy.road_cells()
-	var buildings := _building_cells()
-	for cell in buildings:
-		if buildings[cell]:
-			_draw_plot(cell)
+	for b in Economy.state.buildings:
+		if not GameData.buildings[b.type].get("hut", false):
+			_draw_plot(Economy.centre_at(b.type, Vector2i(int(b.position[0]), int(b.position[1]))), Economy.size_of(b.type))
 	# Two passes, so every tile's pavement sits under every tile's asphalt and the joins are clean.
 	for half in [CURB_HALF, ROAD_HALF]:
 		for cell in roads:
@@ -63,32 +62,26 @@ func _draw() -> void:
 		_draw_markings(cell, roads)
 
 
-## Building tiles: Vector2i -> true for a building that gets a plot (false for a Makeshift Hut).
-func _building_cells() -> Dictionary:
-	var cells := {}
-	for b in Economy.state.buildings:
-		cells[Vector2i(int(b.position[0]), int(b.position[1]))] = not GameData.buildings[b.type].get("hut", false)
-	return cells
-
-
 ## A building's little island: a raised pavement square, a lawn inside, bushes on its corners.
-func _draw_plot(cell: Vector2i) -> void:
-	var h := PLOT_HALF
-	var c := Vector2(cell)
+## `c` = the middle of the building in tiles, `size` = how many tiles wide it is.
+func _draw_plot(c: Vector2, size: int) -> void:
+	var grow := (size - 1) / 2.0  # a 2x2 plot reaches half a tile further each way
+	var h := PLOT_HALF + grow
+	var lawn := LAWN_HALF + grow
 	var top := [Iso.to_world(c + Vector2(-h, -h)), Iso.to_world(c + Vector2(h, -h)),
 		Iso.to_world(c + Vector2(h, h)), Iso.to_world(c + Vector2(-h, h))]
 	var lift := Vector2(0, PLOT_LIFT)
 	# The two edges facing the viewer, then the top.
 	draw_colored_polygon(PackedVector2Array([top[1], top[2], top[2] + lift, top[1] + lift]), PAVEMENT_EDGE.darkened(0.15))
 	draw_colored_polygon(PackedVector2Array([top[2], top[3], top[3] + lift, top[2] + lift]), PAVEMENT_EDGE)
-	_quad(cell, Vector2(-h, -h), Vector2(h, h), PAVEMENT)
-	_quad(cell, Vector2(-LAWN_HALF, -LAWN_HALF), Vector2(LAWN_HALF, LAWN_HALF), LAWN)
+	_quad_at(c, Vector2(-h, -h), Vector2(h, h), PAVEMENT)
+	_quad_at(c, Vector2(-lawn, -lawn), Vector2(lawn, lawn), LAWN)
 	# A darker band along the lawn's back edges, so it reads as grass behind a kerb.
-	_quad(cell, Vector2(-LAWN_HALF, -LAWN_HALF), Vector2(LAWN_HALF, -LAWN_HALF + 0.05), LAWN_DARK)
-	_quad(cell, Vector2(-LAWN_HALF, -LAWN_HALF), Vector2(-LAWN_HALF + 0.05, LAWN_HALF), LAWN_DARK)
+	_quad_at(c, Vector2(-lawn, -lawn), Vector2(lawn, -lawn + 0.05), LAWN_DARK)
+	_quad_at(c, Vector2(-lawn, -lawn), Vector2(-lawn + 0.05, lawn), LAWN_DARK)
 	# Bushes on the left, right and front corners (the back one hides behind the building).
 	for corner in [Vector2(0.34, -0.34), Vector2(-0.34, 0.34), Vector2(0.35, 0.35)]:
-		var at := Iso.to_world(c + corner)
+		var at := Iso.to_world(c + corner + corner.sign() * grow)
 		draw_circle(at + Vector2(1.5, 1.0), 3.6, Color(0, 0, 0, 0.18), true, -1.0, true)
 		draw_circle(at, 3.6, BUSH, true, -1.0, true)
 		draw_circle(at + Vector2(-1.0, -1.3), 1.6, BUSH.lightened(0.3), true, -1.0, true)
@@ -165,7 +158,11 @@ func _place_lamps() -> void:
 
 ## A rectangle given in tile units around the tile's centre (from `a` to `b`), drawn as a diamond.
 func _quad(cell: Vector2i, a: Vector2, b: Vector2, color: Color) -> void:
-	var c := Vector2(cell)
+	_quad_at(Vector2(cell), a, b, color)
+
+
+## The same around any point in tiles (e.g. the middle of a 2x2 building).
+func _quad_at(c: Vector2, a: Vector2, b: Vector2, color: Color) -> void:
 	draw_colored_polygon(PackedVector2Array([
 		Iso.to_world(c + Vector2(a.x, a.y)), Iso.to_world(c + Vector2(b.x, a.y)),
 		Iso.to_world(c + Vector2(b.x, b.y)), Iso.to_world(c + Vector2(a.x, b.y)),

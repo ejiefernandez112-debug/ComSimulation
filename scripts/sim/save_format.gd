@@ -35,12 +35,12 @@ static func from_text(text: String, data: Dictionary) -> Dictionary:
 	if problem != "":
 		return _fail("The save file is damaged (%s)." % problem)
 	_drop_unknown(state, data, warnings)
-	_migrate(state, version, data)
+	_migrate(state, version, data, warnings)
 	return {"ok": true, "error": "", "state": state, "warnings": warnings}
 
 
 ## Upgrades an older save one version at a time, so old saves keep working.
-static func _migrate(state: Dictionary, version: int, data: Dictionary) -> void:
+static func _migrate(state: Dictionary, version: int, data: Dictionary, warnings: Array[String] = []) -> void:
 	if version < 11:
 		# Version 11 renamed the headquarters to City Hall (plan.md §5.15): it was saved as
 		# "construction_office", an id that now means the new Construction Office. Renamed before
@@ -136,7 +136,31 @@ static func _migrate(state: Dictionary, version: int, data: Dictionary) -> void:
 		# old Flour Mill stays a flour mill even though mills can now grind corn and rice).
 		_products_from_batches(state, data)
 		version = 13
+	if version < 14:
+		# Version 14: big buildings stand on 2x2 tiles (plan.md §4) and the land grew to 26x26.
+		# The village moves to the middle of the bigger land, then every building is fitted to
+		# its footprint: roads under it go (paid back), one overlapping an older one moves, and
+		# free road is laid to buildings that lost theirs. The player is told what changed.
+		_grow_plot(state, data)
+		warnings.append_array(Simulation.fit_footprints(state, data))
+		Simulation._hire(state, data, float(state.get("settled_at", 0.0)))
+		version = 14
 	state["save_version"] = version
+
+
+## For a version 13 save: the land grows to game_config.json's grid_size (it never shrinks), and
+## every building and road moves by the same amount, so the village stays in the middle.
+static func _grow_plot(state: Dictionary, data: Dictionary) -> void:
+	var old: Array = state.plot.grid_size
+	var target: Array = data.config.get("grid_size", old)
+	var size := Vector2i(maxi(int(old[0]), int(target[0])), maxi(int(old[1]), int(target[1])))
+	var shift := (size - Vector2i(int(old[0]), int(old[1]))) / 2
+	state.plot.grid_size = [size.x, size.y]
+	for b in state.buildings:
+		b.position = [int(b.position[0]) + shift.x, int(b.position[1]) + shift.y]
+	for road in state.get("roads", []):
+		road[0] = int(road[0]) + shift.x
+		road[1] = int(road[1]) + shift.y
 
 
 ## For a version 12 save: every building that makes batches gets its product (see _migrate).
@@ -262,19 +286,19 @@ static func _add_starter_warehouse(state: Dictionary, data: Dictionary) -> void:
 		if data.buildings.get(entry.type, {}).get("category", "") != "storage":
 			continue
 		var cell := Vector2i(int(entry.position[0]), int(entry.position[1]))
-		if not Simulation.building_at(state, cell).is_empty():
-			cell = _first_free_cell(state)
+		if Simulation._footprint_problem(state, data, entry.type, cell) != "":
+			cell = _first_free_spot(state, data, entry.type)
 		if cell.x >= 0:
 			Simulation._add_building(state, entry.type, cell, float(state.get("settled_at", 0.0)), 0.0)
 		return
 
 
-## The first empty tile of the plot, row by row; (-1, -1) if every tile is taken.
-static func _first_free_cell(state: Dictionary) -> Vector2i:
+## The first spot of the plot (row by row) where a building of this kind fits; (-1, -1) if none.
+static func _first_free_spot(state: Dictionary, data: Dictionary, type_id: String) -> Vector2i:
 	var grid: Array = state.plot.grid_size
 	for y in int(grid[1]):
 		for x in int(grid[0]):
-			if Simulation.building_at(state, Vector2i(x, y)).is_empty():
+			if Simulation._footprint_problem(state, data, type_id, Vector2i(x, y)) == "":
 				return Vector2i(x, y)
 	return Vector2i(-1, -1)
 

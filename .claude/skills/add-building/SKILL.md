@@ -33,12 +33,10 @@ All content is data-driven (CLAUDE.md rule 1). A new building normally needs **n
 ## 3. Art
 
 - **Icon**: each new resource needs `assets/ui/icons/<resource_id>.svg`. Match the style of the existing icons (open one or two first). Simple flat SVG.
-- **Sprite**: the building needs a picture in `assets/buildings/`. Never hand-edit that folder. Either:
-  - add an entry to `tools/sprite_studio.json` that points at a model in `Sprites kit/` or `art/models/`, or
-  - make a Blender model script in `art/blender/models/<id>.py` (see `art/README.md`).
-  Then tell the user to run the sprite studio (it needs a real GPU window, so Claude can't run it headless):
-  `"C:\Program Files\Godot\Godot.exe.exe" --path . --rendering-method forward_plus -s tools/sprite_studio.gd`
-  and afterwards `--headless --path . --import`.
+- **Sprite**: the building needs a picture in `assets/buildings/`. Never hand-edit that folder. If
+  the user wants art now, run the `building-sprites` skill (Blender model with 2-3 variants, picked on
+  the encyclopedia page). Otherwise it shows as a placeholder box until then; say so. Set its
+  `"size"` (2 for big buildings) in buildings.json first: the sprite is made for that many tiles.
 
 ## 4. Verify
 

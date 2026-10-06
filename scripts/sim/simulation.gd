@@ -13,7 +13,7 @@ extends RefCounted
 ## Time model: buildings store when their current batch started (`job_started_at`).
 ## "Settling" turns elapsed time into finished output in one calculation, never tick-by-tick.
 
-const SAVE_VERSION := 13  # 2: warehouses are buildings; 3: buildings keep their own hired workers;
+const SAVE_VERSION := 14  # 2: warehouses are buildings; 3: buildings keep their own hired workers;
 # 4: money is stored in cents; 5: stock carries cost tags; 6: children, births and deaths;
 # 7: housing types (old free Small Houses become Public Housing); 8: balance sheet (buildings
 # keep what was paid for them, starting capital, money log); 9: production batches (a Farm,
@@ -21,7 +21,8 @@ const SAVE_VERSION := 13  # 2: warehouses are buildings; 3: buildings keep their
 # 10: roads (state.roads; buildings with workers need a road link to the Construction Office);
 # 11: the old headquarters is City Hall; a new Construction Office's workers build everything;
 # 12: electricity (power meter and bills; Mills and Bakeries need power from the grid);
-# 13: each producer keeps its product (b.product): older ones keep what they were making
+# 13: each producer keeps its product (b.product): older ones keep what they were making;
+# 14: big buildings stand on 2x2 tiles and the land grew to 26x26 (see fit_footprints)
 ## Used when game_config.json has no staffing_levels: share of max_workers per level.
 const DEFAULT_STAFFING_LEVELS := {"low": 0.5, "medium": 0.75, "high": 1.0}
 
@@ -61,7 +62,7 @@ static func new_game(data: Dictionary, now: float) -> Dictionary:
 	# their price as part of the starting capital, like the buildings.
 	for cell in _roads_config(data).get("starting_roads", []):
 		var road_cell := Vector2i(int(cell[0]), int(cell[1]))
-		if is_free_cell(state, road_cell):
+		if is_free_cell(state, data, road_cell):
 			state.roads.append([road_cell.x, road_cell.y, road_price(data)])
 			capital.buildings = int(capital.buildings) + road_price(data)
 	# The founding villagers: all adults, never more than the starting homes hold.
@@ -821,10 +822,7 @@ static func housing(state: Dictionary, data: Dictionary, now: float) -> Dictiona
 ## nearest City Hall, in a fixed order (no dice). With no hut type in
 ## buildings.json, or no free tile left, the homeless have no hut.
 static func _update_huts(state: Dictionary, data: Dictionary, now: float) -> void:
-	var hut_type := ""
-	for type_id in data.buildings:
-		if bool(data.buildings[type_id].get("hut", false)):
-			hut_type = type_id
+	var hut_type := hut_type_of(data)
 	if hut_type == "":
 		return
 	# A clock set backwards never undoes time already worked out: use the later of the two.
@@ -834,7 +832,7 @@ static func _update_huts(state: Dictionary, data: Dictionary, now: float) -> voi
 	while huts.size() > homeless:
 		state.buildings.erase(huts.pop_back())
 	while huts.size() < homeless:
-		var cell := _free_cell_near_centre(state, data)
+		var cell := _free_spot_near_centre(state, data, hut_type)
 		if cell.x < 0:
 			return  # the plot is full
 		huts.append(_add_building(state, hut_type, cell, now, now))
@@ -847,8 +845,8 @@ static func _move_huts_off_hub(state: Dictionary, data: Dictionary, hut_type: St
 		return
 	var hubs := _hub_cells(state, data)
 	for b in state.buildings:
-		if b.type == hut_type and _touches(hubs, _cell_of(b)):
-			var cell := _free_cell_near_centre(state, data)
+		if b.type == hut_type and _beside(hubs, cells_of(data, b)):
+			var cell := _free_spot_near_centre(state, data, hut_type)
 			if cell.x >= 0:
 				b.position = [cell.x, cell.y]
 
@@ -858,14 +856,15 @@ static func _hub_cells(state: Dictionary, data: Dictionary) -> Dictionary:
 	var hubs := {}
 	for b in state.buildings:
 		if is_road_hub(data, b):
-			hubs[_cell_of(b)] = true
+			for cell in cells_of(data, b):
+				hubs[cell] = true
 	return hubs
 
 
-## The free tile nearest City Hall (or the middle of the plot), ring by ring, in a
-## fixed order, but never right beside the office, where its roads start. (-1, -1) when the
-## plot is full.
-static func _free_cell_near_centre(state: Dictionary, data: Dictionary) -> Vector2i:
+## The free spot for a building of `type_id` nearest City Hall (or the middle of the plot), ring
+## by ring, in a fixed order, but never right beside City Hall, where its roads start. A spot is
+## the building's position: its whole footprint must be free. (-1, -1) when there's no room.
+static func _free_spot_near_centre(state: Dictionary, data: Dictionary, type_id: String) -> Vector2i:
 	var grid: Array = state.plot.grid_size
 	var centre := Vector2i(floori(int(grid[0]) / 2.0), floori(int(grid[1]) / 2.0))
 	for b in state.buildings:
@@ -879,7 +878,7 @@ static func _free_cell_near_centre(state: Dictionary, data: Dictionary) -> Vecto
 				if maxi(absi(dx), absi(dy)) != ring:
 					continue
 				var cell := centre + Vector2i(dx, dy)
-				if is_free_cell(state, cell) and not (roads_on(data) and _touches(hubs, cell)):
+				if _footprint_problem(state, data, type_id, cell) == "" and not (roads_on(data) and _beside(hubs, footprint(data, type_id, cell))):
 					return cell
 	return Vector2i(-1, -1)
 
@@ -912,12 +911,9 @@ static func can_build(state: Dictionary, data: Dictionary, type_id: String, cell
 		return _fail("This building can't be built.")
 	if at_build_limit(state, data, type_id):
 		return _fail("You can have only %d %s." % [int(def.max_count), def.get("name", "of these")] if int(def.max_count) != 1 else "You already have a %s: one is all you need." % def.get("name", "building"))
-	if not _in_plot(state, cell):
-		return _fail("That spot is outside your land.")
-	if not building_at(state, cell).is_empty():
-		return _fail("That spot is taken.")
-	if is_road(state, cell):
-		return _fail("There's a road there. Remove the road first.")
+	var problem := _footprint_problem(state, data, type_id, cell)
+	if problem != "":
+		return _fail(problem)
 	var crew := _check_crew(state, data, int(construction_needs(data, type_id, 1).crew), now)
 	if not crew.is_empty():
 		return crew
@@ -963,18 +959,14 @@ static func build(state: Dictionary, data: Dictionary, type_id: String, cell: Ve
 ## can move, and everything inside keeps going. But a building with workers needs a road
 ## (plan.md §5.20): moved away from one it stops until a road reaches it again. A warehouse can't
 ## be moved off its road while the goods wouldn't fit in the other warehouses.
-## Its own cell counts as free (dropping it back where it was is fine).
+## Its own tiles count as free (dropping it back where it was, or nudging it, is fine).
 static func can_move(state: Dictionary, data: Dictionary, building_id: String, cell: Vector2i) -> Dictionary:
 	var b := find_building(state, building_id)
 	if b.is_empty():
 		return _fail("Building not found.")
-	if not _in_plot(state, cell):
-		return _fail("That spot is outside your land.")
-	var there := building_at(state, cell)
-	if not there.is_empty() and there.id != building_id:
-		return _fail("That spot is taken.")
-	if is_road(state, cell):
-		return _fail("There's a road there. Remove the road first.")
+	var problem := _footprint_problem(state, data, b.type, cell, building_id)
+	if problem != "":
+		return _fail(problem)
 	var old_position: Array = b.position
 	b.position = [cell.x, cell.y]
 	var room_left := _room_after_road_change(state, data)
@@ -1027,6 +1019,68 @@ static func _cell_of(b: Dictionary) -> Vector2i:
 	return Vector2i(int(b.position[0]), int(b.position[1]))
 
 
+# --- Footprints (plan.md §4) ---
+# A building stands on a square of size x size tiles ("size" in buildings.json, default 1).
+# Its "position" is the square's tile with the smallest x and y (its top corner on screen).
+
+## How many tiles wide and deep this kind of building stands.
+static func size_of(data: Dictionary, type_id: String) -> int:
+	return maxi(1, int(data.buildings.get(type_id, {}).get("size", 1)))
+
+
+## The tiles a building of this kind covers when its position is `cell`.
+static func footprint(data: Dictionary, type_id: String, cell: Vector2i) -> Array[Vector2i]:
+	var cells: Array[Vector2i] = []
+	var size := size_of(data, type_id)
+	for dy in size:
+		for dx in size:
+			cells.append(cell + Vector2i(dx, dy))
+	return cells
+
+
+## The tiles this building covers.
+static func cells_of(data: Dictionary, b: Dictionary) -> Array[Vector2i]:
+	return footprint(data, b.type, _cell_of(b))
+
+
+## The middle of a building of this kind standing at `cell`, in tiles: the tile's centre for
+## 1x1, the corner its 4 tiles share for 2x2. Power reach is measured from here.
+static func centre_at(data: Dictionary, type_id: String, cell: Vector2i) -> Vector2:
+	return Vector2(cell) + Vector2.ONE * (size_of(data, type_id) - 1) / 2.0
+
+
+static func centre_of(data: Dictionary, b: Dictionary) -> Vector2:
+	return centre_at(data, b.type, _cell_of(b))
+
+
+## Whether a building of this kind fits at `cell`: every tile of its footprint on the plot, with no
+## other building and no road on it. `ignore_id` = a building allowed to be there (the one being
+## moved). "" when it fits, else the reason, friendly enough to show.
+static func _footprint_problem(state: Dictionary, data: Dictionary, type_id: String, cell: Vector2i, ignore_id := "") -> String:
+	var cells := footprint(data, type_id, cell)
+	for c in cells:
+		if not _in_plot(state, c):
+			return "That spot is outside your land."
+	for c in cells:
+		var there := building_at(state, data, c)
+		if not there.is_empty() and there.id != ignore_id:
+			return "That spot is taken."
+	for c in cells:
+		if is_road(state, c):
+			return "There's a road there. Remove the road first."
+	return ""
+
+
+## Whether any tile beside `area` (on the 4 sides of its tiles, outside the area) is in `cells`.
+static func _beside(cells: Dictionary, area: Array[Vector2i]) -> bool:
+	for cell in area:
+		for side in _SIDES:
+			var next: Vector2i = cell + side
+			if cells.has(next) and not area.has(next):
+				return true
+	return false
+
+
 ## Every road tile: Vector2i -> cents paid for it.
 static func road_cells(state: Dictionary) -> Dictionary:
 	var cells := {}
@@ -1043,15 +1097,16 @@ static func is_road(state: Dictionary, cell: Vector2i) -> bool:
 
 
 ## A tile of the plot with no building and no road on it.
-static func is_free_cell(state: Dictionary, cell: Vector2i) -> bool:
-	return _in_plot(state, cell) and building_at(state, cell).is_empty() and not is_road(state, cell)
+static func is_free_cell(state: Dictionary, data: Dictionary, cell: Vector2i) -> bool:
+	return _in_plot(state, cell) and building_at(state, data, cell).is_empty() and not is_road(state, cell)
 
 
 ## Tiles taken by a building or a road: Vector2i -> true.
-static func _taken_cells(state: Dictionary) -> Dictionary:
+static func _taken_cells(state: Dictionary, data: Dictionary) -> Dictionary:
 	var taken := road_cells(state)
 	for b in state.buildings:
-		taken[_cell_of(b)] = true
+		for cell in cells_of(data, b):
+			taken[cell] = true
 	return taken
 
 
@@ -1077,11 +1132,12 @@ static func linked_roads(state: Dictionary, data: Dictionary) -> Dictionary:
 	var todo: Array[Vector2i] = []
 	for b in state.buildings:
 		if is_road_hub(data, b):
-			for side in _SIDES:
-				var cell: Vector2i = _cell_of(b) + side
-				if roads.has(cell) and not linked.has(cell):
-					linked[cell] = true
-					todo.append(cell)
+			for hub_cell in cells_of(data, b):
+				for side in _SIDES:
+					var cell: Vector2i = hub_cell + side
+					if roads.has(cell) and not linked.has(cell):
+						linked[cell] = true
+						todo.append(cell)
 	while not todo.is_empty():
 		var cell: Vector2i = todo.pop_back()
 		for side in _SIDES:
@@ -1107,7 +1163,7 @@ static func _update_road_links(state: Dictionary, data: Dictionary) -> void:
 	var linked := linked_roads(state, data)
 	for b in state.buildings:
 		if needs_road(data, b):
-			b["road"] = _touches(linked, _cell_of(b))
+			b["road"] = _beside(linked, cells_of(data, b))
 		else:
 			b.erase("road")
 
@@ -1119,7 +1175,7 @@ static func _room_after_road_change(state: Dictionary, data: Dictionary) -> int:
 	var linked := linked_roads(state, data)
 	var room := 0
 	for b in state.buildings:
-		if needs_road(data, b) and not _touches(linked, _cell_of(b)):
+		if needs_road(data, b) and not _beside(linked, cells_of(data, b)):
 			continue
 		room += storage_capacity(state, data, b)
 	return room
@@ -1130,12 +1186,12 @@ static func _room_after_road_change(state: Dictionary, data: Dictionary) -> int:
 static func road_quote(state: Dictionary, data: Dictionary, cells: Array) -> Dictionary:
 	if not roads_on(data):
 		return _fail("Roads can't be built.")
-	var taken := _taken_cells(state)
+	var taken := _taken_cells(state, data)
 	var new_cells: Array[Vector2i] = []
 	for cell in cells:
 		if not _in_plot(state, cell):
 			return _fail("The road would go off your land.")
-		if not building_at(state, cell).is_empty():
+		if not building_at(state, data, cell).is_empty():
 			return _fail("A building is in the way.")
 		if not taken.has(cell) and not new_cells.has(cell):
 			new_cells.append(cell)
@@ -1210,27 +1266,28 @@ static func road_path_for(state: Dictionary, data: Dictionary, building_id: Stri
 	if b.is_empty() or not needs_road(data, b):
 		return none
 	var linked := linked_roads(state, data)
-	var start := _cell_of(b)
-	if _touches(linked, start):
+	var area := cells_of(data, b)
+	if _beside(linked, area):
 		return none
 	var hubs := _hub_cells(state, data)
-	var taken := _taken_cells(state)
-	var came_from := {}  # tile -> the tile before it (start for the first step)
+	var taken := _taken_cells(state, data)
+	var came_from := {}  # tile -> the tile before it (itself for a first step, beside the building)
 	var todo: Array[Vector2i] = []
-	for side in _SIDES:
-		var first: Vector2i = start + side
-		if _in_plot(state, first) and not taken.has(first) and not came_from.has(first):
-			came_from[first] = start
-			todo.append(first)
+	for start in area:
+		for side in _SIDES:
+			var first: Vector2i = start + side
+			if _in_plot(state, first) and not taken.has(first) and not came_from.has(first):
+				came_from[first] = first
+				todo.append(first)
 	var i := 0
 	while i < todo.size():
 		var cell: Vector2i = todo[i]
 		i += 1
 		if _touches(linked, cell) or _touches(hubs, cell):
-			var path: Array[Vector2i] = []
-			while cell != start:
-				path.push_front(cell)
+			var path: Array[Vector2i] = [cell]
+			while came_from[cell] != cell:
 				cell = came_from[cell]
+				path.push_front(cell)
 			return path
 		for side in _SIDES:
 			var next: Vector2i = cell + side
@@ -1253,6 +1310,89 @@ static func lay_roads_to_all(state: Dictionary, data: Dictionary) -> void:
 	for b in state.buildings:
 		for cell in road_path_for(state, data, b.id):
 			state.roads.append([cell.x, cell.y, 0])
+
+
+## Makes every building fit its footprint (plan.md §4), for saves from before buildings had
+## sizes. Oldest buildings first: one whose tiles are all on the plot and not taken by an older
+## building stays put, and the road tiles under it are removed, their price given back (counted
+## like a demolish refund). One that doesn't fit moves to the nearest spot with no building and no
+## road. Buildings then left without a road get free road (lay_roads_to_all). Returns notes for
+## the player (none when nothing changed).
+static func fit_footprints(state: Dictionary, data: Dictionary) -> Array[String]:
+	var notes: Array[String] = []
+	var placed := {}  # tile -> true: taken by a building that has its place
+	var to_move: Array = []
+	for b in state.buildings:
+		var cells := cells_of(data, b)
+		if cells.all(func(c: Vector2i) -> bool: return _in_plot(state, c) and not placed.has(c)):
+			for c in cells:
+				placed[c] = true
+		else:
+			to_move.append(b)
+
+	var kept := []
+	var refund := 0
+	for road in state.get("roads", []):
+		if placed.has(Vector2i(int(road[0]), int(road[1]))):
+			refund += int(road[2]) if road.size() > 2 else 0
+		else:
+			kept.append(road)
+	var removed: int = state.get("roads", []).size() - kept.size()
+	if removed > 0:
+		state.roads = kept
+		state.profile.currency += refund
+		var income: Dictionary = stats(state).income
+		income["demolish"] = int(income.get("demolish", 0)) + refund
+		notes.append("Big buildings now stand on 2x2 tiles: %d road %s under them %s removed and $%s given back." % [
+			removed, "tile" if removed == 1 else "tiles", "was" if removed == 1 else "were", _whole_dollars(refund)])
+
+	var moved: Array[String] = []
+	var grid: Array = state.plot.grid_size
+	for b in to_move:
+		var home := _cell_of(b)
+		var best := Vector2i(-1, -1)
+		for ring in range(0, maxi(int(grid[0]), int(grid[1])) + 1):
+			for dy in range(-ring, ring + 1):
+				for dx in range(-ring, ring + 1):
+					var cell := home + Vector2i(dx, dy)
+					if best.x < 0 and maxi(absi(dx), absi(dy)) == ring and _fits_among(state, data, b.type, cell, placed):
+						best = cell
+			if best.x >= 0:
+				break
+		if best.x < 0:
+			continue  # no room anywhere: it stays where it was
+		b.position = [best.x, best.y]
+		for c in cells_of(data, b):
+			placed[c] = true
+		moved.append(str(data.buildings.get(b.type, {}).get("name", b.type)))
+	if not moved.is_empty():
+		notes.append("Moved to make room for the bigger buildings: %s." % ", ".join(moved))
+
+	if removed > 0 or not moved.is_empty():
+		var roads_before: int = state.roads.size()
+		lay_roads_to_all(state, data)
+		var laid: int = state.roads.size() - roads_before
+		if laid > 0:
+			notes.append("%d free road %s laid so every building still reaches City Hall." % [laid, "tile was" if laid == 1 else "tiles were"])
+	return notes
+
+
+## Whether a building of this kind fits at `cell` on tiles not in `placed` and with no road.
+static func _fits_among(state: Dictionary, data: Dictionary, type_id: String, cell: Vector2i, placed: Dictionary) -> bool:
+	for c in footprint(data, type_id, cell):
+		if not _in_plot(state, c) or placed.has(c) or is_road(state, c):
+			return false
+	return true
+
+
+## Cents as whole dollars with thousands separators, for notes: 125000 -> "1,250".
+static func _whole_dollars(amount: int) -> String:
+	var text := str(roundi(amount / 100.0))
+	var out := ""
+	while text.length() > 3:
+		out = "," + text.right(3) + out
+		text = text.left(text.length() - 3)
+	return text + out
 
 
 ## Whether the building's staffing could be set to `level` ("low", "medium", "high"); changes nothing.
@@ -1568,7 +1708,10 @@ static func start_batch(state: Dictionary, data: Dictionary, building_id: String
 		"collected": {}, "made_hours": 0}
 	# A clock set backwards never moves the start before the time already worked out.
 	b.job_started_at = maxf(now, float(state.get("settled_at", now)))
-	_update_power(state, data, b.job_started_at)  # it asks for power from now
+	# Its wage bonus raises its workers' wages, which can move a household into a richer class
+	# (and so change who needs a hut); then it asks for power from now.
+	_update_huts(state, data, b.job_started_at)
+	_update_power(state, data, b.job_started_at)
 	return check
 
 
@@ -2188,15 +2331,15 @@ static func add_free_crew_office(state: Dictionary, data: Dictionary) -> void:
 	var type_id := crew_office_type(data)
 	if type_id == "" or _count_category(state, data, data.buildings[type_id].get("category", "")) > 0:
 		return
-	var cell := _free_cell_by_road(state, data)
+	var cell := _free_spot_by_road(state, data, type_id)
 	if cell == Vector2i(-1, -1):
 		return
 	_add_free_building(state, data, type_id, cell)
 
 
-## The free tile nearest City Hall (ring by ring) with a linked road beside it, else the free tile
-## _free_cell_near_centre would give.
-static func _free_cell_by_road(state: Dictionary, data: Dictionary) -> Vector2i:
+## The free spot for a building of `type_id` nearest City Hall (ring by ring) with a linked road
+## beside it, else the spot _free_spot_near_centre would give.
+static func _free_spot_by_road(state: Dictionary, data: Dictionary, type_id: String) -> Vector2i:
 	var linked := linked_roads(state, data)
 	var hubs := _hub_cells(state, data)
 	var grid: Array = state.plot.grid_size
@@ -2205,9 +2348,9 @@ static func _free_cell_by_road(state: Dictionary, data: Dictionary) -> Vector2i:
 			for dy in range(-ring, ring + 1):
 				for dx in range(-ring, ring + 1):
 					var cell: Vector2i = hub + Vector2i(dx, dy)
-					if maxi(absi(dx), absi(dy)) == ring and is_free_cell(state, cell) and _touches(linked, cell):
+					if maxi(absi(dx), absi(dy)) == ring and _footprint_problem(state, data, type_id, cell) == "" and _beside(linked, footprint(data, type_id, cell)):
 						return cell
-	return _free_cell_near_centre(state, data)
+	return _free_spot_near_centre(state, data, type_id)
 
 
 # --- Upgrades (plan.md §5.15) ----------------------------------------------------
@@ -2942,9 +3085,12 @@ static func find_building(state: Dictionary, building_id: String) -> Dictionary:
 	return {}
 
 
-static func building_at(state: Dictionary, cell: Vector2i) -> Dictionary:
+## The building standing on this tile (any tile of its footprint), or {}.
+static func building_at(state: Dictionary, data: Dictionary, cell: Vector2i) -> Dictionary:
 	for b in state.buildings:
-		if int(b.position[0]) == cell.x and int(b.position[1]) == cell.y:
+		var at := _cell_of(b)
+		var size := size_of(data, b.type)
+		if cell.x >= at.x and cell.y >= at.y and cell.x < at.x + size and cell.y < at.y + size:
 			return b
 	return {}
 
@@ -3592,40 +3738,45 @@ static func power_network(state: Dictionary, data: Dictionary, now: float) -> Di
 			continue
 		if grid_link_mw(data, b) > 0.0:
 			ids[b.id] = true
-			areas.append([_cell_of(b), power_radius(data, b)])
+			areas.append([centre_of(data, b), power_radius(data, b)])
 		else:
 			waiting.append(b)
 	var grew := true
 	while grew:
 		grew = false
 		for b in waiting.duplicate():
-			if _in_reach(areas, _cell_of(b), power_radius(data, b)):
+			if _in_reach(areas, centre_of(data, b), power_radius(data, b)):
 				ids[b.id] = true
-				areas.append([_cell_of(b), power_radius(data, b)])
+				areas.append([centre_of(data, b), power_radius(data, b)])
 				waiting.erase(b)
 				grew = true
 	return {"ids": ids, "areas": areas}
 
 
-## Whether a circle of `radius` around `cell` overlaps (or, with radius 0, the cell is inside)
-## any of `areas` ([[cell, radius]]).
-static func _in_reach(areas: Array, cell: Vector2i, radius: float) -> bool:
+## Whether a circle of `radius` around `point` (in tiles) overlaps (or, with radius 0, the point is
+## inside) any of `areas` ([[centre, radius]]).
+static func _in_reach(areas: Array, point: Vector2, radius: float) -> bool:
 	for area in areas:
 		var reach := float(area[1]) + radius
-		if float((cell - (area[0] as Vector2i)).length_squared()) <= reach * reach + 0.000001:
+		if (point - (area[0] as Vector2)).length_squared() <= reach * reach + 0.000001:
 			return true
 	return false
 
 
-## Whether `cell` is inside the network's reach (power_network).
+## Whether the centre of `cell` is inside the network's reach (power_network).
 static func is_powered_cell(network: Dictionary, cell: Vector2i) -> bool:
-	return _in_reach(network.areas, cell, 0.0)
+	return _in_reach(network.areas, Vector2(cell), 0.0)
 
 
-## Whether a plant or substation reaching `radius` tiles, standing on `cell`, would join the
-## network (its circle overlaps the network's).
-static func would_join_network(network: Dictionary, cell: Vector2i, radius: float) -> bool:
-	return _in_reach(network.areas, cell, radius)
+## Whether a point (in tiles, e.g. a building's centre_at) is inside the network's reach.
+static func is_powered_point(network: Dictionary, point: Vector2) -> bool:
+	return _in_reach(network.areas, point, 0.0)
+
+
+## Whether a plant or substation reaching `radius` tiles, with its centre at `point` (centre_at),
+## would join the network (its circle overlaps the network's).
+static func would_join_network(network: Dictionary, point: Vector2, radius: float) -> bool:
+	return _in_reach(network.areas, point, radius)
 
 
 ## Whether the building asks for power right now: a home anyone lives in (`homes` = housing().homes);
@@ -3669,7 +3820,7 @@ static func power_summary(state: Dictionary, data: Dictionary, now: float) -> Di
 		var need := power_need(data, b)
 		if need <= 0.0:
 			continue
-		if not is_powered_cell(network, _cell_of(b)):
+		if not _in_reach(network.areas, centre_of(data, b), 0.0):
 			out.status[b.id] = "no_grid"
 		elif not _wants_power(data, b, now, homes):
 			out.status[b.id] = ""
@@ -3763,15 +3914,16 @@ static func cover_all_with_power(state: Dictionary, data: Dictionary) -> void:
 			continue
 		for attempt in 10:
 			var network := power_network(state, data, now)
-			if network.ids.is_empty() or is_powered_cell(network, _cell_of(b)):
+			if network.ids.is_empty() or _in_reach(network.areas, centre_of(data, b), 0.0):
 				break
 			var best := Vector2i(-1, -1)
 			var best_distance := INF
 			for y in int(grid[1]):
 				for x in int(grid[0]):
 					var cell := Vector2i(x, y)
-					var distance := float((cell - _cell_of(b)).length_squared())
-					if distance < best_distance and is_free_cell(state, cell) and _in_reach(network.areas, cell, radius):
+					var at := centre_at(data, type_id, cell)
+					var distance := (at - centre_of(data, b)).length_squared()
+					if distance < best_distance and _footprint_problem(state, data, type_id, cell) == "" and _in_reach(network.areas, at, radius):
 						best = cell
 						best_distance = distance
 			if best == Vector2i(-1, -1):
@@ -4190,6 +4342,15 @@ static func _new_stats() -> Dictionary:
 
 
 # --- Helpers ------------------------------------------------------------------
+
+## The kind of building the homeless put up ("hut": true in buildings.json), or "" if none.
+static func hut_type_of(data: Dictionary) -> String:
+	var found := ""
+	for type_id in data.buildings:
+		if bool(data.buildings[type_id].get("hut", false)):
+			found = type_id
+	return found
+
 
 ## `finished_at` = when construction ends. Until then the building makes nothing and takes no orders.
 static func _add_building(state: Dictionary, type_id: String, cell: Vector2i, now: float, finished_at: float) -> Dictionary:

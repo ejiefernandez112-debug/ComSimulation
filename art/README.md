@@ -24,7 +24,18 @@ photographs the finished models into the 2D sprites the game shows (plan.md §4)
 
 | Building | Model | Footprint |
 |---|---|---|
-| Wheat Farm | ✅ `wheat_farm.py` | designed 2×2 (shown on 1 tile until 2×2 footprints exist) |
+Style: **soft toy** (chosen 2026-10-05; plan.md §4). A model's `TILES` should match the building's `size` in `data/buildings.json` (2×2 since 2026-10-06): the studio photographs each building at that size.
+
+| Building | Model | Designed for |
+|---|---|---|
+| Plantation (`wheat_farm`), Bakery, Grain Mill (`flour_mill`), City Hall, Construction Office, Warehouse | ✅ one `.py` each | 2×2 |
+| Public Housing | ✅ `public_housing.py` | 1×1 |
 | Wind Turbine, Electric Substation, Solar Power Plant, Nuclear Power Plant | ✅ `wind_turbine.py`, `electric_substation.py`, `solar_power_plant.py`, `nuclear_power_plant.py` | 1×1 |
-| Flour Mill, Bakery, Small House, Construction Office | still Kenney stand-ins | — |
+| Makeshift Hut, Regular House (`small_house`), Villa | still Kenney stand-ins (batch B) | — |
+| Water Treatment Plant, Supermarket, Trading Post, and the Wave 1 farms and factories | no picture yet (batches B–E, plan.md §4) | — |
 | Trees, rocks | not started | — |
+
+Making new building art (2-3 variants per building, picked on the Building Encyclopedia page
+`art/encyclopedia/index.html`, made by `python tools/encyclopedia.py`) is a step-by-step job: the
+`building-sprites` skill in `.claude/skills/`. `art/blender/sheet.py` tiles previews into one review
+picture; `tools/apply_picks.py` puts chosen variants into `tools/sprite_studio.json`.

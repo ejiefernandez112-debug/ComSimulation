@@ -4,24 +4,24 @@
 	"sprites": {
 		"bakery": {
 			"anchor": [
-				56.0,
-				117.0
+				112.0,
+				136.0
 			],
-			"model": "building-b.glb"
+			"model": "bakery.glb"
 		},
 		"city_hall": {
 			"anchor": [
-				58.0,
-				184.0
+				116.0,
+				149.0
 			],
-			"model": "building-m.glb"
+			"model": "city_hall.glb"
 		},
 		"construction_office": {
 			"anchor": [
-				53.0,
-				104.0
+				117.0,
+				161.0
 			],
-			"model": "building-d.glb"
+			"model": "construction_office.glb"
 		},
 		"electric_substation": {
 			"anchor": [
@@ -32,10 +32,10 @@
 		},
 		"flour_mill": {
 			"anchor": [
-				46.0,
-				81.0
+				110.0,
+				157.0
 			],
-			"model": "building-j.glb"
+			"model": "flour_mill.glb"
 		},
 		"makeshift_hut": {
 			"anchor": [
@@ -46,17 +46,17 @@
 		},
 		"nuclear_power_plant": {
 			"anchor": [
-				58.0,
-				116.0
+				115.0,
+				232.0
 			],
 			"model": "nuclear_power_plant.glb"
 		},
 		"public_housing": {
 			"anchor": [
-				46.0,
-				46.0
+				56.0,
+				100.0
 			],
-			"model": "building-e.glb"
+			"model": "public_housing.glb"
 		},
 		"small_house": {
 			"anchor": [
@@ -67,8 +67,8 @@
 		},
 		"solar_power_plant": {
 			"anchor": [
-				59.0,
-				44.0
+				118.0,
+				87.0
 			],
 			"model": "solar_power_plant.glb"
 		},
@@ -79,10 +79,17 @@
 			],
 			"model": "building-a.glb"
 		},
+		"warehouse": {
+			"anchor": [
+				117.0,
+				113.0
+			],
+			"model": "warehouse.glb"
+		},
 		"wheat_farm": {
 			"anchor": [
-				59.0,
-				55.0
+				118.0,
+				111.0
 			],
 			"model": "wheat_farm.glb"
 		},

@@ -1,15 +1,15 @@
 {
-	"_note": "Timers in seconds. materials = what building it needs at Level 1 (Bricks, Cement, Steel, Construction materials; prices, the construction crew and how long it takes are in game_config.json construction). Starting buildings are already built. max_workers = most workers it can employ at level 1; worker_type = which kind (wages in game_config.json). The player picks Low / Medium / High staffing (share of max_workers, game_config.json) and speed follows the workers actually working: 6 of 8 = 75% speed (plan.md 5.6). Production (plan.md 5.1): a Farm, Mill or Bakery runs one batch of the hours the player picks (1 to batch.max_hours in game_config.json); each recipe is ONE HOUR of work (duration 3600), and each finished hour's share of the batch is collected into the Warehouse. Rates match plan.md 5.4.",
+	"_note": "Timers in seconds. size = how many tiles wide and deep it stands on the map (default 1; 2 = a 2x2 square; plan.md 4). materials = what building it needs at Level 1 (Bricks, Cement, Steel, Construction materials; prices, the construction crew and how long it takes are in game_config.json construction). Starting buildings are already built. max_workers = most workers it can employ at level 1; worker_type = which kind (wages in game_config.json). The player picks Low / Medium / High staffing (share of max_workers, game_config.json) and speed follows the workers actually working: 6 of 8 = 75% speed (plan.md 5.6). Production (plan.md 5.1): a Farm, Mill or Bakery runs one batch of the hours the player picks (1 to batch.max_hours in game_config.json); each recipe is ONE HOUR of work (duration 3600), and each finished hour's share of the batch is collected into the Warehouse. Rates match plan.md 5.4.",
 	"_upgrades": "Building upgrades (plan.md 5.15). upgrades = Level 2, Level 3, ... in order: the numbers that change at that level (max_workers, capacity, shelves, households; anything left out stays as the level below). Each level needs twice the materials and crew of the level below, and takes the time in game_config.json construction. Speed counts against Level 1's max_workers, so a farm with 12 of 8 workers works 1.5x as fast (each batch costs the same wages). Farms, mills, bakeries and shops close while upgrading; homes and warehouses stay in use. All PLACEHOLDERS.",
 	"city_hall": {
-		"name": "City Hall", "category": "civic",
+		"name": "City Hall", "category": "civic", "size": 2,
 		"description": "Your town's headquarters. Every road starts here, and so does your power: its link to the public grid supplies up to 10 MW.",
 		"buildable": false, "max_workers": 0, "road_hub": true,
 		"grid_mw": 10, "power_radius": 5
 	},
 	"construction_office": {
 		"_comment": "Construction company (plan.md 5.15). construction_crew = its workers are the construction workers: building anything needs construction.crew of them (game_config.json; 1), each upgrade one more per level (crew_per_level), and they're busy until the work is done. Paid per project (the Labor line), never by the hour. Stays open while upgraded. Staffed first so the village can always build. Needs a road like any building with workers. The id was City Hall's until save version 11. All PLACEHOLDERS.",
-		"name": "Construction Office", "category": "construction", "menu_tab": "utilities",
+		"name": "Construction Office", "category": "construction", "menu_tab": "utilities", "size": 2,
 		"description": "Its construction workers build and upgrade everything (not roads). More workers = more building at once.",
 		"buildable": true, "max_workers": 4, "fixed_workers": true, "staffed_first": true, "fixed_wage": true, "worker_type": "low_skilled",
 		"construction_crew": true,
@@ -65,7 +65,7 @@
 	},
 	"warehouse": {
 		"_comment": "Storage: all warehouses together hold the company's goods (one shared stock). capacity = room with all its workers working; when the town is short of people it gets fewer and less room (2 of 4 = half). fixed_workers = no Low/Medium/High choice: it always asks for max_workers (more only by upgrading). staffed_first = it gets free workers before every other building (whatever their bonus) and loses them last, so the room never shrinks while people are free. fixed_wage = always the minimum wage, no bonus choice. Always working, so always paid (plan.md 5.10).",
-		"name": "Warehouse", "category": "storage", "menu_tab": "storage",
+		"name": "Warehouse", "category": "storage", "menu_tab": "storage", "size": 2,
 		"description": "Stores your goods. Build more warehouses for more room.",
 		"buildable": true, "max_workers": 4, "fixed_workers": true, "staffed_first": true, "fixed_wage": true, "worker_type": "low_skilled",
 		"materials": { "bricks": 600, "cement": 60, "steel": 15, "construction_materials": 30 },
@@ -78,7 +78,7 @@
 	},
 	"water_treatment_plant": {
 		"_comment": "Utility (plan.md 5.13.1): cleans water_supply m³ an hour with all its workers working (2 of 4 = half). Your buildings use it first; only the rest comes from the public supply and its bill. Water nobody uses is wasted. It costs only its workers' wages, paid by the hour (always working unless suspended): 4 x $15 / 60 m³ = $1 a m³ against the public $2. Closes while upgrading (the public supply covers meanwhile). All PLACEHOLDERS.",
-		"name": "Water Treatment Plant", "category": "utility", "menu_tab": "utilities",
+		"name": "Water Treatment Plant", "category": "utility", "menu_tab": "utilities", "size": 2,
 		"description": "Cleans water for your farms. Your buildings use its water first, so you pay less for public water.",
 		"buildable": true, "max_workers": 4, "fixed_workers": true, "fixed_wage": true, "worker_type": "low_skilled",
 		"materials": { "bricks": 600, "cement": 60, "steel": 20, "construction_materials": 30 },
@@ -116,7 +116,7 @@
 	},
 	"solar_power_plant": {
 		"_comment": "Needs High School graduates (high_skilled), so it waits for schools (plan.md 5.7). Steady output for now; day and night later (plan.md 5.5.4).",
-		"name": "Solar Power Plant", "category": "power", "menu_tab": "power",
+		"name": "Solar Power Plant", "category": "power", "menu_tab": "power", "size": 2,
 		"description": "Makes 8 MW from the sun. Its workers must be High School graduates.",
 		"buildable": false, "coming_soon": "Needs High School graduates: schools are coming soon.",
 		"max_workers": 4, "fixed_workers": true, "fixed_wage": true, "worker_type": "high_skilled",
@@ -130,7 +130,7 @@
 	},
 	"nuclear_power_plant": {
 		"_comment": "Planned: burns uranium from its own store (the fuel input is decided later). Needs College graduates (professional), so it waits for schools (plan.md 5.7).",
-		"name": "Nuclear Power Plant", "category": "power", "menu_tab": "power",
+		"name": "Nuclear Power Plant", "category": "power", "menu_tab": "power", "size": 2,
 		"description": "Huge, steady power from uranium kept in its own store. Its workers must be College graduates.",
 		"buildable": false, "coming_soon": "Needs College graduates and uranium: coming soon.",
 		"max_workers": 20, "fixed_workers": true, "fixed_wage": true, "worker_type": "professional",
@@ -140,7 +140,7 @@
 	"_chains": "Production chains, Wave 1 (plan.md 5.21). A building with several recipes makes ONE product: its first batch chooses it for free. switch_fee = share of its value paid to switch later (Plantation, Ranch, Fishery); without it the choice is for good. A recipe's first output is its main product; cost_share splits the cost between by-products. The selling price of an item comes from the FIRST recipe in this file that makes it (plan.md 5.12), so keep the usual recipe first. Outputs per hour and appetites (resources.json) are PLACEHOLDERS: one building's output is sized for about 100 villagers.",
 	"wheat_farm": {
 		"_comment": "The Plantation (was the Wheat Farm; the id stays so saves keep their farms). Extractor: needs no ingredients. Grows one crop at a time; wheat stays first, so its price and old saves don't change. 60 wheat per hour of work, so a 24 h batch = 1,440 wheat. Other crops: PLACEHOLDERS (fewer units for dearer crops: the cost per hour is the same).",
-		"name": "Plantation", "category": "extractor", "menu_tab": "farming",
+		"name": "Plantation", "category": "extractor", "menu_tab": "farming", "size": 2,
 		"description": "Grows one crop at a time (wheat, corn, rice, fruit, coffee and more) in batches of the hours you choose. Switching to another crop costs a fee.",
 		"buildable": true, "max_workers": 8, "worker_type": "low_skilled",
 		"materials": { "bricks": 400, "cement": 40, "steel": 10, "construction_materials": 20 },
@@ -166,7 +166,7 @@
 	},
 	"feed_mill": {
 		"_comment": "Animal feed for Ranches, from corn or (twice as far) from the Oil Press's soy meal. Corn first: it sets the price. PLACEHOLDERS.",
-		"name": "Feed Mill", "category": "processor", "menu_tab": "farming",
+		"name": "Feed Mill", "category": "processor", "menu_tab": "farming", "size": 2,
 		"description": "Makes animal feed for your ranches, from corn or from soy meal. Each mill keeps using the one it starts with.",
 		"buildable": true, "max_workers": 8, "worker_type": "low_skilled",
 		"materials": { "bricks": 600, "cement": 60, "steel": 15, "construction_materials": 30 },
@@ -183,7 +183,7 @@
 	},
 	"ranch": {
 		"_comment": "Raises one kind of animal at a time on animal feed (a processor: it has ingredients). Switching costs 10% of its value, like the Plantation. PLACEHOLDERS.",
-		"name": "Ranch", "category": "processor", "menu_tab": "farming",
+		"name": "Ranch", "category": "processor", "menu_tab": "farming", "size": 2,
 		"description": "Raises cattle, pigs or chickens, or keeps dairy cows for milk or hens for eggs, all on animal feed. Switching to other animals costs a fee.",
 		"buildable": true, "max_workers": 8, "worker_type": "low_skilled",
 		"materials": { "bricks": 600, "cement": 60, "steel": 15, "construction_materials": 30 },
@@ -204,7 +204,7 @@
 	},
 	"fishery": {
 		"_comment": "Catches fish or farms shrimp, one at a time; switching costs 10% of its value. Any tile for now (no coast rule yet, plan.md 5.21). PLACEHOLDERS.",
-		"name": "Fishery", "category": "extractor", "menu_tab": "farming",
+		"name": "Fishery", "category": "extractor", "menu_tab": "farming", "size": 2,
 		"description": "Catches fish or farms shrimp. Switching between them costs a fee.",
 		"buildable": true, "max_workers": 8, "worker_type": "low_skilled",
 		"materials": { "bricks": 500, "cement": 50, "steel": 13, "construction_materials": 25 },
@@ -221,7 +221,7 @@
 	},
 	"apiary": {
 		"_comment": "Honey with beeswax as a by-product (the wax carries 15% of the cost). Beeswax sells to the Trading Post until a later wave uses it. PLACEHOLDERS.",
-		"name": "Apiary", "category": "extractor", "menu_tab": "farming",
+		"name": "Apiary", "category": "extractor", "menu_tab": "farming", "size": 2,
 		"description": "Bees make honey, and beeswax as well.",
 		"buildable": true, "max_workers": 4, "worker_type": "low_skilled",
 		"materials": { "bricks": 300, "cement": 30, "steel": 8, "construction_materials": 15 },
@@ -236,7 +236,7 @@
 	},
 	"flour_mill": {
 		"_comment": "The Mill (was the Flour Mill; the id stays). 40 wheat -> 32 flour per hour of work (one Plantation of wheat feeds 1.5 Mills). Corn and rice: PLACEHOLDERS. Each mill grinds one grain for good.",
-		"name": "Grain Mill", "category": "processor", "menu_tab": "food",
+		"name": "Grain Mill", "category": "processor", "menu_tab": "food", "size": 2,
 		"description": "Grinds grain: wheat into flour, corn into cornmeal or rice into milled rice. Each mill keeps grinding the one it starts with.",
 		"buildable": true, "max_workers": 8, "worker_type": "low_skilled",
 		"materials": { "bricks": 1000, "cement": 100, "steel": 25, "construction_materials": 50 },
@@ -254,7 +254,7 @@
 	},
 	"bakery": {
 		"_comment": "20 flour -> 15 bread per hour of work (one Mill feeds 1.6 Bakeries).",
-		"name": "Bakery", "category": "processor", "menu_tab": "food",
+		"name": "Bakery", "category": "processor", "menu_tab": "food", "size": 2,
 		"description": "Bakes flour into fresh bread that sells for more.",
 		"buildable": true, "max_workers": 8, "worker_type": "low_skilled",
 		"materials": { "bricks": 1600, "cement": 160, "steel": 40, "construction_materials": 80 },
@@ -270,7 +270,7 @@
 	},
 	"oil_press": {
 		"_comment": "Soybeans give oil AND soy meal (a by-product: the meal carries 40% of the cost, cost_share); corn gives oil only. Soy meal feeds animals (Wave 1B). PLACEHOLDERS.",
-		"name": "Oil Press", "category": "processor", "menu_tab": "food",
+		"name": "Oil Press", "category": "processor", "menu_tab": "food", "size": 2,
 		"description": "Presses soybeans into cooking oil and soy meal, or corn into cooking oil. Each press keeps pressing the one it starts with.",
 		"buildable": true, "max_workers": 8, "worker_type": "low_skilled",
 		"materials": { "bricks": 1000, "cement": 100, "steel": 25, "construction_materials": 50 },
@@ -287,7 +287,7 @@
 	},
 	"sugar_mill": {
 		"_comment": "60 sugarcane -> 30 sugar per hour of work. PLACEHOLDERS.",
-		"name": "Sugar Mill", "category": "processor", "menu_tab": "food",
+		"name": "Sugar Mill", "category": "processor", "menu_tab": "food", "size": 2,
 		"description": "Crushes sugarcane into sugar, for sweets, drinks and cereal.",
 		"buildable": true, "max_workers": 8, "worker_type": "low_skilled",
 		"materials": { "bricks": 1000, "cement": 100, "steel": 25, "construction_materials": 50 },
@@ -303,7 +303,7 @@
 	},
 	"food_factory": {
 		"_comment": "Packaged food from the Mill's, Oil Press's and Sugar Mill's goods. Each factory makes one product for good. PLACEHOLDERS.",
-		"name": "Food Factory", "category": "processor", "menu_tab": "food",
+		"name": "Food Factory", "category": "processor", "menu_tab": "food", "size": 2,
 		"description": "Makes pasta, breakfast cereal, packaged rice, chips or packaged food. Each factory keeps making the one it starts with.",
 		"buildable": true, "max_workers": 8, "worker_type": "low_skilled",
 		"materials": { "bricks": 1400, "cement": 140, "steel": 35, "construction_materials": 70 },
@@ -323,7 +323,7 @@
 	},
 	"confectionery": {
 		"_comment": "Sweets from sugar, chocolate from cocoa beans and sugar. Each makes one product for good. PLACEHOLDERS.",
-		"name": "Confectionery", "category": "processor", "menu_tab": "food",
+		"name": "Confectionery", "category": "processor", "menu_tab": "food", "size": 2,
 		"description": "Makes candy from sugar, or chocolate from cocoa beans and sugar. Each one keeps making what it starts with.",
 		"buildable": true, "max_workers": 8, "worker_type": "low_skilled",
 		"materials": { "bricks": 1000, "cement": 100, "steel": 25, "construction_materials": 50 },
@@ -340,7 +340,7 @@
 	},
 	"beverage_plant": {
 		"_comment": "Drinks: juice from fruit, soft drinks from fruit and sugar, roasted coffee from coffee beans. Uses water. Each makes one product for good. PLACEHOLDERS.",
-		"name": "Beverage Plant", "category": "processor", "menu_tab": "food",
+		"name": "Beverage Plant", "category": "processor", "menu_tab": "food", "size": 2,
 		"description": "Makes fruit juice, soft drinks or roasted coffee. Each plant keeps making the one it starts with.",
 		"buildable": true, "max_workers": 8, "worker_type": "low_skilled",
 		"materials": { "bricks": 1000, "cement": 100, "steel": 25, "construction_materials": 50 },
@@ -359,7 +359,7 @@
 	},
 	"cannery": {
 		"_comment": "Canned fruit (canned fish comes with fishing, Wave 1B). Cans themselves (tin, steel) come with mining in a later wave. PLACEHOLDERS.",
-		"name": "Cannery", "category": "processor", "menu_tab": "food",
+		"name": "Cannery", "category": "processor", "menu_tab": "food", "size": 2,
 		"description": "Cans fruit or fish so it keeps. Each cannery keeps canning the one it starts with.",
 		"buildable": true, "max_workers": 8, "worker_type": "low_skilled",
 		"materials": { "bricks": 1000, "cement": 100, "steel": 25, "construction_materials": 50 },
@@ -376,7 +376,7 @@
 	},
 	"dairy": {
 		"_comment": "Milk from a Ranch's dairy cows into cheese, butter or yogurt (picked once). PLACEHOLDERS.",
-		"name": "Dairy", "category": "processor", "menu_tab": "food",
+		"name": "Dairy", "category": "processor", "menu_tab": "food", "size": 2,
 		"description": "Turns milk into cheese, butter or yogurt. Each dairy keeps making the one it starts with.",
 		"buildable": true, "max_workers": 8, "worker_type": "low_skilled",
 		"materials": { "bricks": 1000, "cement": 100, "steel": 25, "construction_materials": 50 },
@@ -394,7 +394,7 @@
 	},
 	"slaughterhouse": {
 		"_comment": "Cattle give beef AND hides (a by-product: hides carry 10% of the cost; leather comes in Wave 3, until then hides sell to the Trading Post). PLACEHOLDERS.",
-		"name": "Slaughterhouse", "category": "processor", "menu_tab": "food",
+		"name": "Slaughterhouse", "category": "processor", "menu_tab": "food", "size": 2,
 		"description": "Turns cattle into beef and hides, pigs into pork, or chickens into chicken meat. Each one keeps working on the animal it starts with.",
 		"buildable": true, "max_workers": 8, "worker_type": "low_skilled",
 		"materials": { "bricks": 1000, "cement": 100, "steel": 25, "construction_materials": 50 },
@@ -412,7 +412,7 @@
 	},
 	"meat_plant": {
 		"_comment": "Processed meat products (picked once). PLACEHOLDERS.",
-		"name": "Meat Plant", "category": "processor", "menu_tab": "food",
+		"name": "Meat Plant", "category": "processor", "menu_tab": "food", "size": 2,
 		"description": "Makes burgers from beef, sausages from pork, or chicken nuggets from chicken. Each plant keeps making the one it starts with.",
 		"buildable": true, "max_workers": 8, "worker_type": "low_skilled",
 		"materials": { "bricks": 1400, "cement": 140, "steel": 35, "construction_materials": 70 },
@@ -430,7 +430,7 @@
 	},
 	"fish_plant": {
 		"_comment": "Frozen fish and packaged seafood (picked once; its freezers use power). Canned fish is the Cannery's. PLACEHOLDERS.",
-		"name": "Fish Plant", "category": "processor", "menu_tab": "food",
+		"name": "Fish Plant", "category": "processor", "menu_tab": "food", "size": 2,
 		"description": "Freezes fish, or cleans and packs shrimp. Each plant keeps making the one it starts with.",
 		"buildable": true, "max_workers": 8, "worker_type": "low_skilled",
 		"materials": { "bricks": 1000, "cement": 100, "steel": 25, "construction_materials": 50 },
@@ -447,7 +447,7 @@
 	},
 	"supermarket": {
 		"_comment": "Retail (plan.md 5.16): sells finished food to the village, one product per shelf, several shelves at once. How fast a shelf sells comes from the village (population x the item's appetite in resources.json), its price tag and how many different products are on the shelves (game_config.json retail). fixed_workers + fixed_wage: always 4 workers at the minimum wage, no staffing or bonus choice (a choice changed nothing worth having: half the workers sell half as fast for the same total wages). Not staffed_first: it waits its turn for free people like production buildings, and short of people it sells slower (3 of 4 = 75%). Paid when a shelf sells out. Materials kept low enough that starting cash covers a Wheat Farm + Flour Mill + Supermarket even at the highest prices.",
-		"name": "Supermarket", "category": "retail", "menu_tab": "shops",
+		"name": "Supermarket", "category": "retail", "menu_tab": "shops", "size": 2,
 		"description": "Sells your food to the people of your village, several products at once. Pick a price tag for each shelf.",
 		"buildable": true, "max_workers": 4, "fixed_workers": true, "fixed_wage": true, "worker_type": "low_skilled",
 		"sells": ["food"],
@@ -461,7 +461,7 @@
 	},
 	"trading_post": {
 		"_comment": "Trade (plan.md 5.22): a trader from off the island buys any item at trade.sell_share of its normal price and sells any item at trade.buy_share (game_config.json). Instant, no demand limit. max_count = most a village may have. No workers, so it needs no road. The start of the Dock (plan.md 5.11). All PLACEHOLDERS.",
-		"name": "Trading Post", "category": "trade", "menu_tab": "shops",
+		"name": "Trading Post", "category": "trade", "menu_tab": "shops", "size": 2,
 		"description": "A trader from off the island buys anything you have, raw or finished, and sells you anything you need. Worse prices than your village pays, but no waiting. One per village.",
 		"buildable": true, "max_workers": 0, "max_count": 1,
 		"materials": { "bricks": 800, "cement": 80, "steel": 20, "construction_materials": 40 }

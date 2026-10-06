@@ -51,6 +51,19 @@ PALETTE = {
 	"solar_light": "#5d8fd1",
 	"hazard": "#e8b630",
 	"gravel": "#9a958b",
+	"plaster": "#f3dfb8",
+	"brick": "#b35a3c",
+	"brick_dark": "#8c4029",
+	"terracotta": "#c8643a",
+	"terracotta_dark": "#9f4a2a",
+	"bread": "#d08a3e",
+	"bread_light": "#ecc07a",
+	"shop_green": "#3f6f52",
+	"paving": "#d9c9a8",
+	"fire": "#f39a2e",
+	"copper": "#5fa391",
+	"copper_dark": "#447e70",
+	"water": "#6fb7e0",
 	"grass": "#6ca444",  # preview ground only
 }
 

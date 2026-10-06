@@ -26,7 +26,7 @@ const BUILDING_KEYS := ["name", "category", "description", "menu_tab", "build_co
 	"build_time", "max_workers", "worker_type", "fixed_workers", "staffed_first", "fixed_wage",
 	"households", "housing_tier", "hut", "wealth", "rent_per_household", "power_mw",
 	"capacity", "water_per_hour", "water_supply", "recipes", "shelves", "upgrades", "materials", "crew", "road_hub",
-	"construction_crew", "power_supply", "power_radius", "grid_mw", "coming_soon", "sells", "switch_fee", "max_count"]
+	"construction_crew", "power_supply", "power_radius", "grid_mw", "coming_soon", "sells", "switch_fee", "max_count", "size"]
 ## What a level in "upgrades" may change (plus an optional fixed "cost" and own "time"), and the
 ## least each may be.
 const UPGRADE_STATS := {"max_workers": 0, "capacity": 1, "shelves": 1, "households": 1, "water_supply": 1, "power_supply": 1, "power_radius": 1}
@@ -138,6 +138,7 @@ func _check_buildings(data: Dictionary, tabs: Dictionary) -> void:
 		_check_materials(config, def, where)
 		_whole_at_least(def, "max_workers", 0, where, false)
 		_whole_at_least(def, "max_count", 1, where, false)
+		_whole_at_least(def, "size", 1, where, false)
 		if def.has("menu_tab") and not tabs.has(def.menu_tab):
 			_fail("%s: menu_tab '%s' isn't a tab in build_menu.json" % [where, def.menu_tab])
 		if def.get("buildable", false) and not def.has("menu_tab"):
@@ -514,9 +515,14 @@ func _check_roads(data: Dictionary) -> void:
 	if hubs != 1:
 		_fail("%s: exactly one building in buildings.json needs \"road_hub\": true (found %d)" % [at, hubs])
 	var grid: Array = data.config.get("grid_size", [0, 0])
-	var standing := {}
+	var standing := {}  # every tile of every starting building's footprint
 	for entry in data.config.get("starting_buildings", []):
-		standing[Vector2i(int(entry.position[0]), int(entry.position[1]))] = true
+		for tile in Simulation.footprint(data, str(entry.type), Vector2i(int(entry.position[0]), int(entry.position[1]))):
+			if standing.has(tile):
+				_fail("%s starting_buildings: two starting buildings overlap at %s" % [at, tile])
+			elif tile.x < 0 or tile.y < 0 or tile.x >= int(grid[0]) or tile.y >= int(grid[1]):
+				_fail("%s starting_buildings: the %s reaches off the plot at %s" % [at, entry.type, tile])
+			standing[tile] = true
 	for cell in roads.get("starting_roads", []):
 		if typeof(cell) != TYPE_ARRAY or cell.size() != 2:
 			_fail("%s starting_roads: %s isn't [x, y]" % [at, cell])

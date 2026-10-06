@@ -52,16 +52,16 @@
 			{ "from": 0.8, "speed": 1.5, "move_in": 1.5, "leave_per_hour": 0.0 }
 		]
 	},
-	"grid_size": [20, 20],
+	"grid_size": [26, 26],
 	"_save": "The game saves to user://save.json every autosave_seconds, right after player actions, and when it closes or goes to the background (plan.md 8). The Welcome back window shows at start-up when the game was closed for at least welcome_back_after_seconds.",
 	"autosave_seconds": 30,
 	"welcome_back_after_seconds": 120,
-	"_roads": "Roads (plan.md 5.20). price = dollars per road tile, paid at once, ready at once; removing is free, nothing paid back. Buildings with workers need a road linked to City Hall (road_hub in buildings.json) on one of the 4 tiles beside them, or they get no workers. starting_roads = road tiles a new game starts with [x, y]. PLACEHOLDERS.",
+	"_roads": "Roads (plan.md 5.20). price = dollars per road tile, paid at once, ready at once; removing is free, nothing paid back. Buildings with workers need a road linked to City Hall (road_hub in buildings.json) on a tile beside one of their sides (a 2x2 building has 8 such tiles), or they get no workers. starting_roads = road tiles a new game starts with [x, y]. PLACEHOLDERS.",
 	"roads": {
 		"price": 25,
 		"starting_roads": [
-			[6, 10], [7, 10], [8, 10], [9, 10], [10, 10], [11, 10], [12, 10], [13, 10], [14, 10], [15, 10], [16, 10], [17, 10], [18, 10],
-			[12, 11], [15, 11]
+			[6, 13], [7, 13], [8, 13], [9, 13], [10, 13], [11, 13], [12, 13], [13, 13], [14, 13], [15, 13], [16, 13], [17, 13], [18, 13],
+			[19, 13], [20, 13], [21, 13]
 		]
 	},
 	"_construction": "Building and upgrading (plan.md 5.15). Every building's materials (buildings.json) are its Level 1 amounts; each level needs level_growth times the level below (2 = doubles: Level 2 = 2x, Level 3 = 4x, Level 4 = 8x). The materials are bought from an in-game supplier when the work starts, at today's market price: the base price (dollars) plus or minus up to price_swing (0.2 = 20%), a new price every price_change_seconds. Labor = construction workers from your Construction Offices: crew of them to build anything with materials (a building can set its own crew), crew_per_level more for each upgrade level (1, then 2 for Level 2, 3 for Level 3, 4 for Level 4); they are busy until the work is done, so more offices or bigger ones let you build more at once. Paid once at the labor_worker_type's minimum wage for the hours the work takes. level_seconds = how long it takes: building (Level 1), then each upgrade (to Level 2, 3, 4, ...; levels past the list take the last time). All PLACEHOLDERS.",
@@ -139,14 +139,14 @@
 		"tree_density": 0.6
 	},
 	"starting_buildings": [
-		{ "type": "city_hall", "position": [9, 9] },
-		{ "type": "construction_office", "position": [9, 11] },
-		{ "type": "public_housing", "position": [12, 9] },
-		{ "type": "public_housing", "position": [15, 9] },
-		{ "type": "public_housing", "position": [18, 9] },
-		{ "type": "public_housing", "position": [12, 12] },
-		{ "type": "public_housing", "position": [15, 12] },
-		{ "type": "warehouse", "position": [6, 9] },
-		{ "type": "electric_substation", "position": [16, 11] }
+		{ "type": "city_hall", "position": [10, 11] },
+		{ "type": "construction_office", "position": [10, 14] },
+		{ "type": "public_housing", "position": [14, 12] },
+		{ "type": "public_housing", "position": [17, 12] },
+		{ "type": "public_housing", "position": [20, 12] },
+		{ "type": "public_housing", "position": [14, 14] },
+		{ "type": "public_housing", "position": [17, 14] },
+		{ "type": "warehouse", "position": [6, 11] },
+		{ "type": "electric_substation", "position": [20, 14] }
 	]
 }

@@ -176,8 +176,8 @@ func hits(world: Vector2) -> bool:
 	var local := world - position
 	var art := picture(type_id)
 	if art.is_empty():
-		var base := _footprint(Vector2.ZERO)
-		var top := _footprint(Vector2.ZERO, HEIGHT)
+		var base := _footprint(Vector2.ZERO, 0.0, Economy.size_of(type_id))
+		var top := _footprint(Vector2.ZERO, HEIGHT, Economy.size_of(type_id))
 		return Geometry2D.is_point_in_polygon(local, PackedVector2Array([top[0], top[1], base[1], base[2], base[3], top[3]]))
 	if not _hit_images.has(type_id):
 		var image: Image = art.texture.get_image()
@@ -205,7 +205,7 @@ func top_height() -> float:
 ## Pictures from the sprite studio already include their shadow.
 func draw_shadow(layer: Node2D) -> void:
 	if picture(type_id).is_empty():
-		layer.cast(_footprint(position), HEIGHT)
+		layer.cast(_footprint(position, 0.0, Economy.size_of(type_id)), HEIGHT)
 
 
 func _draw_bubble() -> void:
@@ -261,7 +261,8 @@ static func draw_preview(canvas: CanvasItem, at: Vector2, type_id: String, tint:
 static func preview_rect(type_id: String, at: Vector2) -> Rect2:
 	var art := picture(type_id)
 	if art.is_empty():
-		return Rect2(at - Vector2(Iso.TILE_W / 2.0, Iso.TILE_H / 2.0 + HEIGHT), Vector2(Iso.TILE_W, Iso.TILE_H + HEIGHT))
+		var tile := Vector2(Iso.TILE_W, Iso.TILE_H) * Economy.size_of(type_id)
+		return Rect2(at - Vector2(tile.x / 2.0, tile.y / 2.0 + HEIGHT), tile + Vector2(0, HEIGHT))
 	return Rect2(at - art.anchor * art.scale, art.texture.get_size() * art.scale)
 
 
@@ -290,11 +291,12 @@ static func draw_name(canvas: CanvasItem, at: Vector2, type_id: String, alpha: f
 	canvas.draw_string(UITheme.font(), pos, def.name, HORIZONTAL_ALIGNMENT_CENTER, 140, 14, Color(1, 1, 1, alpha))
 
 
-## The placeholder box's outline on the ground (raised by `lift`): a tile diamond, a bit smaller.
-static func _footprint(at: Vector2, lift := 0.0) -> PackedVector2Array:
+## The placeholder box's outline on the ground (raised by `lift`): the diamond of its `size` x
+## `size` tiles, a bit smaller.
+static func _footprint(at: Vector2, lift := 0.0, size := 1) -> PackedVector2Array:
 	var points := Iso.diamond_at(Vector2.ZERO)
 	for i in points.size():
-		points[i] = at + points[i] * FOOTPRINT - Vector2(0, lift)
+		points[i] = at + points[i] * (size - 1.0 + FOOTPRINT) - Vector2(0, lift)
 	return points
 
 
@@ -302,8 +304,8 @@ static func _footprint(at: Vector2, lift := 0.0) -> PackedVector2Array:
 static func draw_block(canvas: CanvasItem, at: Vector2, type_id: String, tint: Color) -> void:
 	var def: Dictionary = GameData.buildings[type_id]
 	var color: Color = CATEGORY_COLORS.get(def.category, Color.GRAY) * tint
-	var base := _footprint(at)
-	var top := _footprint(at, HEIGHT)
+	var base := _footprint(at, 0.0, Economy.size_of(type_id))
+	var top := _footprint(at, HEIGHT, Economy.size_of(type_id))
 	# Sun from the upper left: the left wall is half-lit, the right wall faces away.
 	var left := PackedVector2Array([top[3], top[2], base[2], base[3]])
 	var right := PackedVector2Array([top[2], top[1], base[1], base[2]])

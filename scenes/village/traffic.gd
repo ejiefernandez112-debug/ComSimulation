@@ -46,10 +46,12 @@ func _on_economy_changed() -> void:
 		if Economy.needs_road(b) and float(w.working) > 0.0:
 			busy += 1
 		if GameData.buildings[b.type].get("category", "") == "storage":
-			for side in Agent.SIDES:
-				var cell := Vector2i(int(b.position[0]), int(b.position[1])) + side
-				if _roads.has(cell):
-					_next_to_warehouse.append(cell)
+			var area := Economy.footprint(b.type, Vector2i(int(b.position[0]), int(b.position[1])))
+			for tile in area:
+				for side in Agent.SIDES:
+					var cell: Vector2i = tile + side
+					if _roads.has(cell) and not area.has(cell) and not _next_to_warehouse.has(cell):
+						_next_to_warehouse.append(cell)
 	var share := 1.0 if Settings.get_value("water_detail") else 0.5
 	_walkers_wanted = 0 if _roads.is_empty() else mini(WALKERS_MAX, ceili(working / float(WORKERS_PER_WALKER) * share))
 	_cars_wanted = 0 if _roads.size() < 2 else mini(CARS_MAX, ceili((busy + _roads.size() / float(ROAD_TILES_PER_CAR)) * share))

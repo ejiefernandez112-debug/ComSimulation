@@ -31,6 +31,15 @@ static func diamond(cell: Vector2i, lift := 0.0) -> PackedVector2Array:
 	return diamond_at(to_world(Vector2(cell)), lift)
 
 
+## The outline of a size x size square of tiles whose top tile is `cell` (a 2x2 building's
+## footprint): top, right, bottom, left corners.
+static func square(cell: Vector2i, size: int) -> PackedVector2Array:
+	var c := Vector2(cell)
+	var far := size - 0.5
+	return PackedVector2Array([to_world(c + Vector2(-0.5, -0.5)), to_world(c + Vector2(far, -0.5)),
+		to_world(c + Vector2(far, far)), to_world(c + Vector2(-0.5, far))])
+
+
 ## The same diamond around any screen point (e.g. a building's position), raised by `lift` pixels.
 static func diamond_at(center: Vector2, lift := 0.0) -> PackedVector2Array:
 	var c := center - Vector2(0, lift)
