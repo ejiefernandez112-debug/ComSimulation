@@ -9,6 +9,7 @@ const OUT := "res://assets/ui/game_theme.tres"
 
 
 func _initialize() -> void:
+	Engine.set_meta("running_tests", true)  # keeps Economy away from the player's real save
 	# Loaded here, not named at the top: ui_theme.gd uses the game's autoloads, which only exist
 	# once the game has started.
 	var ui_theme: GDScript = load("res://scenes/ui/ui_theme.gd")
