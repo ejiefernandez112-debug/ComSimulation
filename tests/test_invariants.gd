@@ -667,9 +667,10 @@ func _away_matches_playing(rng: RandomNumberGenerator, state: Dictionary, now: f
 	var until := start + minutes * 60.0
 	Sim.settle(away, _data, until)
 	var t := start
+	var hiring := {}  # handed from settle to settle, as the game's ticks do (Economy.tick)
 	while t < until:
 		t = minf(t + 1.0, until)
-		Sim.settle(playing, _data, t)
+		Sim.settle(playing, _data, t, hiring)
 	var diff := _outcome_difference(away, playing)
 	return "" if diff == "" else "%d min away ended differently from playing through them (away vs playing): %s" % [minutes, diff]
 

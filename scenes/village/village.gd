@@ -97,7 +97,7 @@ func _on_economy_changed() -> void:
 ## Placement Mode for a new building: show the grid and a see-through ghost of type_id on a free
 ## tile near the middle of the screen.
 func start_placement(type_id: String) -> void:
-	_begin_placement(type_id, _free_spot_near(type_id, _spot_under(type_id, camera.position)))
+	_begin_placement(type_id, Economy.free_spot_near(type_id, _spot_under(type_id, camera.position)))
 
 
 ## Placement Mode for an existing building: it fades where it stands and the ghost starts right on
@@ -242,20 +242,6 @@ func _ghost_changed() -> void:
 	if _shows_power(placing_type):
 		grid.queue_redraw()  # its power circle moves with it
 	ghost_moved.emit(ghost_check())
-
-
-## The free spot for a building of this kind closest to `near` (or `near` itself if there is none).
-func _free_spot_near(type_id: String, near: Vector2i) -> Vector2i:
-	var best := near
-	var best_dist := INF
-	for x in island.plot_size.x:
-		for y in island.plot_size.y:
-			var cell := Vector2i(x, y)
-			var dist := Vector2(cell - near).length()
-			if dist < best_dist and Economy.fits(type_id, cell):
-				best = cell
-				best_dist = dist
-	return best
 
 
 ## The position a building of this kind gets when its middle is under the screen point `world`
@@ -493,7 +479,7 @@ func _draw_road_line() -> void:
 		var color := NEW_ROAD
 		if road_removing:
 			color = BLOCKED_COLOR if roads.has(cell) else OLD_ROAD
-		elif not Economy.building_at(cell).is_empty():
+		elif not Economy.building_at(cell).is_empty():  # perf-ok: the few tiles of the road being drawn
 			color = BLOCKED_COLOR
 		elif roads.has(cell):
 			color = OLD_ROAD

@@ -73,6 +73,7 @@ const BUTTONS := {
 
 static var _font: Font
 static var _bold: Font
+static var _icons := {}  # icon name -> texture: looked up once (checking the files is slow on phones)
 
 
 ## Builds the theme. Call once (main.gd does).
@@ -287,6 +288,14 @@ static func size_button(b: Button, size: String) -> void:
 	b.add_theme_font_size_override("font_size", s.font)
 
 
+## Gives a label or button this text colour, but only when it's a different one: setting it counts
+## as a theme change, which makes the control and its containers work out their size again (slow
+## for screens that refresh many labels every second).
+static func set_font_color(control: Control, color: Color) -> void:
+	if not control.has_theme_color_override("font_color") or control.get_theme_color("font_color") != color:
+		control.add_theme_color_override("font_color", color)
+
+
 ## A label in one of the text styles ("" = body text).
 static func label(text: String, variation := "") -> Label:
 	var l := Label.new()
@@ -357,8 +366,10 @@ static func pop_in(control: Control, from := 0.85) -> void:
 
 ## An icon from assets/ui/icons/, or the plain item icon if that one doesn't exist yet.
 static func icon(icon_name: String) -> Texture2D:
-	var path := ICONS + icon_name + ".svg"
-	return load(path) if ResourceLoader.exists(path) else load(ICONS + "item.svg")
+	if not _icons.has(icon_name):
+		var path := ICONS + icon_name + ".svg"
+		_icons[icon_name] = load(path) if ResourceLoader.exists(path) else load(ICONS + "item.svg")
+	return _icons[icon_name]
 
 
 ## A 9-patch style from an SVG skin: the corners keep their shape however big the box gets.

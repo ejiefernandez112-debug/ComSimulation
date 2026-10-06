@@ -70,6 +70,10 @@ func _ready() -> void:
 		dev_panel.name = "DevPanel"
 		ui_root.add_child(dev_panel)
 		dev_panel.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)  # made in code, so give it the whole screen
+		var overlay: Control = load("res://scenes/debug/perf_overlay.gd").new()
+		overlay.name = "PerfOverlay"  # the Developer window finds it by this name
+		overlay.village = village
+		ui_root.add_child(overlay)
 	_welcome_back.call_deferred()  # once the screen has its real size
 
 
@@ -265,9 +269,14 @@ func _ask_demolish(building_id: String) -> void:
 		hud.toast(check.error, true)
 		return
 	var building_name: String = GameData.buildings[Economy.building(building_id).type].name
+	# No money back: every unit of material it was built with, and the goods inside, go to the
+	# warehouse (plan.md §5.15).
+	var back: Dictionary = check.materials.duplicate()
+	for res in check.goods:
+		back[res] = int(back.get(res, 0)) + int(check.goods[res])
 	confirm_dialog.ask("Demolish %s?" % building_name,
-		"The building is gone for good. Goods inside it go to your warehouse.",
-		check.money, check.goods, "Demolish", _demolish.bind(building_id))
+		"The building is gone for good. No money comes back, but all of its building materials and the goods inside go to your warehouse:",
+		0, back, "Demolish", _demolish.bind(building_id))
 
 
 func _demolish(building_id: String) -> void:
@@ -275,7 +284,7 @@ func _demolish(building_id: String) -> void:
 	var result := Economy.demolish(building_id)
 	if result.ok:
 		building_panel.close()
-		hud.toast("%s demolished. +%s" % [building_name, UITheme.money(result.money)])
+		hud.toast("%s demolished. Its materials went to the warehouse." % building_name)
 	else:
 		hud.toast(result.error, true)
 

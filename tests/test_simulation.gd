@@ -81,7 +81,7 @@ func _data() -> Dictionary:
 		},
 		"config": {"starting_cash": 500, "population_growth_seconds": 10,
 			"grid_size": [10, 10],
-			"cancel_refund_in_progress": 0.5, "demolish_refund": 0.5,
+			"cancel_refund_in_progress": 0.5,
 			"batch": {"max_hours": 1000, "default_hours": 10},  # long batches, for the long tests
 			"starting_buildings": [{"type": "office", "position": [0, 0]}, {"type": "house", "position": [1, 0]},
 				{"type": "store", "position": [2, 0]}]},
@@ -382,7 +382,7 @@ func test_demolish() -> void:
 	var cash: int = state.profile.currency
 	var result := Sim.demolish(state, data, mill.id, T0 + 90)
 	_check(result.ok and Sim.find_building(state, mill.id).is_empty(), "mill is gone")
-	_check(state.profile.currency == cash + 10000, "half the 200 build cost back")
+	_check(state.profile.currency == cash, "no money back (it had no materials to give back)")
 	_check(state.inventory.get("flour", 0) == 8 and state.inventory.get("wheat", 0) == 5, "its flour and half the unused wheat came back first")
 	_check(Sim.can_build(state, data, "farm", Vector2i(5, 5), T0).ok, "the spot is free again")
 	_check(not Sim.demolish(state, data, "b1", T0).ok, "starter buildings can't be demolished")
@@ -482,7 +482,7 @@ func test_statistics_counters() -> void:
 	var st := Sim.stats(state)
 	_check(st.income.sales == 2000 and int(st.sales_by_item.wheat) == 2000 and int(st.sold.wheat) == 10, "sales counted (money, per item, amount)")
 	Sim.demolish(state, data, farm.id, T0 + 130)
-	_check(Sim.stats(state).income.demolish == 5000, "demolish refund counted as income")
+	_check(Sim.stats(state).income.demolish == 0, "demolishing brings in no money")
 	var old_save := Sim.new_game(data, T0)
 	old_save.erase("stats")
 	_check(Sim.stats(old_save).made.is_empty(), "saves without statistics get empty counters")
@@ -3046,15 +3046,18 @@ func test_real_shop_data() -> void:
 		_check(float(tags[tag].price) > last_price and float(tags[tag].speed) < last_speed, "real data: tag '%s' costs more and sells slower than the one before" % tag)
 		last_price = float(tags[tag].price)
 		last_speed = float(tags[tag].speed)
-	# Construction (plan.md §5.15): at the worst prices (every material at its highest swing).
+	# Construction (plan.md §5.15): at the worst prices (every material at its highest swing),
+	# plus the crew's share of them.
 	var construction: Dictionary = data.config.construction
 	var worst := 0.0
 	for type in ["supermarket", "wheat_farm", "flour_mill"]:
 		for line in Sim.construction_quote(data, type, 1, T0).lines:
-			var base := Sim.cents(float(construction.materials.get(line.id, {}).get("price", 0)))
-			worst += float(line.cost) if line.id == "labor" else int(line.amount) * base * (1.0 + float(construction.price_swing))
+			if line.id != "labor":
+				var base := Sim.cents(float(data.resources.get(line.id, {}).get("price", 0)))
+				worst += int(line.amount) * base * (1.0 + float(construction.price_swing)) * (1.0 + float(construction.get("labor_share", 0.0)))
 	_check(worst <= Sim.cents(float(data.config.starting_cash)), "real data: starting cash covers a Wheat Farm, a Flour Mill and a Supermarket even at the highest material prices")
-	var times := [3600.0, 3600.0, 7200.0, 10800.0]
+	_check(int(Sim.level_stat(data, {"type": "supermarket", "level": 1}, "shelves", 0)) == 1 and int(Sim.level_stat(data, {"type": "supermarket", "level": 4}, "shelves", 0)) == 4, "real data: a Supermarket has 1 shelf, one more per level (4 at Level 4)")
+	var times := [10.0, 3600.0, 7200.0, 10800.0]
 	for type in data.buildings:
 		if not data.buildings[type].get("buildable", false):
 			continue
@@ -3068,14 +3071,14 @@ func test_real_shop_data() -> void:
 
 ## Test data where building and upgrading need materials and a crew: a lodge (a home) needs
 ## 100 Bricks + 2 Steel at Level 1. Bricks cost $1 and Steel $50, give or take 20% each hour;
-## the crew is 8 at $15 an hour.
+## the crew is 8, paid 10% of the materials' value.
 func _construction_data() -> Dictionary:
 	var data := _data()
 	data.config["starting_cash"] = 100000
 	data.config["worker_types"] = {"low_skilled": {"name": "Low-skilled", "wage_per_hour": 15}}
-	data.config["construction"] = {
-		"materials": {"bricks": {"name": "Bricks", "price": 1}, "steel": {"name": "Steel", "unit": "beam", "price": 50}},
-		"labor_worker_type": "low_skilled", "crew": 8, "level_growth": 2,
+	data.resources["bricks"] = {"name": "Bricks", "category": "building_material", "price": 1}
+	data.resources["steel"] = {"name": "Steel", "category": "building_material", "unit": "beam", "price": 50}
+	data.config["construction"] = {"labor_share": 0.1, "crew": 8, "level_growth": 2,
 		"level_seconds": [3600, 3600, 7200, 10800], "price_swing": 0.2, "price_change_seconds": 3600}
 	data.buildings["lodge"] = {"category": "residential", "buildable": true, "households": 2,
 		"materials": {"bricks": 100, "steel": 2},
@@ -3099,8 +3102,9 @@ func test_construction_needs_double_each_level() -> void:
 	for line in Sim.construction_quote(data, "lodge", 3, T0).lines:
 		if line.id == "labor":
 			labor = line
-	_check(int(labor.get("amount", 0)) == 32 and is_equal_approx(float(labor.get("hours", 0)), 2.0) and int(labor.get("cost", 0)) == 96000, "Level 3 labor: a crew of 32 for 2 h at $15 = $960")
-	_check(Sim.level_value(data, "lodge", 1) == 100 * 100 + 2 * 5000 + 8 * 1500, "at base prices Level 1 is worth $100 of Bricks + $100 of Steel + $120 of labor")
+	var materials_3 := 400 * Sim.material_price(data, "bricks", T0) + 8 * Sim.material_price(data, "steel", T0)
+	_check(int(labor.get("amount", 0)) == 32 and int(labor.get("cost", 0)) == roundi(materials_3 * 0.1), "Level 3 labor: a crew of 32, paid 10% of the materials' value")
+	_check(Sim.level_value(data, "lodge", 1) == 100 * 100 + 2 * 5000 + 2000, "at base prices Level 1 is worth $100 of Bricks + $100 of Steel + $20 of labor (10%)")
 	_check(Sim.construction_value(data, "lodge", 2) == Sim.level_value(data, "lodge", 1) + Sim.level_value(data, "lodge", 2), "a building's value adds its upgrades")
 	data.buildings.lodge["crew"] = 3
 	_check(int(Sim.construction_needs(data, "lodge", 3).crew) == 12, "a building can have its own crew (3, so 12 at Level 3)")
@@ -3128,7 +3132,8 @@ func test_material_prices_move_with_the_market() -> void:
 func test_building_buys_materials_and_pays_the_crew() -> void:
 	var data := _construction_data()
 	var state := Sim.new_game(data, T0)
-	var expected := 100 * Sim.material_price(data, "bricks", T0) + 2 * Sim.material_price(data, "steel", T0) + 8 * 1500
+	var materials := 100 * Sim.material_price(data, "bricks", T0) + 2 * Sim.material_price(data, "steel", T0)
+	var expected := materials + roundi(materials * 0.1)
 	var quote := Sim.construction_quote(data, "lodge", 1, T0)
 	_check(int(quote.cost) == expected and float(quote.seconds) == 3600.0, "building costs the materials at today's prices + the crew, and takes 1 h")
 	var cash: int = state.profile.currency
@@ -3139,7 +3144,8 @@ func test_building_buys_materials_and_pays_the_crew() -> void:
 	_check(is_equal_approx(Sim.construction_progress(lodge, data, T0 + 1800), 0.5), "half built after 30 min")
 	var t := T0 + 3600.0
 	Sim.settle(state, data, t)
-	var up := 200 * Sim.material_price(data, "bricks", t) + 4 * Sim.material_price(data, "steel", t) + 16 * 1500
+	var up_materials := 200 * Sim.material_price(data, "bricks", t) + 4 * Sim.material_price(data, "steel", t)
+	var up := up_materials + roundi(up_materials * 0.1)
 	var check := Sim.can_upgrade(state, data, lodge.id, t)
 	_check(check.ok and int(check.cost) == up and float(check.seconds) == 3600.0, "Level 2: twice the materials and crew, at that hour's prices, and 1 h")
 	cash = state.profile.currency
@@ -3150,6 +3156,112 @@ func test_building_buys_materials_and_pays_the_crew() -> void:
 	var poor := Sim.new_game(data, T0)
 	poor.profile.currency = expected - 1
 	_check(Sim.can_build(poor, data, "lodge", Vector2i(5, 5), T0).error == "Not enough money.", "it needs the money for the materials and crew")
+
+
+## The warehouse's own materials are used first; only the rest is bought. Their cost tags move
+## into the building's value, and the crew is still paid its share of all the materials.
+func test_building_uses_warehouse_materials_first() -> void:
+	var data := _construction_data()
+	var state := Sim.new_game(data, T0)
+	state.inventory["bricks"] = 60
+	state["inventory_cost"] = {"bricks": 3000.0}  # they cost $0.50 each
+	var bricks := Sim.material_price(data, "bricks", T0)
+	var steel := Sim.material_price(data, "steel", T0)
+	var labor := roundi((100 * bricks + 2 * steel) * 0.1)
+	var plan := Sim.construction_plan(state, data, "lodge", 1, T0)
+	var line := {}
+	for l in plan.lines:
+		if l.id == "bricks":
+			line = l
+	_check(int(line.from_stock) == 60 and int(line.buy) == 40 and int(line.cost) == 40 * bricks, "60 Bricks from the warehouse, 40 bought")
+	_check(int(plan.cost) == 40 * bricks + 2 * steel + labor, "it costs the bought materials + the crew's share of all of them")
+	var cash: int = state.profile.currency
+	var lodge := Sim.find_building(state, Sim.build(state, data, "lodge", Vector2i(5, 5), T0).building_id)
+	_check(state.profile.currency == cash - int(plan.cost) and not state.inventory.has("bricks") and not state.inventory_cost.has("bricks"), "the warehouse's Bricks are used up, with their cost tags")
+	_check(int(lodge.paid) == int(plan.cost) + 3000, "its value = money paid + the Bricks' $30 cost tags")
+	_check(int(lodge.materials.bricks) == 100 and int(lodge.materials.steel) == 2, "it remembers every unit it was built with")
+	_check(is_equal_approx(float(lodge.materials_cost.bricks), 3000.0 + 40 * bricks) and is_equal_approx(float(lodge.materials_cost.steel), 2.0 * steel), "and what they really cost")
+	_check(Sim.cash_check(state).ok, "cash check adds up")
+
+
+## Demolishing gives no money: every unit of material (building + upgrades) goes back to the
+## warehouse at what it really cost. Not when there's no room for it.
+func test_demolish_gives_materials_back() -> void:
+	var data := _construction_data()
+	data.config["population_growth_seconds"] = 0  # nobody moves in: the starting house holds everyone
+	var state := Sim.new_game(data, T0)
+	var lodge := Sim.find_building(state, Sim.build(state, data, "lodge", Vector2i(5, 5), T0).building_id)
+	var t := T0 + 3600.0
+	Sim.settle(state, data, t)
+	Sim.upgrade(state, data, lodge.id, t)
+	Sim.settle(state, data, t + 3600.0)
+	var cost: Dictionary = lodge.materials_cost.duplicate()
+	var check := Sim.can_demolish(state, data, lodge.id)
+	_check(check.ok and not check.has("money") and int(check.materials.bricks) == 300 and int(check.materials.steel) == 6, "Level 2: 100 + 200 Bricks and 2 + 4 Steel come back")
+	var full := state.duplicate(true)
+	full.inventory["wheat"] = Sim.warehouse_cap(full, data) - 300
+	_check(not Sim.can_demolish(full, data, lodge.id).ok, "not when the warehouse has no room for them")
+	var cash: int = state.profile.currency
+	var before := int(Sim.balance_sheet(state, data, t + 3600.0).company_value)
+	_check(Sim.demolish(state, data, lodge.id, t + 3600.0).ok, "demolished")
+	_check(state.profile.currency == cash and int(Sim.stats(state).income.demolish) == 0, "no money")
+	_check(int(state.inventory.bricks) == 300 and int(state.inventory.steel) == 6, "all its materials are in the warehouse")
+	_check(is_equal_approx(float(state.inventory_cost.bricks), float(cost.bricks)) and is_equal_approx(float(state.inventory_cost.steel), float(cost.steel)), "at what they really cost")
+	var labor := int(lodge.paid) - roundi(float(cost.bricks) + float(cost.steel))
+	_check(int(Sim.balance_sheet(state, data, t + 3600.0).company_value) == before - labor, "the company loses only what the crew was paid")
+	_check(Sim.cash_check(state).ok, "cash check adds up")
+	var again := Sim.build(state, data, "lodge", Vector2i(5, 5), t + 3600.0)
+	_check(again.ok and int(state.inventory.bricks) == 200 and int(state.inventory.steel) == 4, "building again takes them from the warehouse")
+
+
+## Version 15: buildings in an older save get the materials they were built with (at base
+## prices), and stores lose shelves past their new number (what sold is paid, the rest comes back).
+func test_old_save_gets_materials_and_fewer_shelves() -> void:
+	var data := _construction_data()
+	var state := Sim.new_game(data, T0)
+	var lodge := Sim.find_building(state, Sim.build(state, data, "lodge", Vector2i(5, 5), T0).building_id)
+	lodge.erase("materials")
+	lodge.erase("materials_cost")
+	state.save_version = 14
+	var result := SaveFormat.from_text(JSON.stringify(state), data)
+	_check(result.ok and int(result.state.save_version) == Sim.SAVE_VERSION, "a version 14 save loads")
+	var loaded := Sim.find_building(result.state, lodge.id)
+	_check(int(loaded.materials.bricks) == 100 and int(loaded.materials.steel) == 2, "the lodge remembers its 100 Bricks and 2 Steel")
+	# It cost lodge.paid (materials + crew at that hour's prices); at base prices it's worth $220,
+	# $200 of it materials. So the materials get 200/220 of what was paid, split as at base prices.
+	var scale := float(lodge.paid) / Sim.level_value(data, "lodge", 1)
+	_check(is_equal_approx(float(loaded.materials_cost.bricks), 10000.0 * scale) and is_equal_approx(float(loaded.materials_cost.steel), 10000.0 * scale), "their share of what was paid (not more than it cost)")
+	var worth := float(loaded.materials_cost.bricks) + float(loaded.materials_cost.steel)
+	_check(worth < float(lodge.paid), "so demolishing it can't make the company worth more")
+
+	var town := _shop_town()
+	var shop_state: Dictionary = town[0]
+	var shop_data: Dictionary = town[1]
+	var market: Dictionary = town[2]
+	Sim.stock_shelf(shop_state, shop_data, market.id, "flour", 10, "normal", T0)
+	Sim.stock_shelf(shop_state, shop_data, market.id, "bread", 40, "normal", T0)
+	Sim.settle(shop_state, shop_data, T0 + 1800)  # some of the 40 bread sold
+	var sold := floori(Sim.shelf_sold_now(shop_state, shop_data, market, 1, T0 + 1800) + 0.000001)
+	var cash: int = shop_state.profile.currency
+	shop_state.save_version = 14
+	shop_data.buildings.market.shelves = 1  # the store now has 1 shelf
+	var shop_result := SaveFormat.from_text(JSON.stringify(shop_state), shop_data)
+	var shop: Dictionary = shop_result.state
+	var store := Sim.find_building(shop, market.id)
+	_check(shop_result.ok and store.shelves.size() == 1 and store.shelves[0].res == "flour", "the store keeps 1 shelf: the flour")
+	_check(sold > 0 and sold < 40 and int(shop.inventory.bread) == 60 + 40 - sold, "the unsold bread (%d) came back to the warehouse" % (40 - sold))
+	_check(int(shop.profile.currency) > cash and int(Sim.stats(shop).sold.get("bread", 0)) == sold, "the %d sold were paid for" % sold)
+
+
+## No job seekers move in at 20% happiness or less; above it they come at normal speed, for the
+## open jobs only (game_config.json happiness.growth_speeds).
+func test_real_data_migrants_need_over_20_percent() -> void:
+	var config: Dictionary = GameDataScript.load_json("res://data/game_config.json")
+	var h: Dictionary = config.happiness
+	_check(float(Sim._band_for(h, 0.0).get("move_in", 1.0)) == 0.0 and float(Sim._band_for(h, 0.2).get("move_in", 1.0)) == 0.0 and float(Sim._band_for(h, 0.204).get("move_in", 1.0)) == 0.0, "real data: nobody moves in at 20% or less")
+	for score in [0.21, 0.35, 0.5, 0.79, 0.8, 1.0]:
+		_check(float(Sim._band_for(h, score).get("move_in", 0.0)) == 1.0, "real data: at %d%% migrants come at normal speed" % roundi(score * 100.0))
+	_check(bool(config.get("move_in_only_for_jobs", false)), "real data: they only come for open jobs")
 
 
 # --- Upgrades (plan.md §5.15) ----------------------------------------------------
@@ -3312,15 +3424,16 @@ func test_balance_sheet_upgrade() -> void:
 	_check(int(sheet.being_built) == 0 and not farm.has("upgrade_paid") and int(sheet.buildings) == 30000 + 5000, "done: part of the building's value")
 
 
-## Demolishing gives back half the price: the company loses the other half.
+## Demolishing gives back no money: a building with a fixed cash price and no materials (the test
+## data's farm) is lost entirely. (With materials, see test_demolish_gives_materials_back.)
 func test_balance_sheet_demolish() -> void:
 	var data := _data()
 	var state := Sim.new_game(data, T0)
 	var farm := Sim.find_building(state, Sim.build(state, data, "farm", Vector2i(5, 5), T0).building_id)
 	Sim.demolish(state, data, farm.id, T0)
 	var sheet := Sim.balance_sheet(state, data, T0)
-	_check(int(sheet.company_value) == 80000 - 5000 and int(sheet.profit_kept) == -5000, "$50 of the $100 farm is lost")
-	_check(Sim.cash_check(state).ok, "the refund is counted: cash check adds up")
+	_check(int(sheet.company_value) == 80000 - 10000 and int(sheet.profit_kept) == -10000, "the $100 farm is lost")
+	_check(Sim.cash_check(state).ok, "cash check adds up")
 
 
 ## Selling goods turns their cost into money: the profit kept grows by what they earned over
@@ -3772,3 +3885,75 @@ func test_old_save_gets_construction_office() -> void:
 	_check(offices.size() == 1 and Sim.on_road(data, offices[0]) and Sim.is_built(offices[0], T0), "it got a Construction Office, standing beside a linked road")
 	_check(offices.size() == 1 and Sim.hired(offices[0]) == 4 and Sim.crew_free(s, data, T0) == 4, "its 4 construction workers are hired")
 	_check(int(s.stats.capital.buildings) == capital + Sim.construction_value(data, "construction_office") and Sim.cash_check(s).ok, "it counts in the starting capital at its value")
+
+
+## Speed-ups (plan.md §9.1) must never change an answer: what settle works out once and hands on,
+## the plot map and the remembered prices all give exactly what working it out afresh gives.
+func test_shortcuts_give_the_same_answers() -> void:
+	var data := {"resources": GameDataScript.load_json("res://data/resources.json"),
+		"buildings": GameDataScript.load_json("res://data/buildings.json"),
+		"config": GameDataScript.load_json("res://data/game_config.json")}
+	var state := Sim.new_game(data, T0)
+	state.population.current = 120  # more people than the homes hold: huts go up
+	var now := T0 + 1.0
+	Sim.settle(state, data, now)
+	_check(state.buildings.any(func(b): return Sim.is_hut(data, b)), "the crowded village has huts")
+	var homes := Sim.housing(state, data, now)
+	var e := Sim.employment(state, data, now)
+	var happy := Sim.happiness(state, data, now)
+	_check(Sim.happiness(state, data, now, homes, e) == happy, "happiness: the same with housing and employment handed in")
+	_check(Sim.power_summary(state, data, now, homes) == Sim.power_summary(state, data, now), "power: the same with housing handed in")
+	_check(Sim._life_rates(state, data, now, happy, homes) == Sim._life_rates(state, data, now), "births and deaths: the same rates")
+	_check(Sim.next_arrival_at(state, data, now, happy, e) == Sim.next_arrival_at(state, data, now), "next arrival: the same moment")
+	var moment := {}
+	Sim.settle(state, data, now + 30.0, moment)
+	_check(not moment.housing.is_empty() and moment.housing == Sim.housing(state, data, now + 30.0), "settle hands on who lives where as it stands")
+	_check(moment.power == Sim.power_summary(state, data, now + 30.0), "settle hands on the power as it stands")
+	# The plot map: every tile (and a few outside the plot) gives the old answer, also when moving.
+	var map := Sim._plot_map(state, data)
+	var moving: String = state.buildings[0].id
+	var same := true
+	for x in range(-1, 27):
+		for y in range(-1, 27):
+			for type_id in ["wheat_farm", "public_housing"]:
+				var cell := Vector2i(x, y)
+				same = same and Sim._footprint_problem(state, data, type_id, cell, "", map) == _slow_footprint_problem(state, data, type_id, cell, "")
+				same = same and Sim._footprint_problem(state, data, type_id, cell, moving, map) == _slow_footprint_problem(state, data, type_id, cell, moving)
+	_check(same, "the plot map gives the old answer on every tile")
+	var near := Vector2i(12, 12)
+	var best := near
+	var best_dist := INF
+	for x in 26:
+		for y in 26:
+			var dist := Vector2(Vector2i(x, y) - near).length()
+			if dist < best_dist and _slow_footprint_problem(state, data, "wheat_farm", Vector2i(x, y), "") == "":
+				best = Vector2i(x, y)
+				best_dist = dist
+	_check(Sim.free_spot_near(state, data, "wheat_farm", near) == best, "the free spot nearest a tile is the one a full search finds")
+	# Prices remembered in a cache are the ones worked out afresh (asked twice: then from the cache).
+	var cached := data.duplicate()
+	cached["cache"] = {}
+	var prices_same := true
+	for res in data.resources:
+		for i in 2:
+			prices_same = prices_same and Sim.unit_price(cached, res) == Sim.unit_price(data, res)
+			prices_same = prices_same and Sim.standard_unit_cost(cached, res) == Sim.standard_unit_cost(data, res)
+	_check(prices_same and not cached.cache.is_empty(), "remembered prices and costs are the ones worked out afresh")
+	_check(not data.has("cache"), "data without a cache gets none")
+
+
+## _footprint_problem the way it worked before the plot map: every building and road looked at for
+## each tile.
+func _slow_footprint_problem(state: Dictionary, data: Dictionary, type_id: String, cell: Vector2i, ignore_id: String) -> String:
+	var cells := Sim.footprint(data, type_id, cell)
+	for c in cells:
+		if not Sim._in_plot(state, c):
+			return "That spot is outside your land."
+	for c in cells:
+		var there := Sim.building_at(state, data, c)
+		if not there.is_empty() and there.id != ignore_id:
+			return "That spot is taken."
+	for c in cells:
+		if Sim.is_road(state, c):
+			return "There's a road there. Remove the road first."
+	return ""

@@ -6,7 +6,7 @@ extends RefCounted
 ## Built with the window's own helpers (_section, _value_row, _show, _body), so they look the
 ## same. Every number comes from Economy; this only shows them.
 
-const NAMES := {"rent": "Rent", "demolish": "Demolish refunds", "batch_refunds": "Cancelled batches",
+const NAMES := {"rent": "Rent", "demolish": "Refunds", "batch_refunds": "Cancelled batches",
 	"construction": "Construction", "roads": "Roads", "wages": "Wages", "water": "Water", "power": "Power", "tax": "Sales tax",
 	"switch_fees": "Switching products", "purchases": "Trading Post purchases"}
 

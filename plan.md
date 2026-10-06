@@ -283,10 +283,13 @@ Everything stays **one calculation**, never a replay. Anything that changes powe
 
 	| Happiness | Birth speed | A group of up to 5 job seekers every (2 min base) | People leaving the island (in groups of 5) |
 	|---|---|---|---|
-	| 80–100% | ×1.5 | 80 s | none |
+	| 80–100% | ×1.5 | 2 min | none |
 	| 50–79% | ×1 | 2 min | none |
-	| 20–49% | ×0.5 | nobody comes | **2% an hour** (1% before 2026-10-04) |
+	| 21–49% | ×0.5 | 2 min | **2% an hour** (1% before 2026-10-04) |
+	| 20% | ×0.5 | nobody comes | **2% an hour** |
 	| 0–19% | none | nobody comes | **5% an hour** (3% before 2026-10-04) |
+
+  - **Migrant workers come for jobs only (decided 2026-10-06, the user's rule):** at **20% happiness or less nobody moves in**; above that they come at the normal speed, and only the open jobs decide how many (`move_in_only_for_jobs`). Happiness no longer speeds them up (the 80% band's ×1.5 is gone) or slows them down (the 20–49% band used to stop them). The band edge is 20.5% (`from` 0.205), so a village that shows "20%" gets nobody. Births and leaving are unchanged
 
   - **People leaving (decided 2026-10-03):** in an unhappy village, that share of adults and of children leaves each hour, with part-people carried over like deaths, so it happens at predictable moments and time away stays one calculation. **In groups (2026-10-04):** the part-people carry fills up to `happiness.leave_group_size` (5) before anyone goes, then the whole group leaves at once (adults and children each in their own groups; fewer if fewer are left). Adults go like deaths: the jobless first (they're the Broke households, housed last, so the **homeless leave first**), workers keep their posts; children from the youngest group. Counted as "Left the island" (`stats.people.moved_away`; Statistics → People, the Births graph, Welcome back). This keeps the village from outgrowing its homes: grown-up children with no home make the village unhappy, and people leave until it's happy enough
 
@@ -612,25 +615,31 @@ If you sold the flour instead: 32 × $2.75 = $88 → baking earns $135 more
 - **Busy until done:** the workers stay on the job until the building or upgrade is finished, then they're free for the next one
 - **How many:** each Construction Office employs **4** villagers (Level 2: 6, Level 3: 8, Level 4: 10). They're real jobs, hired before other buildings (`staffed_first`, so the village can always build), and the office needs a road like any workplace. The total across all offices is the crew
 - **Not enough free:** the job can't start yet. The message says how long until enough are free, or (when the job needs more than all offices have, e.g. Level 4 with one 4-worker office busy elsewhere) to upgrade the office or build another
-- **Paid per project:** the Labor line of the quote (workers × hours × $15) is paid when the work starts; idle construction workers cost nothing, so the office has no hourly wage bill
+- **Paid per project:** the Labor line of the quote is paid when the work starts; idle construction workers cost nothing, so the office has no hourly wage bill. ~~workers × hours × $15~~ **Since 2026-10-06: a share of the materials' value** (`construction.labor_share` = 10%, PLACEHOLDER; the user's idea, because a 10-second build would have made hourly pay almost free). It counts all the materials at today's prices, including those taken from the warehouse (they still need building with)
 - **Stays open while upgraded,** like homes and warehouses
 - Save version 11: the old headquarters (saved as `construction_office`) becomes `city_hall`, and older saves get a free Construction Office on the free tile nearest City Hall beside a linked road
 - Not built: a waiting list that starts jobs by itself; real material buildings (below)
 
 **Construction requirements (built 2026-10-04, the user's choices).** Building and every upgrade need **Bricks, Cement, Steel, Construction materials and labor**. The same rules apply to every building:
 - **Fixed amounts per level, doubling each level.** Each building has its own Level 1 amounts (`materials` in `buildings.json`, sized so bigger buildings need more). Level 2 needs 2×, Level 3 4×, Level 4 8× (`construction.level_growth` = 2 in `game_config.json`)
-- **Labor = a construction crew**: ~~8 laborers at Level 1, doubling each level~~ (replaced 2026-10-05 by real construction workers, above: 1, then one more per level). Paid once at the low-skilled minimum wage ($15/h) for the hours the work takes
-- **Construction time** (`construction.level_seconds`):
+- **Labor = a construction crew**: ~~8 laborers at Level 1, doubling each level~~ (replaced 2026-10-05 by real construction workers, above: 1, then one more per level). ~~Paid once at the low-skilled minimum wage ($15/h) for the hours the work takes~~ Paid once, **10% of the materials' value** (since 2026-10-06, above)
+- **Construction time** (`construction.level_seconds`; building cut from 1 h to **10 seconds** on 2026-10-06, the user's choice; upgrades unchanged. Buildings already under construction keep their finish time):
 
-| | Time | Crew | Labor |
-|---|---|---|---|
-| Build (Level 1) | 1:00 h | 8 | $120 |
-| Upgrade to Level 2 | 1:00 h | 16 | $240 |
-| Upgrade to Level 3 | 2:00 h | 32 | $960 |
-| Upgrade to Level 4 | 3:00 h | 64 | $2,880 |
+| | Time | Crew |
+|---|---|---|
+| Build (Level 1) | 10 s | 1 |
+| Upgrade to Level 2 | 1:00 h | 2 |
+| Upgrade to Level 3 | 2:00 h | 3 |
+| Upgrade to Level 4 | 3:00 h | 4 |
 
-- **Materials are bought from an in-game supplier at today's market price** when the work starts, so the cost shown is approximate ("≈ $1,850"). Each material's price is its base price (Bricks $1, Cement $10 a bag, Steel $50 a beam, Construction materials $20 a crate) give or take up to 20%, a new price every hour. The price comes from the hour alone, so time away = playing and nothing is saved. Once material buildings exist (below), materials will become real goods
-- **Everything is paid at the start** (materials + crew), so work never stalls. The building's value on the balance sheet is what was actually paid; its share in selling prices (§5.12), demolish refund and the starting buildings use its value at base prices
+- **Materials are bought from an in-game supplier at today's market price** when the work starts, so the cost shown is approximate ("≈ $1,850"). Each material's price is its base price (Bricks $1, Cement $10 a bag, Steel $50 a beam, Construction materials $20 a crate) give or take up to 20%, a new price every hour. The price comes from the hour alone, so time away = playing and nothing is saved. ~~Once material buildings exist (below), materials will become real goods~~ They are real goods since 2026-10-06 (below)
+- **Everything is paid at the start** (materials + crew), so work never stalls. The building's value on the balance sheet is what was actually paid (plus the cost tags of warehouse materials it used); its share in selling prices (§5.12) and the starting buildings use its value at base prices
+- **Materials are warehouse goods, and demolishing gives them back (built 2026-10-06, the user's choices; on trial).** Bricks, Cement, Steel and Construction materials are items in `resources.json` (category `building_material`, with their base `price` and `unit`), brought forward from Wave 2 (§5.21):
+  - **Warehouse first:** building and upgrading take the warehouse's own materials first and buy only the rest at today's price (`Simulation.construction_plan`). The Build menu and the Upgrade box say "400 Bricks (300 from your warehouse)"
+  - **Each building remembers what it was built with** (`b.materials` units, `b.materials_cost` cents): every unit used for building it and every upgrade, at what it **really cost** (prices change every hour, so this is its own record, not today's price). The building window shows "Built with … (worth $X)"
+  - **Demolishing gives no money** (`demolish_refund` is gone): every unit of material comes back to the warehouse with its cost tags, plus the goods inside. The crew's pay is what's lost. If the warehouse has no room for all of it, demolishing is refused ("Make room first"); nothing is ever thrown away
+  - They take warehouse room like any goods, show in the Warehouse, and the Trading Post buys and sells them (§5.22)
+  - Save version 15: buildings in older saves get their materials (their level, plus an upgrade under way) at base prices
 - **Level 1 amounts** (PLACEHOLDERS; a Wheat Farm is about $1,820 at base prices):
 
 | Building | Bricks | Cement | Steel | Constr. materials |
@@ -649,7 +658,7 @@ If you sold the flour instead: 32 × $2.75 = $88 → baking earns $135 more
 
 **How upgrades work** (built 2026-10-04, on trial):
 - **Data:** each building's `upgrades` in `buildings.json` lists Level 2, 3 and 4: the numbers that change (`max_workers`, `storage_cap`, `queue_size`, `capacity`, `shelves`, `households`); anything a level leaves out stays as the level below. (Test data may still give a level a fixed `cost` and its own `time`)
-- **Bigger building:** farms, mills and bakeries get +50% / +100% / +150% workers, storage and queue; Warehouse 2× / 3× / 4× workers and room; Supermarket 5 / 6 / 7 shelves; homes 1.5× / 2× / 2.5× households
+- **Bigger building:** farms, mills and bakeries get +50% / +100% / +150% workers, storage and queue; Warehouse 2× / 3× / 4× workers and room; Supermarket ~~5 / 6 / 7~~ **2 / 3 / 4** shelves (since 2026-10-06); homes 1.5× / 2× / 2.5× households
 - **Speed counts against Level 1's crew:** a farm with 12 of 8 workers works 1.5× as fast. Wages per batch stay the same (more workers, shorter batch), so the gain is more output per building, not cheaper goods
 - **Closes while upgrading** (farms, mills, bakeries, Supermarkets): no posts, no wages, nothing made or sold; the batch in progress is paused, not lost, and queued jobs stay. This replaces the "after this batch / start now" choice above with something simpler. **Homes and warehouses stay in use**; their extra room counts from the moment the upgrade is done
 - **No Construction Office cap yet**, and one upgrade at a time per building. Offline: the upgrade's end is a moment settling splits on, so time away = playing. Stored on the building as `upgrade_started_at` / `upgrade_done_at`; no save format change
@@ -694,7 +703,7 @@ If you sold the flour instead: 32 × $2.75 = $88 → baking earns $135 more
 The Retail building (selling to the village) is the **Supermarket** (`supermarket` in `buildings.json`, category `retail`, Build Menu tab "Shops"). It replaced the temporary Sell test buttons. **On trial:** built in its own Git commit so it can be undone if the design doesn't feel right.
 - **The player builds it** (not pre-built). About $2,270 of materials and crew (PLACEHOLDER, §5.15), so the $12,000 start covers a Wheat Farm + Flour Mill + Supermarket even at the highest material prices (§5.8)
 - **Sells finished food only:** Flour and Bread, and since 2026-10-05 the Wave 1 foods (§5.21). **Raw Wheat can't be sold** (decided 2026-10-02): only items with an `appetite` in `resources.json` go on shelves, and only of a category in the store's `sells` list (the Supermarket: food; other store types later). The Trading Post buys anything (§5.22)
-- **Shelves:** 4 per store (`shelves`). Each shelf sells one product; **several shelves sell at once**. **Each store sells on its own (changed 2026-10-04):** a product can be on only one shelf *per store*, but several stores can sell the same product at once. The village still has one appetite for it, so the stores **share its shoppers**: 2 stores selling flour each sell it half as fast, and total flour sold per hour stays the same (`Simulation.selling_counts`; only stores that are selling count: built, not suspended, with workers). When one sells out, the others speed up at that moment (a split point already). Before, a product could be on only one shelf in the whole village, which blocked a second Supermarket from selling flour at all. The same food in two stores still counts as one food for happiness
+- **Shelves:** ~~4 per store~~ **1 at Level 1, one more per upgrade (2 / 3 / 4)** since 2026-10-06, the user's choice (`shelves`). Old saves (version 15): shelves past the new number are taken down as the game was saved (what sold is paid, the rest goes back to the warehouse). Each shelf sells one product; **several shelves sell at once**. **Each store sells on its own (changed 2026-10-04):** a product can be on only one shelf *per store*, but several stores can sell the same product at once. The village still has one appetite for it, so the stores **share its shoppers**: 2 stores selling flour each sell it half as fast, and total flour sold per hour stays the same (`Simulation.selling_counts`; only stores that are selling count: built, not suspended, with workers). When one sells out, the others speed up at that moment (a split point already). Before, a product could be on only one shelf in the whole village, which blocked a second Supermarket from selling flour at all. The same food in two stores still counts as one food for happiness
 - **Putting food on a shelf:** choose the food, the amount (slider or All) and a **price tag**. The goods leave the warehouse at once (with their cost tags, §5.14); the window first shows the price, how many the village buys per hour, the time to sell out, sales, cost to make, sales tax and profit
 - **Price tags** (our own idea instead of typing a price; `retail.price_tags` in `game_config.json`, PLACEHOLDERS from a demand curve speed = 1 ÷ price³):
 
@@ -749,7 +758,7 @@ Housing gets **types**, each with a name, a base build cost, a number of househo
   | 2 | **Regular House** (today's Small House) | $1,000 | 6 | Poor, Well off | $1 / hour | 0.5 MW |
   | 3 | **Villa** | $6,000 | 2 | Rich, Filthy rich | $15 / hour | 1.0 MW |
 
-- **Who lives where:** each household takes the best home it can afford (rent ≤ a share of its wages, e.g. 20%), richest households first; Broke households only fit Public Housing. With no room anywhere, a household becomes **homeless** and a Makeshift Hut appears for it. Worked out from the counts each time (like `home_residents` today), so nothing can drift. A household that loses its job (Broke) moves out of a Regular House at the next settle
+- **Who lives where:** each household takes the best home it can afford (rent ≤ 30% of its wages, `housing.rent_share`), richest households first; Broke households only fit Public Housing. Rich households fill Villas first; when Villas are full they may take a leftover Regular House (the fallback below). With no room anywhere, a household becomes **homeless** and a Makeshift Hut appears for it. Worked out from the counts each time (like `home_residents` today), so nothing can drift. A household that loses its job (Broke) moves out of a Regular House at the next settle
 - **Makeshift Huts** (decided 2026-10-03: they **appear by themselves**, Tropico-style): on the nearest free grass tile to the village centre, in a fixed order (no dice); 1 household each, free, no power. They lower happiness (a future Housing need). A hut disappears when its household gets a real home, or the player demolishes it. Appearing is a predictable moment, so time away stays one calculation
 - **Rent** (decided 2026-10-03: **the player receives it**, as the landlord): a fixed amount per household living there, paid continuously like wages (also while away), counted under money in as "Rent". Public Housing earns nothing
 - **Power** (decided 2026-10-03): an **empty home uses no power**; a home with anyone living in it uses its type's **fixed MW**, full or not. Counted in the village demand once electricity exists (§5.5); the player (the landlord) pays for it, Public Housing included
@@ -860,7 +869,7 @@ The user asked to add about 150 items in 15 groups of chains (agriculture, lives
 |---|---|---|
 | **1A** | Plantation crops + plant foods: Grain Mill, Oil Press, Sugar Mill, Food Factory, Confectionery, Beverage Plant, Cannery | **built 2026-10-05, on trial** |
 | **1B** | Animals and fish: Feed Mill, Ranch, Fishery, Apiary, Dairy, Slaughterhouse, Meat Plant, Fish Plant, canned fish | **built 2026-10-05, on trial** |
-| **2** | Construction materials and coal power: clay, limestone, sand, gravel, stone, iron ore, coal, timber → bricks, cement, glass, concrete, steel, lumber; **your own materials used by construction** (warehouse first, the supplier for the rest); a coal power plant that burns fuel by the batch (same power grid as today) | planned |
+| **2** | Construction materials and coal power: clay, limestone, sand, gravel, stone, iron ore, coal, timber → bricks, cement, glass, concrete, steel, lumber; **your own materials used by construction** (warehouse first, the supplier for the rest; **built early 2026-10-06** for Bricks, Cement, Steel and Construction materials, which demolishing puts back in the warehouse, §5.15); a coal power plant that burns fuel by the batch (same power grid as today) | planned |
 | **3** | Textiles (cotton, wool → yarn → fabric → clothing), leather (hides from Wave 1B), furniture, paper; new store types | planned |
 | **4** | Oil and gas (gasoline, diesel, plastic, chemicals), fertilizer (+ phosphate, potash), electronics (copper, silicon, gold), rubber → tires → cars, medicine, jewelry and other luxury goods | planned; decide then: educated workers (schools, §5.7), whether fertilizer is a "boost" choice in the batch window |
 
@@ -933,7 +942,7 @@ Before it, nothing could be bought and only finished food could be sold, so a ha
 	- **Idle:** Bonus buttons (None / +10% / +20% / +30% units), the length row `[−] 24 h · done Tue 6:00 PM [+] [All]`, and the lines Makes / Ingredients / Labor (paid now) / Water (estimate) / Total cost / Cost per unit / Sells for, then **Start 24 h batch** (greyed but tappable with the reason when it can't start). Start opens a "Start this batch?" window with the whole breakdown ("Back" / "Start")
 	- **With a batch:** status ("Making Flour · 6 of 24 h · done at 6:00 PM"), progress bar, "Ready: 192 Flour" with **Collect**, what's locked in (hours, bonus, cost, cost per unit), and **Cancel batch** (asks first, showing the refund)
 	- The action bar's Produce button (idle production buildings) opens the panel to set up a batch
-  - **Demolish:** red button at the bottom of the panel, with a confirm window showing what comes back: 50% of the build cost (`demolish_refund`) and goods inside. Only buildings the player can build can be demolished (starters stay). Refused while it has a batch, or if the warehouse can't hold what comes back
+  - **Demolish:** red button at the bottom of the panel, with a confirm window showing what comes back: ~~50% of the build cost (`demolish_refund`)~~ every unit of building material it was built with (since 2026-10-06, no money, §5.15) and goods inside. Only buildings the player can build can be demolished (starters stay). Refused while it has a batch, or if the warehouse can't hold what comes back
   - **Move:** blue button in the panel (or the action bar for the Construction Office / Small House). Uses Placement Mode: the building fades where it stands, a preview follows the pointer, tap a free tile. Free, works for every building, and production carries on through the move
 - **Recipe Select** — sub-panel of Building Panel (once 2+ recipes unlocked)
 - **Inventory/Warehouse** — all resources held, quantities, storage caps
@@ -1022,6 +1031,31 @@ PlayerSave
 - **Offline/idle catch-up must be a one-time math calculation, not a simulated tick-by-tick replay** — calculate completed jobs via elapsed time ÷ timer duration, never simulate every second that passed (would visibly freeze the game on reopen after a long absence)
 - **Test on a real low-to-mid-range Android device early**, not just in-editor or on PC — catch problems in Phase 1 (3-4 buildings) rather than Phase 3 (full village)
 - **Watch the island shader** — `scenes/village/island.gdshader` runs for every screen pixel every frame (the water animates). It is kept cheap (detail work only near the coast), but check its frame cost in that first real-device test; once the island becomes a baked picture (Section 4, visual step 3) only the water part remains
+
+#### 9.1.1 Performance check-up (built 2026-10-06)
+**Measuring tools:** `tests/bench_performance.gd` (headless, see CLAUDE.md: times the rules and the real screens for a small village and a big one: the full 26×26 plot, 153 buildings, 251 road tiles, 800 people, 58 batches running) and the **performance overlay** in test builds (F11, or Developer window → Performance: fps and its limit, frame time, draw calls, nodes, how long the last tick took for the rules and for the screens, and switches that hide the island, trees, shadows, roads or traffic, so a phone shows what each costs to draw).
+
+**Measured** on the development PC (Godot editor build; phones are slower), big village, before → after:
+
+| | before | after |
+|---|---|---|
+| One tick, every second (rules + screens) | 54 ms | 14 ms |
+| — of which the rules (settle) | 47 ms | 9.3 ms (small village 3.0 → 0.67 ms) |
+| 24 h away (one catch-up at start-up) | 29 s | 6.7 s (small village 0.36 → 0.11 s) |
+| Warehouse window open, per tick | 59 ms | 7.8 ms |
+| Statistics → People open, per tick | 39 ms | 13.5 ms |
+| Starting Placement Mode (finding a free spot) | 67 ms | 3.3 ms |
+| A new hut's spot | 8 ms | 1.2 ms |
+
+**What changed** (no rule changed: 24 h away and 300 ticks give byte-identical saves before and after, and the tests check the shortcuts against working things out afresh):
+- `settle` works out who lives where, employment, happiness and the power once per step and hands them on (each was worked out up to 10 times); hiring works out each building's posts once; a tick hands its hiring on to the next one, which skips repeating it when nothing happened in between (`settle`'s `moment`).
+- Spot searches (huts, Placement Mode, migration) use a plot map made once instead of checking every building and road for every tile; prices and standard costs are remembered (`data.cache`: data/*.json never changes while playing).
+- Economy remembers heavy answers (housing, happiness, power, ...) until the next tick or player action (`_remember`); screens update their labels in place and re-colour text only when the colour changes (`UITheme.set_font_color`); traffic and roads re-read the map only when it changed (`Economy.layout_key`); icons and building pictures are looked up once; cars are redrawn only when they turn.
+
+**Still open:**
+- **Long time away in a big village.** Every birth is its own step (about 1,500 a day at 800 people), so 24 h away still takes ~6.7 s on the PC, more on a phone. Options: a quick path for steps where only a baby was born (same rules), or babies arriving in small groups like people leaving (a small rule change).
+- **Phone test with the overlay**: what the island shader costs (Island switch). If it's a lot, bake the land and cliffs into a picture once at start-up and let the shader paint only the water (an early part of Section 4, visual step 3).
+- Opening the Warehouse window in a big village builds ~50 rows at once (~40 ms on the PC).
 
 ### 9.2 Security — Two Separate Concerns
 **App cloning/piracy** (someone repackages/redistributes the built app):
@@ -1162,6 +1196,11 @@ A hidden dev menu (key combo on PC, secret tap sequence on mobile) for testing t
 Both are functional, self-contained HTML/JS artifacts used to validate the trading-mechanic math and UX before porting logic into Godot.
 
 ## 15. Revision Log
+
+**2026-10-06 (faster building, smaller Supermarkets, migrants by jobs, materials back on demolish):**
+- The user asked for four changes: new buildings take **10 seconds** (upgrades unchanged); the Supermarket starts with **1 shelf**, +1 per upgrade; **no migrants at 20% happiness or less**, otherwise only open jobs decide; **demolishing gives back every unit of material**, into the warehouse, and no money
+- Follow-ups they chose: warehouse materials are **reused** by building and upgrading (warehouse first, buy the rest); each building keeps a record of its materials and what they **really cost**, since prices change hourly; demolishing is refused when the warehouse has no room; the crew is paid **a share of the materials' value** (10%) instead of by the hour. Details: §5.15, §5.16, §5.6. Save version 15
+- Left for later: the shelf form lists only foods you have in stock (the user saw only 2)
 
 **2026-10-06 (2×2 footprints, land 26×26):**
 - After Batch A the user saw City Hall looking smaller than Public Housing, and chose to fix the size first. Decisions: big buildings plus the Solar and Nuclear plants are 2×2 (homes, Wind Turbine and Substation stay 1×1); old saves: roads under a growing building are removed and paid back, and only a building overlapping another moves; the land grows to 26×26 now. Details: §4 "Footprints". Save version 14

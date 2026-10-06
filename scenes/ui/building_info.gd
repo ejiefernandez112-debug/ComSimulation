@@ -54,15 +54,36 @@ static func amounts(items: Dictionary) -> String:
 
 
 ## What building or upgrading needs, from a quote (Economy.build_quote / upgrade_quote):
-## "400 Bricks · 40 Cement · 10 Steel · 20 Construction materials · 1 construction worker for 1h".
+## "400 Bricks (300 from your warehouse) · 40 Cement · 10 Steel · 20 Construction materials ·
+## 1 construction worker for 10s ($171)". The warehouse's own materials are used first.
 static func construction_needs(quote: Dictionary) -> String:
 	var parts: Array[String] = []
 	for line in quote.get("lines", []):
 		if line.id == "labor":
-			parts.append("%s for %s" % [crew_count(int(line.amount)), UITheme.duration(float(quote.seconds))])
+			parts.append("%s for %s (%s)" % [crew_count(int(line.amount)), UITheme.duration(float(quote.seconds)), UITheme.money(int(line.cost))])
+		elif int(line.get("from_stock", 0)) >= int(line.amount):
+			parts.append("%s %s (all from your warehouse)" % [UITheme.number(int(line.amount)), line.name])
+		elif int(line.get("from_stock", 0)) > 0:
+			parts.append("%s %s (%s from your warehouse)" % [UITheme.number(int(line.amount)), line.name, UITheme.number(int(line.from_stock))])
 		else:
 			parts.append("%s %s" % [UITheme.number(int(line.amount)), line.name])
 	return " · ".join(parts)
+
+
+## What a building was built with (plan.md §5.15), all of which comes back to the warehouse when
+## it's demolished: "400 Bricks · 40 Cement · 10 Steel · 20 Construction materials (worth $1,850)".
+## "" for a building with none.
+static func built_with(b: Dictionary) -> String:
+	var materials: Dictionary = b.get("materials", {})
+	if materials.is_empty():
+		return ""
+	var worth := 0.0
+	for res in b.get("materials_cost", {}):
+		worth += float(b.materials_cost[res])
+	var parts: Array[String] = []
+	for res in materials:
+		parts.append("%s %s" % [UITheme.number(int(materials[res])), resource_name(res)])
+	return "%s (worth %s)" % [" · ".join(parts), UITheme.money(roundi(worth))]
 
 
 ## "1 construction worker" / "3 construction workers".
@@ -76,7 +97,7 @@ static func crew_status() -> String:
 	var crew := Economy.crew()
 	var lines: Array[String] = ["%d of %s free (all your Construction Offices)" % [int(crew.free), crew_count(int(crew.total))]]
 	for job in crew.jobs:
-		var b := Economy.building(str(job.building_id))
+		var b := Economy.building(str(job.building_id))  # perf-ok: a few construction jobs
 		if b.is_empty():
 			continue
 		var what := "building %s" % GameData.buildings[b.type].name

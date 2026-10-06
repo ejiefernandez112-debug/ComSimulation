@@ -6,6 +6,8 @@ extends ModalWindow
 var _room_text: Label
 var _room_bar: ProgressBar
 var _list: VBoxContainer
+var _shown: Array[String] = []  # the goods the rows are for, in order
+var _rows := {}  # resource id -> {"tag", "qty", "worth"}: the labels _refresh updates
 
 
 func _ready() -> void:
@@ -50,24 +52,34 @@ func _refresh() -> void:
 			warehouses += 1
 	_room_text.text = "%s / %s goods · %d warehouse%s" % [UITheme.number(stored), UITheme.number(cap), warehouses, "" if warehouses == 1 else "s"]
 	_room_bar.value = 100.0 * stored / maxf(cap, 1.0)
-	for child in _list.get_children():
-		_list.remove_child(child)
-		child.queue_free()
 	var inventory: Dictionary = Economy.state.inventory
-	var any := false
+	var items: Array[String] = []
 	for res in GameData.resources:  # in the order of resources.json: raw goods first
-		var qty := int(inventory.get(res, 0))
-		if qty <= 0:
-			continue
-		any = true
-		_list.add_child(_row(res, qty))
-	if not any:
-		var empty := _label("Nothing in stock yet. Collect goods from your buildings to fill it.", 17)
-		_list.add_child(empty)
+		if int(inventory.get(res, 0)) > 0:
+			items.append(res)
+	# New rows only when the list of goods changed; otherwise just new numbers in the same rows.
+	if items != _shown or _list.get_child_count() == 0:
+		_shown = items
+		_rows.clear()
+		for child in _list.get_children():
+			_list.remove_child(child)
+			child.queue_free()  # perf-ok: only when the list of goods changed
+		for res in items:
+			_list.add_child(_row(res))
+		if items.is_empty():
+			var empty := _label("Nothing in stock yet. Collect goods from your buildings to fill it.", 17)
+			_list.add_child(empty)
+	for res in items:
+		var qty := int(inventory[res])
+		var labels: Dictionary = _rows[res]
+		labels.tag.text = "made for %s each" % UITheme.price(roundi(Economy.average_cost(res)))
+		labels.qty.text = UITheme.number(qty)
+		labels.worth.text = "worth %s" % UITheme.money(qty * Economy.unit_price(res))
 
 
-## [icon] Wheat (made for $0.30 each) ... 1,250   sells $0.64   worth $800
-func _row(res: String, qty: int) -> PanelContainer:
+## [icon] Wheat (made for $0.30 each) ... 1,250   sells $0.64   worth $800 (the numbers that
+## change are filled in by _refresh).
+func _row(res: String) -> PanelContainer:
 	var box := PanelContainer.new()
 	box.theme_type_variation = "Inset"
 	var row := HBoxContainer.new()
@@ -80,17 +92,19 @@ func _row(res: String, qty: int) -> PanelContainer:
 	names.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	row.add_child(names)
 	names.add_child(_label(BuildingInfo.resource_name(res), 20))
-	var tag := _label("made for %s each" % UITheme.price(roundi(Economy.average_cost(res))), 14)
+	var tag := _label("", 14)
 	names.add_child(tag)
-	row.add_child(_label(UITheme.number(qty), 20))
+	var qty := _label("", 20)
+	row.add_child(qty)
 	var each := _label("sells %s" % UITheme.price(Economy.unit_price(res)), 16)
 	each.custom_minimum_size.x = 100
 	each.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	row.add_child(each)
-	var worth := _label("worth %s" % UITheme.money(qty * Economy.unit_price(res)), 16)
+	var worth := _label("", 16)
 	worth.custom_minimum_size.x = 130
 	worth.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	row.add_child(worth)
+	_rows[res] = {"tag": tag, "qty": qty, "worth": worth}
 	return box
 
 

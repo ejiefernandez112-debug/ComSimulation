@@ -169,7 +169,7 @@ func _cash_page() -> VBoxContainer:
 	for res in GameData.resources:
 		_value_row(money_in, "Sales of %s" % GameData.resources[res].name, "in_sales_" + res)
 	_value_row(money_in, "Rent", "in_rent")
-	_value_row(money_in, "Demolish refunds", "in_demolish")
+	_value_row(money_in, "Refunds", "in_demolish")  # older demolishes and roads paid back; demolishing now gives materials, not money
 	_value_row(money_in, "Total", "in_total")
 	var money_out := _section(page, "All time: money out")
 	_value_row(money_out, "Construction", "out_construction")
@@ -415,7 +415,7 @@ func _refresh_people() -> void:
 	for building in Economy.state.buildings:
 		if Economy.is_built(building):
 			counts[building.type] = int(counts.get(building.type, 0)) + 1
-			jobs[building.type] = int(jobs.get(building.type, 0)) + int(Economy.workers(building).wanted)
+			jobs[building.type] = int(jobs.get(building.type, 0)) + Economy.workers_wanted(building)
 	for type_id in GameData.buildings:
 		if _values.has("jobs_" + type_id):
 			var n := int(counts.get(type_id, 0))
@@ -757,7 +757,7 @@ func _value(key: String, right := false) -> Label:
 func _show(key: String, text: String, color := LineChart.INK) -> void:
 	var label: Label = _values[key]
 	label.text = text
-	label.add_theme_color_override("font_color", color)
+	UITheme.set_font_color(label, color)
 
 
 func _bar(parent: Control, style: String) -> ProgressBar:

@@ -43,6 +43,7 @@ var _suspend: Button  # Suspend / Resume
 var _upgrade_text: Label  # what the next level brings, or how long the upgrade has left
 var _upgrade_button: Button
 var _upgrade_needs: Label  # what the next level needs (materials, crew) at today's prices
+var _built_with: Label  # the materials it was built with, which demolishing gives back
 var _stock_text: Label  # warehouses: goods stored in all warehouses / their room
 var _stock_bar: ProgressBar
 var _goods_grid: HFlowContainer  # warehouses: one [icon] amount tile per item in stock
@@ -92,6 +93,7 @@ func _build_rows(b: Dictionary, def: Dictionary) -> void:
 	_suspend = null
 	_upgrade_text = null
 	_upgrade_button = null
+	_built_with = null
 	_stock_bar = null
 	_goods_grid = null
 	_shelf_rows.clear()
@@ -184,6 +186,12 @@ func _build_rows(b: Dictionary, def: Dictionary) -> void:
 
 	if Economy.max_level(b.type) > 1:
 		_build_upgrade()
+
+	if def.get("buildable", false) and not b.get("materials", {}).is_empty():
+		# What it was built with (plan.md §5.15): demolishing puts all of it back in the warehouse.
+		_built_with = _wrapped("")
+		_built_with.theme_type_variation = "SmallLabel"
+		content.add_child(_built_with)
 
 	# Move and Demolish: smaller, in their own row at the bottom, so they aren't tapped by accident.
 	var tools := HBoxContainer.new()
@@ -284,7 +292,7 @@ func _refresh_upgrade(b: Dictionary) -> void:
 	var check := Economy.can_upgrade(building_id)
 	var quote := Economy.upgrade_quote(b)
 	_upgrade_button.text = "Upgrade to Level %d · ≈ %s · %s" % [level + 1, UITheme.money(int(quote.cost)), UITheme.duration(float(quote.seconds))]
-	_upgrade_needs.text = "Needs %s. Materials are bought at today's prices (they change in %s)." % [BuildingInfo.construction_needs(quote), UITheme.duration(Economy.price_change_in())]
+	_upgrade_needs.text = "Needs %s. Your warehouse's materials are used first; the rest is bought at today's prices (they change in %s)." % [BuildingInfo.construction_needs(quote), UITheme.duration(Economy.price_change_in())]
 	# Greyed when it can't start, but still tappable, so the player is told why.
 	_upgrade_button.theme_type_variation = "GoButton" if check.ok else "BackButton"
 	_upgrade_button.tooltip_text = "Pay now; it reaches Level %d when the time is up" % (level + 1) if check.ok else str(check.error)
@@ -369,7 +377,7 @@ func _refresh_workers(b: Dictionary, def: Dictionary) -> void:
 	var short: bool = Economy.is_built(b) and not Economy.is_suspended(b) and int(w.hired) < int(w.wanted)
 	# Workers tied to it / most it can employ, e.g. "6/8" (always whole people).
 	_workers_text.text = "%d/%d" % [int(w.hired), int(w.max)]
-	_workers_text.add_theme_color_override("font_color", UITheme.BAD_TEXT if short else UITheme.TEXT_DARK)
+	UITheme.set_font_color(_workers_text, UITheme.BAD_TEXT if short else UITheme.TEXT_DARK)
 	var bonus_pay: float = w.wage_each - w.minimum
 	if bonus_pay > 0.01:
 		_wage_each_text.text = "%s + %s bonus = %s" % [UITheme.dollars(w.minimum), UITheme.dollars(bonus_pay), UITheme.dollars(w.wage_each)]
@@ -474,6 +482,8 @@ func _refresh() -> void:
 		_suspend.tooltip_text = "Switch it back on (free)" if off else "Switch it off: workers go home, no wages. Goods inside go to the warehouse (a batch must be finished or cancelled first)"
 	if _upgrade_text:
 		_refresh_upgrade(b)
+	if _built_with:
+		_built_with.text = "Built with %s. Demolishing it puts all of that back in the warehouse (no money)." % BuildingInfo.built_with(b)
 	if _stock_bar:
 		var cap := Economy.warehouse_cap()
 		_stock_bar.value = 100.0 * Economy.warehouse_total() / maxf(cap, 1.0)
@@ -715,7 +725,7 @@ func _refresh_stock_form() -> void:
 	_preview.cost.text = "-" + UITheme.money(int(p.cost))
 	_preview.tax.text = "-" + UITheme.money(int(p.tax))
 	_preview.profit.text = UITheme.money(int(p.profit))
-	_preview.profit.add_theme_color_override("font_color", UITheme.GOOD_TEXT if int(p.profit) >= 0 else UITheme.BAD_TEXT)
+	UITheme.set_font_color(_preview.profit, UITheme.GOOD_TEXT if int(p.profit) >= 0 else UITheme.BAD_TEXT)
 	var item := BuildingInfo.resource_name(_chosen_item)
 	if Economy.store_has_product(building_id, _chosen_item):
 		_stock_button.text = "%s is already on a shelf here" % item

@@ -145,7 +145,54 @@ static func _migrate(state: Dictionary, version: int, data: Dictionary, warnings
 		warnings.append_array(Simulation.fit_footprints(state, data))
 		Simulation._hire(state, data, float(state.get("settled_at", 0.0)))
 		version = 14
+	if version < 15:
+		# Version 15: demolishing gives back materials, not money (plan.md §5.15), so every
+		# building remembers what it was built with. Older saves don't know what was paid for
+		# them, so they get their materials at base prices. Supermarkets have fewer shelves now:
+		# shelves past the new number are taken down (what sold is paid, the rest goes back).
+		_record_old_materials(state, data)
+		_trim_shelves(state, data)
+		version = 15
 	state["save_version"] = version
+
+
+## For a version 14 save: each building's materials (its level, plus an upgrade under way, whose
+## materials were already bought). What they cost isn't known, only the building's total price
+## ("paid": materials + crew, at the prices of its day), so the materials get their share of that
+## price (their share of its value at base prices). Then demolishing an old building never makes
+## the company worth more than it paid.
+static func _record_old_materials(state: Dictionary, data: Dictionary) -> void:
+	for b in state.buildings:
+		if b.has("materials"):
+			continue
+		var level := Simulation.building_level(b) + (1 if b.has("upgrade_done_at") else 0)
+		Simulation.record_base_materials(data, b, level)
+		var costs: Dictionary = b.get("materials_cost", {})
+		var value := 0
+		for l in range(1, mini(level, Simulation.max_level(data, b.type)) + 1):
+			value += Simulation.level_value(data, b.type, l)
+		if costs.is_empty() or value <= 0 or int(b.get("paid", 0)) <= 0:
+			continue
+		var scale := float(b.paid) / value  # what was paid ÷ its value at base prices
+		for res in costs:
+			costs[res] = float(costs[res]) * scale
+
+
+## For a version 14 save: stores keep only as many shelves as their level now has; the others are
+## taken down as the game was saved.
+static func _trim_shelves(state: Dictionary, data: Dictionary) -> void:
+	var at := float(state.get("settled_at", 0.0))
+	for b in state.buildings:
+		var list: Array = b.get("shelves", [])
+		var keep := int(Simulation.level_stat(data, b, "shelves", 0))
+		if list.size() <= keep:
+			continue
+		for i in range(keep, list.size()):
+			if not list[i].is_empty():
+				var taken := Simulation._take_down_shelf(state, data, b, i, at)
+				Simulation._add_to(state.inventory, taken.back)
+				Simulation._put_cost(Simulation._costs(state, "inventory_cost"), taken.back_cost)
+		list.resize(keep)
 
 
 ## For a version 13 save: the land grows to game_config.json's grid_size (it never shrinks), and
@@ -286,7 +333,7 @@ static func _add_starter_warehouse(state: Dictionary, data: Dictionary) -> void:
 		if data.buildings.get(entry.type, {}).get("category", "") != "storage":
 			continue
 		var cell := Vector2i(int(entry.position[0]), int(entry.position[1]))
-		if Simulation._footprint_problem(state, data, entry.type, cell) != "":
+		if Simulation._footprint_problem(state, data, entry.type, cell) != "":  # perf-ok: one warehouse, once
 			cell = _first_free_spot(state, data, entry.type)
 		if cell.x >= 0:
 			Simulation._add_building(state, entry.type, cell, float(state.get("settled_at", 0.0)), 0.0)
@@ -296,9 +343,10 @@ static func _add_starter_warehouse(state: Dictionary, data: Dictionary) -> void:
 ## The first spot of the plot (row by row) where a building of this kind fits; (-1, -1) if none.
 static func _first_free_spot(state: Dictionary, data: Dictionary, type_id: String) -> Vector2i:
 	var grid: Array = state.plot.grid_size
+	var map := Simulation._plot_map(state, data)
 	for y in int(grid[1]):
 		for x in int(grid[0]):
-			if Simulation._footprint_problem(state, data, type_id, Vector2i(x, y)) == "":
+			if Simulation._footprint_problem(state, data, type_id, Vector2i(x, y), "", map) == "":
 				return Vector2i(x, y)
 	return Vector2i(-1, -1)
 

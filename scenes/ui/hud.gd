@@ -181,4 +181,4 @@ func _show_cash(value: float) -> void:
 	_shown_cash = value
 	_cash.text = UITheme.money(roundi(value))
 	# In debt (wages can take cash below 0): show it in red.
-	_cash.add_theme_color_override("font_color", UITheme.BAD_TEXT if value < 0.0 else UITheme.TEXT_DARK)
+	UITheme.set_font_color(_cash, UITheme.BAD_TEXT if value < 0.0 else UITheme.TEXT_DARK)

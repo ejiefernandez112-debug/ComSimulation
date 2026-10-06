@@ -13,7 +13,7 @@ extends RefCounted
 ## Time model: buildings store when their current batch started (`job_started_at`).
 ## "Settling" turns elapsed time into finished output in one calculation, never tick-by-tick.
 
-const SAVE_VERSION := 14  # 2: warehouses are buildings; 3: buildings keep their own hired workers;
+const SAVE_VERSION := 15  # 2: warehouses are buildings; 3: buildings keep their own hired workers;
 # 4: money is stored in cents; 5: stock carries cost tags; 6: children, births and deaths;
 # 7: housing types (old free Small Houses become Public Housing); 8: balance sheet (buildings
 # keep what was paid for them, starting capital, money log); 9: production batches (a Farm,
@@ -22,7 +22,9 @@ const SAVE_VERSION := 14  # 2: warehouses are buildings; 3: buildings keep their
 # 11: the old headquarters is City Hall; a new Construction Office's workers build everything;
 # 12: electricity (power meter and bills; Mills and Bakeries need power from the grid);
 # 13: each producer keeps its product (b.product): older ones keep what they were making;
-# 14: big buildings stand on 2x2 tiles and the land grew to 26x26 (see fit_footprints)
+# 14: big buildings stand on 2x2 tiles and the land grew to 26x26 (see fit_footprints);
+# 15: buildings keep the materials they were built with (b.materials / b.materials_cost);
+# Supermarkets have fewer shelves
 ## Used when game_config.json has no staffing_levels: share of max_workers per level.
 const DEFAULT_STAFFING_LEVELS := {"low": 0.5, "medium": 0.75, "high": 1.0}
 
@@ -57,6 +59,7 @@ static func new_game(data: Dictionary, now: float) -> Dictionary:
 		# at their value (materials and labor at base prices), as part of the starting capital.
 		var b := _add_building(state, entry.type, Vector2i(int(entry.position[0]), int(entry.position[1])), now, 0.0)
 		b.paid = construction_value(data, entry.type)
+		record_base_materials(data, b, 1)  # what demolishing it would give back
 		capital.buildings = int(capital.buildings) + int(b.paid)
 	# The starting roads link the starting buildings to City Hall. They count at
 	# their price as part of the starting capital, like the buildings.
@@ -87,7 +90,14 @@ static func new_game(data: Dictionary, now: float) -> Dictionary:
 ## so the time since the last settle is split at those moments and each piece is worked out in
 ## one go. That's a handful of steps however long the player was away, never a minute-by-minute
 ## replay.
-static func settle(state: Dictionary, data: Dictionary, now: float) -> Dictionary:
+## `moment` is what the last hiring worked out ({"at", "housing", "power"}, see _hire). On return
+## it holds the hiring as things stand at `now`, so the caller doesn't have to work it out again.
+## Handed back in at the next settle with nothing changed in between (no player action), it also
+## saves hiring again where the last settle ended: hiring twice in a row changes nothing and gives
+## the same answers. A moment from any other time is simply not used.
+static func settle(state: Dictionary, data: Dictionary, now: float, moment := {}) -> Dictionary:
+	var known := moment.duplicate()
+	moment.clear()
 	var report := {}
 	var grown := 0
 	var wages := 0
@@ -105,8 +115,15 @@ static func settle(state: Dictionary, data: Dictionary, now: float) -> Dictionar
 		var steps := 0
 		while t < now and steps < 100000:  # the cap is only a safety net
 			steps += 1
-			_hire(state, data, t)  # people who just moved in, or posts that just opened (and huts)
-			_update_growth_speed(state, data, t)  # happiness may have changed at this moment
+			# People who just moved in, or posts that just opened (and huts). It also works out who
+			# lives where and the power, which stay the same for this whole piece of time, so they are
+			# worked out once here and handed on (each one walks every building).
+			var hiring := known if steps == 1 and float(known.get("at", -INF)) == t else _hire(state, data, t)
+			var homes: Dictionary = hiring.housing if not hiring.housing.is_empty() else housing(state, data, t)
+			var homes_adults := adults(state)  # who lives where only changes if this does (see _settle_life)
+			var e := employment(state, data, t)
+			var happy := happiness(state, data, t, homes, e)
+			_update_growth_speed(state, data, t, happy)  # happiness may have changed at this moment
 			# Read every speed, the wage bill and the water use as they stand at the start of this
 			# piece, before any building moves on (a building filling up changes the others' staffing).
 			var speeds: Array[float] = []
@@ -114,15 +131,15 @@ static func settle(state: Dictionary, data: Dictionary, now: float) -> Dictionar
 				speeds.append(building_speed(state, data, b, t))
 			var wage_rate := _wages_per_hour(state, data, t)
 			var water_m3_per_hour := public_water_use(state, data, t)  # own plants' water isn't billed
-			var grid_mw := public_power_draw(state, data, t)  # nor is own plants' power
-			var rent_rate := float(housing(state, data, t).rent_per_hour)
-			var life_rates := _life_rates(state, data, t)
+			var grid_mw := float(hiring.power.get("public", 0.0))  # nor is own plants' power (public_power_draw)
+			var rent_rate := float(homes.rent_per_hour)
+			var life_rates := _life_rates(state, data, t, happy, homes)
 			var selling := selling_counts(state, data, t)  # stores selling each product share its shoppers
-			var job_cap := _job_cap(state, data, t)  # job seekers come only for the posts open now
+			var job_cap := _job_cap(state, data, t, e)  # job seekers come only for the posts open now
 			# Split at the next staffing change, at the next birth, death or child growing up, and at
 			# the next water bill (a fixed moment) when there is water to bill; empty cycles are
 			# skipped in one go, so a long absence stays quick.
-			var next := _next_staffing_change(state, data, t, now)
+			var next := _next_staffing_change(state, data, t, now, e)
 			next = minf(next, maxf(_next_life_event(state, data, t, life_rates), t + 0.000001))
 			if water_m3_per_hour > 0.0 or float(water_meter(state, t).m3) > 0.0:
 				next = minf(next, maxf(water_bill_due_at(state, data, t), t + 0.000001))
@@ -135,13 +152,14 @@ static func settle(state: Dictionary, data: Dictionary, now: float) -> Dictionar
 			_meter_use(state, data, "water", water_m3_per_hour * (next - t) / 3600.0, t)
 			_meter_use(state, data, "power", grid_mw * (next - t) / 3600.0, t)
 			grown += _grow_population(state, data, next, job_cap)
-			_add_to(life, _settle_life(state, data, t, next, life_rates))
+			_add_to(life, _settle_life(state, data, t, next, life_rates, homes, homes_adults))
 			t = next
 			water += _bill_if_due(state, data, "water", t)
 			if power_on(data):
 				power += _bill_if_due(state, data, "power", t)
 		state["settled_at"] = now
-	_hire(state, data, now)
+	moment.merge(_hire(state, data, now), true)
+	moment["at"] = now
 	if rent > 0:
 		report["rent"] = rent
 	var counters := people_stats(state)
@@ -205,8 +223,8 @@ static func _pay_over_time(state: Dictionary, dollars: float, carry_key: String,
 ## finishing construction (new posts or new homes), a building stopping because its storage
 ## filled up or its last job is done (its workers wait, unpaid), or the next person moving in
 ## (hired straight away while posts are open; with needs switched on, every arrival can also
-## change happiness, so the move-in speed).
-static func _next_staffing_change(state: Dictionary, data: Dictionary, t: float, until: float) -> float:
+## change happiness, so the move-in speed). `e` = employment at t if already worked out.
+static func _next_staffing_change(state: Dictionary, data: Dictionary, t: float, until: float, e := {}) -> float:
 	var next := until
 	for b in state.buildings:
 		var finish := built_at(b)
@@ -217,10 +235,11 @@ static func _next_staffing_change(state: Dictionary, data: Dictionary, t: float,
 		next = minf(next, maxf(_stop_time(state, data, b, t), t + 0.000001))
 	var pop: Dictionary = state.population
 	var step := _growth_step(state, data)
-	var e := employment(state, data, t)
+	if e.is_empty():
+		e = employment(state, data, t)
 	# Each arrival can change happiness (needs), and who lives where, so which homes use power.
 	var arrival_matters: bool = e.open_jobs > 0 or _has_needs(data) or power_on(data)
-	if not is_inf(step) and arrival_matters and adults(state) < mini(_arrival_room(state, data, t, true), _job_cap(state, data, t)):
+	if not is_inf(step) and arrival_matters and adults(state) < mini(_arrival_room(state, data, t, true), _job_cap(state, data, t, e)):
 		var arrival := float(pop.growth_anchor) + step * (floorf((t - float(pop.growth_anchor)) / step + 0.000001) + 1.0)
 		if arrival > t and arrival < next:
 			next = arrival
@@ -254,10 +273,12 @@ const NO_LIMIT := 1 << 30
 ## The most adults people moving in may bring the village to. With move_in_only_for_jobs
 ## (game_config.json), newcomers are migrant workers: they only come for posts that are open and
 ## that no adult already here could take. Otherwise there's no limit but the homes.
-static func _job_cap(state: Dictionary, data: Dictionary, t: float) -> int:
+## `e` = employment at t if already worked out.
+static func _job_cap(state: Dictionary, data: Dictionary, t: float, e := {}) -> int:
 	if not bool(data.config.get("move_in_only_for_jobs", false)):
 		return NO_LIMIT
-	var e := employment(state, data, t)
+	if e.is_empty():
+		e = employment(state, data, t)
 	return adults(state) + maxi(int(e.open_jobs) - int(e.unemployed), 0)
 
 
@@ -349,14 +370,17 @@ static func _move_in_group(data: Dictionary) -> int:
 ##  still to go), "growth_speed" (1.5 = people move in and babies come 1.5x as fast, 0 = none),
 ##  "leave_per_hour" (share of people who leave the island each hour; 0 when happy enough)}.
 ## Without a "happiness" block in game_config.json there are no needs: score 1, speed 1.
-static func happiness(state: Dictionary, data: Dictionary, now: float) -> Dictionary:
+## `homes` (housing) and `e` (employment) at `now` can be handed in when already worked out.
+static func happiness(state: Dictionary, data: Dictionary, now: float, homes := {}, e := {}) -> Dictionary:
 	var config: Dictionary = data.config.get("happiness", {})
 	var foods := foods_selling(state, data, now)
 	var food_scores: Array = config.get("food_scores", [1.0])
 	var food := float(food_scores[mini(foods, food_scores.size() - 1)])
-	var e := employment(state, data, now)
+	if e.is_empty():
+		e = employment(state, data, now)
 	var jobs: float = 1.0 if int(e.adults) <= 0 else float(e.employed) / float(e.adults)
-	var homes := housing(state, data, now)
+	if homes.is_empty():
+		homes = housing(state, data, now)
 	var households := int(homes.households)
 	var housed: float = 1.0 if households <= 0 else 1.0 - float(homes.homeless) / households
 	var weights: Dictionary = config.get("weights", {})
@@ -448,10 +472,11 @@ static func _move_in_speed(pop: Dictionary) -> float:
 ## Happiness only changes at moments settling splits on (a shelf sells out, a person moves in, a
 ## building finishes or changes workers, a player action), so the birth and move-in speeds are
 ## read at the start of each piece of time. When the move-in speed changes, the wait for the next
-## person starts again from t.
-static func _update_growth_speed(state: Dictionary, data: Dictionary, t: float) -> void:
+## person starts again from t. `happy` = happiness at t if already worked out.
+static func _update_growth_speed(state: Dictionary, data: Dictionary, t: float, happy := {}) -> void:
 	var pop: Dictionary = state.population
-	var happy := happiness(state, data, t)
+	if happy.is_empty():
+		happy = happiness(state, data, t)
 	var move_in := float(happy.move_in_speed)
 	if not is_equal_approx(move_in, _move_in_speed(pop)):
 		pop.growth_anchor = maxf(float(pop.growth_anchor), t)
@@ -513,16 +538,22 @@ static func people_stats(state: Dictionary) -> Dictionary:
 ## rate, so adults and children each lose their share. In an unhappy village people leave the
 ## island (happiness leave_per_hour), adults and children alike, in groups (life_group_size).
 ## Births and deaths are all 0
-## without a "life" block in game_config.json.
-static func _life_rates(state: Dictionary, data: Dictionary, t: float) -> Dictionary:
+## without a "life" block in game_config.json. `happy` (happiness) and `homes` (housing) at t can be
+## handed in when already worked out.
+static func _life_rates(state: Dictionary, data: Dictionary, t: float, happy := {}, homes := {}) -> Dictionary:
 	var life: Dictionary = data.config.get("life", {})
 	var rates := {"born": 0.0, "adult_deaths": 0.0, "child_deaths": 0.0, "adult_leaves": 0.0, "child_leaves": 0.0}
-	var leave := float(happiness(state, data, t).leave_per_hour) / 3600.0 if _has_needs(data) else 0.0
+	var leave := 0.0
+	if _has_needs(data):
+		if happy.is_empty():
+			happy = happiness(state, data, t, homes)
+		leave = float(happy.leave_per_hour) / 3600.0
 	rates.adult_leaves = adults(state) * leave
 	rates.child_leaves = children_count(state) * leave
 	if life.is_empty():
 		return rates
-	var homes := housing(state, data, t)
+	if homes.is_empty():
+		homes = housing(state, data, t)
 	if children_count(state) < int(homes.child_places):
 		rates.born = adults(state) * float(life.get("birth_rate_per_hour", 0.0)) * float(state.population.get("growth_speed", 1.0)) / 3600.0
 	var death := float(life.get("death_rate_per_hour", 0.0)) / 3600.0
@@ -566,7 +597,10 @@ static func _next_life_event(state: Dictionary, data: Dictionary, t: float, rate
 ## group at once), then births. Adults who die or leave are simply gone (hiring then frees a post, the unemployed
 ## first, so the homeless are the first to go); a child is taken from the youngest group; a baby
 ## joins the age group of its hour. Returns {"born", "grew_up", "died", "moved_away"}.
-static func _settle_life(state: Dictionary, data: Dictionary, t0: float, t1: float, rates: Dictionary) -> Dictionary:
+## `homes` = housing at t0 (after hiring) and `homes_adults` = the adults then: births need the
+## child places of t1, which are still those of t0 as long as the number of adults is the same
+## (nobody is hired or let go in between; only households, made of adults, decide them).
+static func _settle_life(state: Dictionary, data: Dictionary, t0: float, t1: float, rates: Dictionary, homes := {}, homes_adults := -1) -> Dictionary:
 	var out := {"born": 0, "grew_up": 0, "died": 0, "moved_away": 0}
 	var pop: Dictionary = state.population
 	if not pop.has("children"):
@@ -590,7 +624,9 @@ static func _settle_life(state: Dictionary, data: Dictionary, t0: float, t1: flo
 	pop.current = int(pop.current) - adults_leaving
 	out.moved_away = adults_leaving + _remove_children(state, int(events.get("child_leaves", 0)))
 	var life: Dictionary = data.config.get("life", {})
-	var born := mini(int(events.born), maxi(int(housing(state, data, t1).child_places) - children_count(state), 0))
+	if homes.is_empty() or adults(state) != homes_adults:
+		homes = housing(state, data, t1)
+	var born := mini(int(events.born), maxi(int(homes.child_places) - children_count(state), 0))
 	if born > 0:
 		var group_seconds := maxf(float(life.get("child_group_hours", 1.0)), 0.001) * 3600.0
 		var grows_up_at := floorf(t1 / group_seconds) * group_seconds + float(life.get("grow_up_hours", 24.0)) * 3600.0
@@ -702,6 +738,8 @@ static func adults_by_class(state: Dictionary, data: Dictionary, now: float) -> 
 		out[jobless] = {"adults": 0, "wages": 0.0}
 	var employed := 0
 	for b in state.buildings:
+		if hired(b) <= 0:
+			continue  # nobody works there (most buildings of a big village are homes)
 		var n := mini(hired(b), posts(data, b, now))
 		if n <= 0:
 			continue
@@ -821,21 +859,28 @@ static func housing(state: Dictionary, data: Dictionary, now: float) -> Dictiona
 ## household has a real home, newest first (plan.md §5.18). A new hut goes on the free tile
 ## nearest City Hall, in a fixed order (no dice). With no hut type in
 ## buildings.json, or no free tile left, the homeless have no hut.
-static func _update_huts(state: Dictionary, data: Dictionary, now: float) -> void:
+## Returns who lives where at `now` (housing) when that is still true afterwards, so _hire can
+## hand it on; {} when huts came or went (or it looked at another moment).
+static func _update_huts(state: Dictionary, data: Dictionary, now: float) -> Dictionary:
 	var hut_type := hut_type_of(data)
 	if hut_type == "":
-		return
+		return {}
 	# A clock set backwards never undoes time already worked out: use the later of the two.
-	var homeless := int(housing(state, data, maxf(now, float(state.get("settled_at", now)))).homeless)
+	var at := maxf(now, float(state.get("settled_at", now)))
+	var homes := housing(state, data, at)
+	var homeless := int(homes.homeless)
 	_move_huts_off_hub(state, data, hut_type)
 	var huts: Array = state.buildings.filter(func(b): return is_hut(data, b))
+	if huts.size() != homeless:
+		homes = {}
 	while huts.size() > homeless:
 		state.buildings.erase(huts.pop_back())
 	while huts.size() < homeless:
 		var cell := _free_spot_near_centre(state, data, hut_type)
 		if cell.x < 0:
-			return  # the plot is full
+			return {}  # the plot is full
 		huts.append(_add_building(state, hut_type, cell, now, now))
+	return homes if at == now else {}
 
 
 ## A hut right beside City Hall would block its roads (plan.md §5.20): such huts
@@ -872,13 +917,14 @@ static func _free_spot_near_centre(state: Dictionary, data: Dictionary, type_id:
 			centre = Vector2i(int(b.position[0]), int(b.position[1]))
 			break
 	var hubs := _hub_cells(state, data)
+	var map := _plot_map(state, data)
 	for ring in range(1, maxi(int(grid[0]), int(grid[1])) + 1):
 		for dy in range(-ring, ring + 1):
 			for dx in range(-ring, ring + 1):
 				if maxi(absi(dx), absi(dy)) != ring:
 					continue
 				var cell := centre + Vector2i(dx, dy)
-				if _footprint_problem(state, data, type_id, cell) == "" and not (roads_on(data) and _beside(hubs, footprint(data, type_id, cell))):
+				if _footprint_problem(state, data, type_id, cell, "", map) == "" and not (roads_on(data) and _beside(hubs, footprint(data, type_id, cell))):
 					return cell
 	return Vector2i(-1, -1)
 
@@ -901,7 +947,8 @@ static func _collect_rent(state: Dictionary, dollars: float) -> int:
 # --- Player actions -----------------------------------------------------------
 
 ## Whether a building could go on this cell right now (changes nothing). Also returns what it
-## would cost at `now`'s prices: "cost" (cents), "seconds", "lines" (see construction_quote).
+## would cost at `now`'s prices: "cost" (cents), "seconds", "lines" (see construction_plan: the
+## warehouse's own materials are used first).
 ## The placement preview uses this too, so preview and real build always agree.
 static func can_build(state: Dictionary, data: Dictionary, type_id: String, cell: Vector2i, now: float) -> Dictionary:
 	var def: Dictionary = data.buildings.get(type_id, {})
@@ -917,7 +964,7 @@ static func can_build(state: Dictionary, data: Dictionary, type_id: String, cell
 	var crew := _check_crew(state, data, int(construction_needs(data, type_id, 1).crew), now)
 	if not crew.is_empty():
 		return crew
-	var quote := construction_quote(data, type_id, 1, now)
+	var quote := construction_plan(state, data, type_id, 1, now)
 	if state.profile.currency < int(quote.cost):
 		return _fail("Not enough money.")
 	return _ok(quote)
@@ -935,8 +982,8 @@ static func at_build_limit(state: Dictionary, data: Dictionary, type_id: String)
 	return have >= int(def.max_count)
 
 
-## Build: buy its materials and pay its crew now (construction_quote); it's ready after the
-## construction time.
+## Build: take the materials the warehouse has, buy the rest, and pay its crew now
+## (construction_plan); it's ready after the construction time.
 static func build(state: Dictionary, data: Dictionary, type_id: String, cell: Vector2i, now: float) -> Dictionary:
 	var check := can_build(state, data, type_id, cell, now)
 	if not check.ok:
@@ -950,7 +997,9 @@ static func build(state: Dictionary, data: Dictionary, type_id: String, cell: Ve
 	state.profile.currency -= int(check.cost)
 	stats(state).spending.construction += int(check.cost)
 	var b := _add_building(state, type_id, cell, now, now + float(check.seconds))
-	b.paid = int(check.cost)  # its value on the balance sheet
+	# Its value on the balance sheet: the money paid plus the cost tags of the warehouse's
+	# materials it used (they move from the goods into the building).
+	b.paid = int(check.cost) + _use_materials(state, b, check)
 	_hire(state, data, now)  # a building ready at once hires (and a home takes households in) now
 	return _ok({"building_id": b.id, "cost": int(check.cost), "seconds": float(check.seconds)})
 
@@ -1055,20 +1104,50 @@ static func centre_of(data: Dictionary, b: Dictionary) -> Vector2:
 
 ## Whether a building of this kind fits at `cell`: every tile of its footprint on the plot, with no
 ## other building and no road on it. `ignore_id` = a building allowed to be there (the one being
-## moved). "" when it fits, else the reason, friendly enough to show.
-static func _footprint_problem(state: Dictionary, data: Dictionary, type_id: String, cell: Vector2i, ignore_id := "") -> String:
+## moved). "" when it fits, else the reason, friendly enough to show. Checking many spots in a
+## row? Make the plot map once (_plot_map) and hand it in as `map`: far quicker in a big village.
+static func _footprint_problem(state: Dictionary, data: Dictionary, type_id: String, cell: Vector2i, ignore_id := "", map := {}) -> String:
+	if map.is_empty():
+		map = _plot_map(state, data)
 	var cells := footprint(data, type_id, cell)
 	for c in cells:
 		if not _in_plot(state, c):
 			return "That spot is outside your land."
 	for c in cells:
-		var there := building_at(state, data, c)
-		if not there.is_empty() and there.id != ignore_id:
+		if map.buildings.has(c) and map.buildings[c] != ignore_id:
 			return "That spot is taken."
 	for c in cells:
-		if is_road(state, c):
+		if map.roads.has(c):
 			return "There's a road there. Remove the road first."
 	return ""
+
+
+## What stands where, for _footprint_problem: {"buildings": Vector2i -> the id of the building on
+## that tile (the first in the list, like building_at), "roads": road_cells}.
+static func _plot_map(state: Dictionary, data: Dictionary) -> Dictionary:
+	var tiles := {}
+	for b in state.buildings:
+		for c in cells_of(data, b):
+			if not tiles.has(c):
+				tiles[c] = str(b.id)
+	return {"buildings": tiles, "roads": road_cells(state)}
+
+
+## The free spot for a building of this kind closest to `near` (where Placement Mode puts the
+## ghost first), or `near` itself when there's none. Equally close: the lowest x, then y.
+static func free_spot_near(state: Dictionary, data: Dictionary, type_id: String, near: Vector2i) -> Vector2i:
+	var map := _plot_map(state, data)
+	var grid: Array = state.plot.grid_size
+	var best := near
+	var best_dist := INF
+	for x in int(grid[0]):
+		for y in int(grid[1]):
+			var cell := Vector2i(x, y)
+			var dist := Vector2(cell - near).length()
+			if dist < best_dist and _footprint_problem(state, data, type_id, cell, "", map) == "":
+				best = cell
+				best_dist = dist
+	return best
 
 
 ## Whether any tile beside `area` (on the 4 sides of its tiles, outside the area) is in `cells`.
@@ -1187,11 +1266,12 @@ static func road_quote(state: Dictionary, data: Dictionary, cells: Array) -> Dic
 	if not roads_on(data):
 		return _fail("Roads can't be built.")
 	var taken := _taken_cells(state, data)
+	var buildings: Dictionary = _plot_map(state, data).buildings
 	var new_cells: Array[Vector2i] = []
 	for cell in cells:
 		if not _in_plot(state, cell):
 			return _fail("The road would go off your land.")
-		if not building_at(state, data, cell).is_empty():
+		if buildings.has(cell):
 			return _fail("A building is in the way.")
 		if not taken.has(cell) and not new_cells.has(cell):
 			new_cells.append(cell)
@@ -1380,7 +1460,7 @@ static func fit_footprints(state: Dictionary, data: Dictionary) -> Array[String]
 ## Whether a building of this kind fits at `cell` on tiles not in `placed` and with no road.
 static func _fits_among(state: Dictionary, data: Dictionary, type_id: String, cell: Vector2i, placed: Dictionary) -> bool:
 	for c in footprint(data, type_id, cell):
-		if not _in_plot(state, c) or placed.has(c) or is_road(state, c):
+		if not _in_plot(state, c) or placed.has(c) or is_road(state, c):  # perf-ok: only when an old save is upgraded
 			return false
 	return true
 
@@ -1786,7 +1866,7 @@ static func collect_group(state: Dictionary, data: Dictionary, building_id: Stri
 	var left_over := false
 	if warehouse_total(state) >= warehouse_cap(state, data):
 		for id in ids:
-			if not waiting_goods(find_building(state, id)).is_empty():
+			if not waiting_goods(find_building(state, id)).is_empty():  # perf-ok: once per tap, a few buildings
 				left_over = true
 	return _ok({"moved": total, "by_building": by_building, "left_over": left_over})
 
@@ -1921,9 +2001,10 @@ static func switch_product(state: Dictionary, data: Dictionary, building_id: Str
 	return check
 
 
-## What demolishing a building would give back (changes nothing): config.demolish_refund of its
-## build cost, the goods in its storage, and the inputs of its queued jobs (same rules as
-## cancelling). Only buildings the player can build can be demolished, so starters stay.
+## What demolishing a building would give back (changes nothing): no money, but every unit of
+## material it and its upgrades were built with ("materials", b.materials) and the goods inside it
+## ("goods"), all into the warehouse, so there must be room for them. Only buildings the player
+## can build can be demolished, so starters stay.
 static func can_demolish(state: Dictionary, data: Dictionary, building_id: String) -> Dictionary:
 	var b := find_building(state, building_id)
 	if b.is_empty():
@@ -1940,13 +2021,13 @@ static func can_demolish(state: Dictionary, data: Dictionary, building_id: Strin
 	if has_batch(b):
 		return _fail(BATCH_BUSY)
 	var goods := _goods_inside(data, b)
+	var materials: Dictionary = b.get("materials", {}).duplicate()
 	var room := warehouse_cap(state, data) - storage_capacity(state, data, b)  # a warehouse takes its room with it
-	if warehouse_total(state) + _total(goods) > room:
+	if warehouse_total(state) + _total(goods) + _total(materials) > room:
 		if def.get("category", "") == "storage":
-			return _fail("The other warehouses don't have room for your goods. Make room first.")
-		return _fail("Not enough room in the warehouse for what's inside. Make room first.")
-	var money := roundi(construction_value(data, b.type) * float(data.config.get("demolish_refund", 0.0)))
-	return _ok({"money": money, "goods": goods})
+			return _fail("The other warehouses don't have room for your goods and this one's materials. Make room first.")
+		return _fail("Not enough room in the warehouse for its materials (%d) and what's inside. Make room first." % (_total(materials) + _total(goods)))
+	return _ok({"materials": materials, "goods": goods})
 
 
 ## Why a building with a batch can't be demolished, suspended or upgraded.
@@ -2065,10 +2146,11 @@ static func demolish(state: Dictionary, data: Dictionary, building_id: String, n
 	var costs := _goods_inside_cost(state, data, b)
 	_take_down_all_shelves(state, data, b, now)  # a Supermarket is paid for what it sold so far
 	state.buildings.erase(b)
-	state.profile.currency += int(check.money)
-	stats(state).income.demolish += int(check.money)
 	_add_to(state.inventory, check.goods)
 	_put_cost(_costs(state, "inventory_cost"), costs)  # the goods keep their cost tags
+	# Its materials go back into the warehouse at what they really cost (b.materials_cost).
+	_add_to(state.inventory, check.materials)
+	_put_cost(_costs(state, "inventory_cost"), b.get("materials_cost", {}))
 	# Its workers are freed for other posts. Nobody leaves: households that lost their home move
 	# into other homes, or become homeless and put up Makeshift Huts (_hire updates them).
 	_hire(state, data, now)
@@ -2076,14 +2158,18 @@ static func demolish(state: Dictionary, data: Dictionary, building_id: String, n
 
 
 # --- Construction (plan.md §5.15) ------------------------------------------------
-# Building and upgrading need materials (Bricks, Cement, Steel, Construction materials) and a
-# construction crew. A building's "materials" in buildings.json are its Level 1 amounts; each
-# level needs construction.level_growth times the level below (2 = doubles), and so does the
-# crew (construction.crew, or the building's own "crew"). The materials are bought from an
-# in-game supplier when the work starts, at that hour's market price (material_price), and the
-# crew is paid once, at the minimum wage, for the hours the work takes. All of it is paid at the
-# start, so work never stalls halfway. Data without materials (the test data) can still set a
-# fixed cash "build_cost" / upgrade "cost" and its own "build_time" / upgrade "time".
+# Building and upgrading need materials (Bricks, Cement, Steel, Construction materials: items in
+# resources.json of category "building_material") and a construction crew. A building's
+# "materials" in buildings.json are its Level 1 amounts; each level needs
+# construction.level_growth times the level below (2 = doubles). The warehouse's own materials
+# are used first (construction_plan); the rest is bought from an in-game supplier when the work
+# starts, at that hour's market price (material_price). The crew is paid once,
+# construction.labor_share of the materials' value at that hour's prices (warehouse materials
+# count too: they still need building with). All of it is paid at the start, so work never
+# stalls halfway. Each building remembers every unit of material it was built with and what it
+# really cost (b.materials, b.materials_cost): demolishing puts them back in the warehouse. Data
+# without materials (the test data) can still set a fixed cash "build_cost" / upgrade "cost" and
+# its own "build_time" / upgrade "time".
 
 static func _construction(data: Dictionary) -> Dictionary:
 	return data.config.get("construction", {})
@@ -2098,7 +2184,7 @@ static func material_price(data: Dictionary, material_id: String, now: float) ->
 
 static func _material_price(data: Dictionary, material_id: String, now: float, at_base: bool) -> int:
 	var c := _construction(data)
-	var base := float(c.get("materials", {}).get(material_id, {}).get("price", 0.0))
+	var base := float(data.resources.get(material_id, {}).get("price", 0.0))
 	if at_base or base <= 0.0:
 		return cents(base)
 	var slot := floori(now / maxf(float(c.get("price_change_seconds", 3600.0)), 1.0))
@@ -2163,12 +2249,89 @@ static func construction_seconds(data: Dictionary, type_id: String, level: int) 
 	return float(times[clampi(level, 1, times.size()) - 1])
 
 
-## What building (level 1) or upgrading to `level` costs at `now`'s prices: {"cost" (cents, all
-## of it), "seconds", "lines": [{"id", "name", "unit", "amount", "price" (cents each), "cost"}]}.
-## The crew's line has id "labor", amount = workers, "hours", and price = wage per hour. A fixed
-## cash part (older data's build_cost / upgrade cost) is in "cost" but has no line.
+## True when `resource_id` is a building material (resources.json category "building_material"):
+## what buildings and upgrades are made of.
+static func is_building_material(data: Dictionary, resource_id: String) -> bool:
+	return str(data.resources.get(resource_id, {}).get("category", "")) == "building_material"
+
+
+## What building (level 1) or upgrading to `level` costs at `now`'s prices when every material is
+## bought: {"cost" (cents, all of it), "seconds", "lines": [{"id", "name", "unit", "amount",
+## "price" (cents each), "cost"}]}. The crew's line has id "labor", amount = workers, "share"
+## (construction.labor_share) and cost = that share of the materials' value. A fixed cash part
+## (older data's build_cost / upgrade cost) is in "cost" but has no line. See construction_plan
+## for what it costs with the warehouse's own materials.
 static func construction_quote(data: Dictionary, type_id: String, level: int, now: float) -> Dictionary:
 	return _quote(data, type_id, level, now, false)
+
+
+## construction_quote with the warehouse's own materials used first: each material line also has
+## "from_stock" (units taken from the warehouse) and "buy" (units bought), and its "cost" is
+## only what's bought. "cost" = the money it takes (bought materials + labor + any fixed part),
+## "stock_value" = the cost tags (cents) of the warehouse materials it would use.
+static func construction_plan(state: Dictionary, data: Dictionary, type_id: String, level: int, now: float) -> Dictionary:
+	var quote := construction_quote(data, type_id, level, now)
+	var stock_value := 0.0
+	for line in quote.lines:
+		if line.id == "labor":
+			continue
+		var from_stock := mini(int(line.amount), int(state.inventory.get(line.id, 0)))
+		line["from_stock"] = from_stock
+		line["buy"] = int(line.amount) - from_stock
+		line.cost = int(line.buy) * int(line.price)
+		quote.cost = int(quote.cost) - from_stock * int(line.price)
+		stock_value += average_cost(state, line.id) * from_stock
+	quote["stock_value"] = stock_value
+	return quote
+
+
+## Building or upgrading `b` with `plan` (construction_plan): its warehouse materials leave the
+## warehouse with their cost tags, and every unit used (taken or bought) is recorded on `b` at what
+## it really cost. Returns the cents of warehouse materials used (rounded), for its value.
+static func _use_materials(state: Dictionary, b: Dictionary, plan: Dictionary) -> int:
+	var units := {}
+	var costs := {}
+	var stock := {}
+	for line in plan.get("lines", []):
+		if line.id == "labor" or int(line.amount) <= 0:
+			continue
+		units[line.id] = int(line.amount)
+		costs[line.id] = float(int(line.get("buy", line.amount)) * int(line.price))
+		if int(line.get("from_stock", 0)) > 0:
+			stock[line.id] = int(line.from_stock)
+	var taken := _take_cost(state.inventory, _costs(state, "inventory_cost"), stock)
+	_remove_from(state.inventory, stock)
+	_put_cost(costs, taken)
+	_record_materials(b, units, costs)
+	var value := 0.0
+	for res in taken:
+		value += float(taken[res])
+	return roundi(value)
+
+
+## Adds materials to what `b` was built with: `units` {material: units}, `costs` {material: cents}.
+static func _record_materials(b: Dictionary, units: Dictionary, costs: Dictionary) -> void:
+	if units.is_empty():
+		return
+	if not b.has("materials"):
+		b["materials"] = {}
+	_add_to(b.materials, units)
+	_put_cost(_costs(b, "materials_cost"), costs)
+
+
+## Records on `b` the materials of building it and its upgrades up to `level`, at base prices: for
+## buildings nobody bought (the starting buildings, free ones, and those in older saves).
+static func record_base_materials(data: Dictionary, b: Dictionary, level: int) -> void:
+	for l in range(1, mini(level, max_level(data, b.type)) + 1):
+		var needs := construction_needs(data, b.type, l)
+		var units := {}
+		var costs := {}
+		for m in needs:
+			if m == "crew" or int(needs[m]) <= 0:
+				continue
+			units[m] = int(needs[m])
+			costs[m] = float(int(needs[m]) * _material_price(data, m, 0.0, true))
+		_record_materials(b, units, costs)
 
 
 static func _quote(data: Dictionary, type_id: String, level: int, now: float, at_base: bool) -> Dictionary:
@@ -2180,22 +2343,23 @@ static func _quote(data: Dictionary, type_id: String, level: int, now: float, at
 	elif level - 2 < def.get("upgrades", []).size():
 		total += cents(float(def.upgrades[level - 2].get("cost", 0)))
 	var lines: Array = []
-	var materials: Dictionary = _construction(data).get("materials", {})
 	var needs := construction_needs(data, type_id, level)
+	var materials_value := 0
 	for m in needs:
 		if m == "crew" or int(needs[m]) <= 0:
 			continue
 		var price := _material_price(data, m, now, at_base)
-		var info: Dictionary = materials.get(m, {})
+		var info: Dictionary = data.resources.get(m, {})
 		lines.append({"id": m, "name": str(info.get("name", m)), "unit": str(info.get("unit", "")),
 			"amount": int(needs[m]), "price": price, "cost": int(needs[m]) * price})
-		total += int(needs[m]) * price
-	if int(needs.crew) > 0 and seconds > 0.0:
-		var type: String = _construction(data).get("labor_worker_type", "low_skilled")
-		var wage := cents(_minimum_wage_of(data, {"worker_type": type}))
-		var labor := roundi(int(needs.crew) * seconds / 3600.0 * wage)
+		materials_value += int(needs[m]) * price
+	total += materials_value
+	if int(needs.crew) > 0:
+		# The crew is paid a share of the materials' value, however long the work takes.
+		var share := clampf(float(_construction(data).get("labor_share", 0.0)), 0.0, 1.0)
+		var labor := roundi(materials_value * share)
 		lines.append({"id": "labor", "name": "Labor", "unit": "worker", "amount": int(needs.crew),
-			"hours": seconds / 3600.0, "price": wage, "cost": labor})
+			"share": share, "cost": labor})
 		total += labor
 	return {"cost": total, "seconds": seconds, "lines": lines}
 
@@ -2343,12 +2507,13 @@ static func _free_spot_by_road(state: Dictionary, data: Dictionary, type_id: Str
 	var linked := linked_roads(state, data)
 	var hubs := _hub_cells(state, data)
 	var grid: Array = state.plot.grid_size
+	var map := _plot_map(state, data)
 	for hub in hubs:
 		for ring in range(1, maxi(int(grid[0]), int(grid[1])) + 1):
 			for dy in range(-ring, ring + 1):
 				for dx in range(-ring, ring + 1):
 					var cell: Vector2i = hub + Vector2i(dx, dy)
-					if maxi(absi(dx), absi(dy)) == ring and _footprint_problem(state, data, type_id, cell) == "" and _beside(linked, footprint(data, type_id, cell)):
+					if maxi(absi(dx), absi(dy)) == ring and _footprint_problem(state, data, type_id, cell, "", map) == "" and _beside(linked, footprint(data, type_id, cell)):
 						return cell
 	return _free_spot_near_centre(state, data, type_id)
 
@@ -2427,15 +2592,15 @@ static func can_upgrade(state: Dictionary, data: Dictionary, building_id: String
 	var crew := _check_crew(state, data, int(construction_needs(data, b.type, building_level(b) + 1).crew), now)
 	if not crew.is_empty():
 		return crew
-	var quote := construction_quote(data, b.type, building_level(b) + 1, now)
+	var quote := construction_plan(state, data, b.type, building_level(b) + 1, now)
 	if state.profile.currency < int(quote.cost):
 		return _fail("Not enough money.")
 	quote["level"] = building_level(b) + 1
 	return _ok(quote)
 
 
-## Start the next upgrade: buy its materials and pay its crew now; the building reaches the next
-## level after its time.
+## Start the next upgrade: take the materials the warehouse has, buy the rest, and pay its crew
+## now; the building reaches the next level after its time.
 ## A building that closes for it (see stays_open_while_upgrading) sends its workers home and
 ## pauses its work until then.
 static func upgrade(state: Dictionary, data: Dictionary, building_id: String, now: float) -> Dictionary:
@@ -2447,8 +2612,9 @@ static func upgrade(state: Dictionary, data: Dictionary, building_id: String, no
 		return check
 	state.profile.currency -= int(check.cost)
 	stats(state).spending.construction += int(check.cost)
-	b["paid"] = int(b.get("paid", 0)) + int(check.cost)  # its value on the balance sheet...
-	b["upgrade_paid"] = int(check.cost)  # ...this part counted as "being built" until it's done
+	var value := int(check.cost) + _use_materials(state, b, check)  # money + warehouse materials used
+	b["paid"] = int(b.get("paid", 0)) + value  # its value on the balance sheet...
+	b["upgrade_paid"] = value  # ...this part counted as "being built" until it's done
 	# A clock set backwards never moves the start before the time already worked out.
 	var start := maxf(now, float(state.get("settled_at", now)))
 	var done := start + float(check.seconds)
@@ -2998,7 +3164,19 @@ static func _staffed_share(data: Dictionary, b: Dictionary) -> float:
 ## that after sales tax. Rounded to the cent. A resource with a fixed "price" (dollars) in
 ## resources.json uses that instead.
 static func unit_price(data: Dictionary, resource_id: String) -> int:
-	return _unit_price(data, resource_id, {})
+	return int(_cached(data, "price:" + resource_id, func(): return _unit_price(data, resource_id, {})))
+
+
+## Prices and standard costs depend only on data/*.json. When `data` carries a "cache"
+## dictionary (the game's does: its data never changes while playing), each one is worked out
+## once and kept there; without one (tests change their data) it is worked out every time.
+static func _cached(data: Dictionary, key: String, work: Callable) -> Variant:
+	if not data.has("cache"):
+		return work.call()
+	var cache: Dictionary = data.cache
+	if not cache.has(key):
+		cache[key] = work.call()
+	return cache[key]
 
 
 static func _unit_price(data: Dictionary, resource_id: String, visiting: Dictionary) -> int:
@@ -3111,13 +3289,15 @@ static func home_residents(state: Dictionary, data: Dictionary, b: Dictionary, n
 ## When the next group moves in (see next_arrival_count): INF when there's no room for another adult (see _arrival_room),
 ## no open job for a migrant worker (see _job_cap), or nobody is moving in (immigration off, or too
 ## unhappy). Uses the move-in speed happiness gives right now (a new speed restarts the wait, see
-## _update_growth_speed).
-static func next_arrival_at(state: Dictionary, data: Dictionary, now: float) -> float:
+## _update_growth_speed). `happy` (happiness) and `e` (employment) at `now` can be handed in.
+static func next_arrival_at(state: Dictionary, data: Dictionary, now: float, happy := {}, e := {}) -> float:
 	var pop: Dictionary = state.population
-	if adults(state) >= mini(_arrival_room(state, data, now, true), _job_cap(state, data, now)):
+	if adults(state) >= mini(_arrival_room(state, data, now, true), _job_cap(state, data, now, e)):
 		return INF
 	var base := float(data.config.population_growth_seconds)
-	var speed := float(happiness(state, data, now).move_in_speed)
+	if happy.is_empty():
+		happy = happiness(state, data, now, {}, e)
+	var speed := float(happy.move_in_speed)
 	if base <= 0.0 or speed <= 0.0:
 		return INF
 	var step := base / speed
@@ -3128,11 +3308,11 @@ static func next_arrival_at(state: Dictionary, data: Dictionary, now: float) -> 
 
 
 ## How many adults the next group brings: up to move_in_group_size, fewer when fewer jobs are
-## open (or less room). 0 when nobody is coming (see next_arrival_at).
-static func next_arrival_count(state: Dictionary, data: Dictionary, now: float) -> int:
-	if is_inf(next_arrival_at(state, data, now)):
+## open (or less room). 0 when nobody is coming (see next_arrival_at, also for `happy` and `e`).
+static func next_arrival_count(state: Dictionary, data: Dictionary, now: float, happy := {}, e := {}) -> int:
+	if is_inf(next_arrival_at(state, data, now, happy, e)):
 		return 0
-	var room := mini(_arrival_room(state, data, now, true), _job_cap(state, data, now)) - adults(state)
+	var room := mini(_arrival_room(state, data, now, true), _job_cap(state, data, now, e)) - adults(state)
 	return clampi(room, 0, _move_in_group(data))
 
 
@@ -3296,55 +3476,64 @@ static func posts(data: Dictionary, b: Dictionary, now: float) -> int:
 ## people (a home was demolished) workers leave the newest building first, and warehouses last.
 ## Afterwards the Makeshift Huts are brought up to date, because who works where decides each
 ## household's wealth, and so where it can live; and then who gets power (plan.md §5.5).
-static func _hire(state: Dictionary, data: Dictionary, now: float) -> void:
+## Returns what it worked out on the way, as things now stand, for settle to reuse: {"housing"
+## (or {} when it changed afterwards), "power" (power_summary; {} without electricity)}.
+static func _hire(state: Dictionary, data: Dictionary, now: float) -> Dictionary:
 	_finish_upgrades(state, now)  # a finished upgrade's new posts and room count first
 	_hire_workers(state, data, now)
-	_update_huts(state, data, now)
-	_update_power(state, data, now)  # who works and who lives where decide who needs power
+	var homes := _update_huts(state, data, now)
+	var power := _update_power(state, data, now, homes)  # who works and who lives where decide who needs power
+	return {"housing": homes, "power": power}
 
 
 static func _hire_workers(state: Dictionary, data: Dictionary, now: float) -> void:
 	_update_road_links(state, data)  # a building with no road offers no posts
+	var buildings: Array = state.buildings
+	# Posts and who is staffed first don't change while people are handed out, so each
+	# building's are worked out once (asking again for every worker is slow in a big village).
+	var open: Array[int] = []
+	var first: Array[bool] = []
 	var free := adults(state)  # children don't work
-	for b in state.buildings:
-		b["hired"] = mini(hired(b), posts(data, b, now))  # e.g. staffing was lowered: the rest are freed
+	for b in buildings:
+		open.append(posts(data, b, now))
+		first.append(is_staffed_first(data, b))
+		b["hired"] = mini(hired(b), open[-1])  # e.g. staffing was lowered: the rest are freed
 		free -= hired(b)
 	while free < 0:
 		var leave := -1
-		for i in state.buildings.size():
-			var b: Dictionary = state.buildings[i]
-			if hired(b) > 0 and (leave < 0 or _leaves_before(data, b, state.buildings[leave])):
+		for i in buildings.size():
+			if hired(buildings[i]) > 0 and (leave < 0 or _leaves_before(first[i], first[leave])):
 				leave = i
-		state.buildings[leave]["hired"] = hired(state.buildings[leave]) - 1
+		buildings[leave]["hired"] = hired(buildings[leave]) - 1
 		free += 1
 	while free > 0:
 		var best := -1
-		for i in state.buildings.size():
-			var b: Dictionary = state.buildings[i]
-			if hired(b) < posts(data, b, now) and (best < 0 or _hires_before(data, b, state.buildings[best], now)):
+		for i in buildings.size():
+			var b: Dictionary = buildings[i]
+			if hired(b) < open[i] and (best < 0 or _hires_before(first[i], hired(b), open[i], first[best], hired(buildings[best]), open[best])):
 				best = i
 		if best < 0:
 			return  # every post is filled: the rest stay unemployed
-		state.buildings[best]["hired"] = hired(state.buildings[best]) + 1
+		buildings[best]["hired"] = hired(buildings[best]) + 1
 		free -= 1
 
 
-## Whether building `a` gets the next free worker before `b` (both have an open post): buildings
-## that are "staffed_first" (warehouses) before all others, then the emptier one (compared
-## without decimals: a.hired / a.posts < b.hired / b.posts). Equal on both: the one found first,
-## i.e. the older building.
-static func _hires_before(data: Dictionary, a: Dictionary, b: Dictionary, now: float) -> bool:
-	if is_staffed_first(data, a) != is_staffed_first(data, b):
-		return is_staffed_first(data, a)
-	return hired(a) * posts(data, b, now) < hired(b) * posts(data, a, now)
+## Whether building a gets the next free worker before b (both have an open post), given each
+## one's staffed_first (is_staffed_first), hired and posts: buildings that are "staffed_first"
+## (warehouses) before all others, then the emptier one (compared without decimals: a.hired /
+## a.posts < b.hired / b.posts). Equal on both: the one found first, i.e. the older building.
+static func _hires_before(a_first: bool, a_hired: int, a_posts: int, b_first: bool, b_hired: int, b_posts: int) -> bool:
+	if a_first != b_first:
+		return a_first
+	return a_hired * b_posts < b_hired * a_posts
 
 
-## With fewer people than workers: whether a worker at `a` leaves before one at `b` (`b` was
-## found earlier, so it's the older one). "staffed_first" buildings lose workers last; otherwise
-## the newer building (`a`) goes first.
-static func _leaves_before(data: Dictionary, a: Dictionary, b: Dictionary) -> bool:
-	if is_staffed_first(data, a) != is_staffed_first(data, b):
-		return not is_staffed_first(data, a)
+## With fewer people than workers: whether a worker at a leaves before one at b (b was found
+## earlier, so it's the older one), given each one's staffed_first. "staffed_first" buildings lose
+## workers last; otherwise the newer building (a) goes first.
+static func _leaves_before(a_first: bool, b_first: bool) -> bool:
+	if a_first != b_first:
+		return not a_first
 	return true
 
 
@@ -3795,8 +3984,8 @@ static func _wants_power(data: Dictionary, b: Dictionary, now: float, homes: Dic
 ## joined plants make), "grid" (MW the grid link can add), "used" (MW the buildings get),
 ## "wanted" (MW the running buildings inside the network ask for), "from_own", "public" (MW
 ## drawn from the public grid), "spare" (own MW nobody uses), "left" (MW still free),
-## "own_price" (dollars per own MWh)}.
-static func power_summary(state: Dictionary, data: Dictionary, now: float) -> Dictionary:
+## "own_price" (dollars per own MWh)}. `housed` = housing at `now` if already worked out.
+static func power_summary(state: Dictionary, data: Dictionary, now: float, housed := {}) -> Dictionary:
 	var out := {"status": {}, "own": 0.0, "grid": 0.0, "used": 0.0, "wanted": 0.0, "from_own": 0.0,
 		"public": 0.0, "spare": 0.0, "left": 0.0, "own_price": 0.0}
 	if not power_on(data):
@@ -3814,7 +4003,8 @@ static func power_summary(state: Dictionary, data: Dictionary, now: float) -> Di
 	var homes := {}
 	for b in state.buildings:
 		if home_households(data, b) > 0 and power_need(data, b) > 0.0:
-			homes = housing(state, data, now).homes  # only worked out when a home uses power
+			# Only worked out when a home uses power.
+			homes = (housed if not housed.is_empty() else housing(state, data, now)).homes
 			break
 	for b in state.buildings:  # oldest first
 		var need := power_need(data, b)
@@ -3841,16 +4031,20 @@ static func power_summary(state: Dictionary, data: Dictionary, now: float) -> Di
 
 
 ## Stores who has power ("power" on each building that uses it; see power_summary). Run at the
-## end of _hire, so the speeds settling reads always know.
-static func _update_power(state: Dictionary, data: Dictionary, now: float) -> void:
+## end of _hire, so the speeds settling reads always know. Returns the power_summary it used
+## (writing the status changes none of its numbers); {} without electricity. `housed` = housing
+## at `now` if already worked out.
+static func _update_power(state: Dictionary, data: Dictionary, now: float, housed := {}) -> Dictionary:
 	if not power_on(data):
-		return
-	var status: Dictionary = power_summary(state, data, now).status
+		return {}
+	var summary := power_summary(state, data, now, housed)
+	var status: Dictionary = summary.status
 	for b in state.buildings:
 		if status.has(b.id):
 			b["power"] = status[b.id]
 		else:
 			b.erase("power")
+	return summary
 
 
 ## Why the building has no power: "short" (not enough left), "no_grid" (outside the network), or
@@ -3918,12 +4112,13 @@ static func cover_all_with_power(state: Dictionary, data: Dictionary) -> void:
 				break
 			var best := Vector2i(-1, -1)
 			var best_distance := INF
+			var map := _plot_map(state, data)
 			for y in int(grid[1]):
 				for x in int(grid[0]):
 					var cell := Vector2i(x, y)
 					var at := centre_at(data, type_id, cell)
 					var distance := (at - centre_of(data, b)).length_squared()
-					if distance < best_distance and _footprint_problem(state, data, type_id, cell) == "" and _in_reach(network.areas, at, radius):
+					if distance < best_distance and _footprint_problem(state, data, type_id, cell, "", map) == "" and _in_reach(network.areas, at, radius):
 						best = cell
 						best_distance = distance
 			if best == Vector2i(-1, -1):
@@ -3936,6 +4131,7 @@ static func cover_all_with_power(state: Dictionary, data: Dictionary) -> void:
 static func _add_free_building(state: Dictionary, data: Dictionary, type_id: String, cell: Vector2i) -> void:
 	var b := _add_building(state, type_id, cell, 0.0, 0.0)
 	b.paid = construction_value(data, type_id)
+	record_base_materials(data, b, 1)
 	var capital: Dictionary = stats(state).get("capital", {})
 	capital["buildings"] = int(capital.get("buildings", 0)) + int(b.paid)
 
@@ -3998,7 +4194,7 @@ static func water_unit_price(state: Dictionary, data: Dictionary) -> float:
 ## cost tags of older saves, and as the estimate when an ingredient isn't in stock. A resource
 ## with a fixed "price" costs that price (it's bought).
 static func standard_unit_cost(data: Dictionary, resource_id: String) -> float:
-	return _standard_unit_cost(data, resource_id, {})
+	return float(_cached(data, "cost:" + resource_id, func(): return _standard_unit_cost(data, resource_id, {})))
 
 
 static func _standard_unit_cost(data: Dictionary, resource_id: String, visiting: Dictionary) -> float:
@@ -4091,8 +4287,9 @@ static func employment(state: Dictionary, data: Dictionary, now: float) -> Dicti
 	var jobs := 0
 	var employed := 0
 	for b in state.buildings:
-		jobs += posts(data, b, now)
-		employed += mini(hired(b), posts(data, b, now))
+		var open := posts(data, b, now)
+		jobs += open
+		employed += mini(hired(b), open)
 	var people := int(state.population.current)
 	var grown := adults(state)
 	employed = mini(employed, grown)

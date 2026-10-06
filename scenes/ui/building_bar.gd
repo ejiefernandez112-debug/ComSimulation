@@ -87,7 +87,7 @@ func _refresh() -> void:
 	_title.text = "%s (Level %d)" % [def.name, Economy.building_level(b)]
 	var status := BuildingInfo.status(b)
 	_status.text = status.text
-	_status.add_theme_color_override("font_color", UITheme.TEXT if status.good else UITheme.WARN_TEXT)
+	UITheme.set_font_color(_status, UITheme.TEXT if status.good else UITheme.WARN_TEXT)
 	_progress.visible = status.progress >= 0.0
 	_progress.value = status.progress * 100.0
 

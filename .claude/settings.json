@@ -1,0 +1,17 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/check_after_edit.sh\"",
+            "timeout": 180,
+            "statusMessage": "Checking the project (scripts, data, performance rules)..."
+          }
+        ]
+      }
+    ]
+  }
+}

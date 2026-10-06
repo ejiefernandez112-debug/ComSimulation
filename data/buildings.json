@@ -44,7 +44,7 @@
 		"description": "Homes for working households. Each household pays you rent.",
 		"buildable": true, "max_workers": 0,
 		"materials": { "bricks": 200, "cement": 20, "steel": 5, "construction_materials": 10 },
-		"households": 6, "housing_tier": 2, "wealth": ["poor", "well_off", "rich", "filthy_rich"], "rent_per_household": 1, "power_mw": 0.5,
+		"households": 6, "housing_tier": 2, "wealth": ["poor", "well_off"], "rent_per_household": 1, "power_mw": 0.5,
 		"upgrades": [
 			{ "households": 9 },
 			{ "households": 12 },
@@ -448,15 +448,15 @@
 	"supermarket": {
 		"_comment": "Retail (plan.md 5.16): sells finished food to the village, one product per shelf, several shelves at once. How fast a shelf sells comes from the village (population x the item's appetite in resources.json), its price tag and how many different products are on the shelves (game_config.json retail). fixed_workers + fixed_wage: always 4 workers at the minimum wage, no staffing or bonus choice (a choice changed nothing worth having: half the workers sell half as fast for the same total wages). Not staffed_first: it waits its turn for free people like production buildings, and short of people it sells slower (3 of 4 = 75%). Paid when a shelf sells out. Materials kept low enough that starting cash covers a Wheat Farm + Flour Mill + Supermarket even at the highest prices.",
 		"name": "Supermarket", "category": "retail", "menu_tab": "shops", "size": 2,
-		"description": "Sells your food to the people of your village, several products at once. Pick a price tag for each shelf.",
+		"description": "Sells your food to the people of your village. Starts with 1 shelf, one more with each upgrade. Pick a price tag for each shelf.",
 		"buildable": true, "max_workers": 4, "fixed_workers": true, "fixed_wage": true, "worker_type": "low_skilled",
 		"sells": ["food"],
 		"materials": { "bricks": 500, "cement": 50, "steel": 13, "construction_materials": 25 },
-		"shelves": 4,
+		"shelves": 1,
 		"upgrades": [
-			{ "shelves": 5 },
-			{ "shelves": 6 },
-			{ "shelves": 7 }
+			{ "shelves": 2 },
+			{ "shelves": 3 },
+			{ "shelves": 4 }
 		]
 	},
 	"trading_post": {

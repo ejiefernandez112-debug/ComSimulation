@@ -55,5 +55,11 @@
 	"processed_chicken": { "name": "Chicken Nuggets", "tier": 3, "category": "food", "appetite": 0.3 },
 	"canned_fish": { "name": "Canned Fish", "tier": 2, "category": "food", "appetite": 0.3 },
 	"frozen_fish": { "name": "Frozen Fish", "tier": 2, "category": "food", "appetite": 0.4 },
-	"packaged_seafood": { "name": "Packaged Seafood", "tier": 2, "category": "food", "appetite": 0.2 }
+	"packaged_seafood": { "name": "Packaged Seafood", "tier": 2, "category": "food", "appetite": 0.2 },
+
+	"_building_materials": "What buildings and upgrades are made of (plan.md 5.15): the warehouse's own are used first, the rest is bought from a supplier at today's market price (game_config.json construction: price = base price in dollars, unit = what one of it is called). Demolishing a building puts all of its materials back in the warehouse. PLACEHOLDERS.",
+	"bricks": { "name": "Bricks", "tier": 0, "category": "building_material", "unit": "brick", "price": 1 },
+	"cement": { "name": "Cement", "tier": 0, "category": "building_material", "unit": "bag", "price": 10 },
+	"steel": { "name": "Steel", "tier": 0, "category": "building_material", "unit": "beam", "price": 50 },
+	"construction_materials": { "name": "Construction materials", "tier": 0, "category": "building_material", "unit": "crate", "price": 20 }
 }

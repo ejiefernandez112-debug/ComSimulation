@@ -25,6 +25,7 @@ var _roads := {}  # Vector2i -> true: the road tiles they move on
 var _next_to_warehouse: Array[Vector2i] = []  # road tiles beside a warehouse (delivery stops)
 var _walkers_wanted := 0
 var _cars_wanted := 0
+var _layout := -1  # Economy.layout_key() when the roads were last read
 
 
 func _ready() -> void:
@@ -36,22 +37,16 @@ func _ready() -> void:
 
 ## Works out how many people and cars there should be, and adds or removes some.
 func _on_economy_changed() -> void:
-	_roads = Economy.road_cells()
-	_next_to_warehouse.clear()
+	if Economy.layout_key() != _layout:  # the roads only change when roads or buildings do
+		_layout = Economy.layout_key()
+		_read_roads()
 	var working := 0
 	var busy := 0
 	for b in Economy.state.buildings:
-		var w := Economy.workers(b)
-		working += roundi(float(w.working))
-		if Economy.needs_road(b) and float(w.working) > 0.0:
+		var w := Economy.workers_working(b)
+		working += roundi(w)
+		if Economy.needs_road(b) and w > 0.0:
 			busy += 1
-		if GameData.buildings[b.type].get("category", "") == "storage":
-			var area := Economy.footprint(b.type, Vector2i(int(b.position[0]), int(b.position[1])))
-			for tile in area:
-				for side in Agent.SIDES:
-					var cell: Vector2i = tile + side
-					if _roads.has(cell) and not area.has(cell) and not _next_to_warehouse.has(cell):
-						_next_to_warehouse.append(cell)
 	var share := 1.0 if Settings.get_value("water_detail") else 0.5
 	_walkers_wanted = 0 if _roads.is_empty() else mini(WALKERS_MAX, ceili(working / float(WORKERS_PER_WALKER) * share))
 	_cars_wanted = 0 if _roads.size() < 2 else mini(CARS_MAX, ceili((busy + _roads.size() / float(ROAD_TILES_PER_CAR)) * share))
@@ -64,6 +59,20 @@ func _on_economy_changed() -> void:
 	while _count(true) < _cars_wanted:
 		_add(true)
 	set_process(not _agents.is_empty())
+
+
+## The road tiles they move on, and the road tiles beside a warehouse (delivery stops).
+func _read_roads() -> void:
+	_roads = Economy.road_cells()
+	_next_to_warehouse.clear()
+	for b in Economy.state.buildings:
+		if GameData.buildings[b.type].get("category", "") == "storage":
+			var area := Economy.footprint(b.type, Vector2i(int(b.position[0]), int(b.position[1])))
+			for tile in area:
+				for side in Agent.SIDES:
+					var cell: Vector2i = tile + side
+					if _roads.has(cell) and not area.has(cell) and not _next_to_warehouse.has(cell):
+						_next_to_warehouse.append(cell)
 
 
 func _process(delta: float) -> void:
@@ -161,6 +170,7 @@ class Agent extends Node2D:
 	var _points: Array[Vector2] = []  # where to go next, in tile units
 	var _at := Vector2.ZERO  # where it is, in tile units
 	var _heading := Vector2(1, 0)
+	var _drawn_heading := Vector2.ZERO  # a car's shape only changes when it turns
 	var _step := 0.0  # walking bob
 
 	## Takes this route of road tiles: works out the points along its lane or pavement.
@@ -197,9 +207,13 @@ class Agent extends Node2D:
 		_place()
 		return not _points.is_empty()
 
+	## Moves it on the map. A walker is drawn again every frame (its legs swing); a car only when it
+	## turns, as its shape doesn't depend on where it is (Iso.to_world is a straight scaling).
 	func _place() -> void:
 		position = Iso.to_world(_at)
-		queue_redraw()
+		if not car or not _heading.is_equal_approx(_drawn_heading):
+			_drawn_heading = _heading
+			queue_redraw()
 
 	## Its own soft shadow is drawn with it (the Shadows layer only redraws when buildings change).
 	func draw_shadow(_layer: Node2D) -> void:

@@ -6,6 +6,7 @@ extends ModalWindow
 ## like everything else; they aren't counted as income in the statistics.
 ## Rent: raise or lower the rent per household of each housing type (plan.md §5.18), or reset it
 ## to the rent in buildings.json. Kept in the save until reset.
+## Performance: shows or hides the performance overlay (perf_overlay.gd; F11 on a computer).
 
 const QUICK_ADD := [1000, 10000, 100000]
 const RENT_STEPS := [-1, 1, 10]  # dollars an hour per button
@@ -52,6 +53,13 @@ func _ready() -> void:
 	quick.add_child(_button("Set $0", "DangerButton", func(): _apply(Economy.dev_set_cash(0), "Cash set to $0")))
 	_message = _text("")
 	box.add_child(_message)
+
+	var speed_box := _section("Performance")
+	speed_box.add_child(_button("Show or hide the performance overlay (F11)", "", func():
+		var overlay := get_parent().get_node_or_null("PerfOverlay")
+		if overlay:
+			overlay.toggle()
+			close()))
 
 	var rent_box := _section("Rent per household (per hour)")
 	var rent_hint := _text("Households that can't afford the new rent move to cheaper homes, or become homeless.")

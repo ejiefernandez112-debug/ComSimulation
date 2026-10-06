@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <!-- A small stack of red bricks: two at the bottom, one on top. -->
+  <defs>
+    <linearGradient id="brick" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#F08A5D"/><stop offset="1" stop-color="#C2482A"/></linearGradient>
+  </defs>
+  <g stroke="#4A1A0C" stroke-width="5.5" stroke-linejoin="round">
+    <rect x="10" y="74" width="52" height="34" rx="5" fill="url(#brick)"/>
+    <rect x="66" y="74" width="52" height="34" rx="5" fill="url(#brick)"/>
+    <rect x="38" y="36" width="52" height="34" rx="5" fill="url(#brick)"/>
+  </g>
+  <g fill="#7E2C16" fill-opacity="0.55">
+    <circle cx="26" cy="92" r="4"/><circle cx="46" cy="92" r="4"/>
+    <circle cx="82" cy="92" r="4"/><circle cx="102" cy="92" r="4"/>
+    <circle cx="54" cy="54" r="4"/><circle cx="74" cy="54" r="4"/>
+  </g>
+  <g fill="#fff" fill-opacity="0.5">
+    <rect x="16" y="79" width="26" height="5" rx="2.5"/>
+    <rect x="72" y="79" width="26" height="5" rx="2.5"/>
+    <rect x="44" y="41" width="26" height="5" rx="2.5"/>
+  </g>
+</svg>

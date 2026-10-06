@@ -203,7 +203,7 @@ func _refresh_lines() -> void:
 		_lines.cost.text = UITheme.money(int(check.get("cost", 0)))
 		var profit := int(check.get("profit", 0))
 		_lines.profit.text = ("" if profit >= 0 else "-") + UITheme.money(absi(profit))
-		_lines.profit.add_theme_color_override("font_color", UITheme.GOOD_TEXT if profit >= 0 else UITheme.BAD_TEXT)
+		UITheme.set_font_color(_lines.profit, UITheme.GOOD_TEXT if profit >= 0 else UITheme.BAD_TEXT)
 		_go.text = "Sell %s %s" % [UITheme.number(_amount), item_name]
 		_go.theme_type_variation = "GoButton" if check.ok and _amount > 0 else "BackButton"
 		_go.tooltip_text = "Sold at once; the money reaches cash now" if check.ok else str(check.error)

@@ -37,6 +37,9 @@ All content is data-driven (CLAUDE.md rule 1). A new building normally needs **n
   the user wants art now, run the `building-sprites` skill (Blender model with 2-3 variants, picked on
   the encyclopedia page). Otherwise it shows as a placeholder box until then; say so. Set its
   `"size"` (2 for big buildings) in buildings.json first: the sprite is made for that many tiles.
+- **Encyclopedia notes**: add the building to `tools/encyclopedia_notes.json` (summary + feature
+  list with status built / trial / planned / idea, like the Supermarket's), then
+  `python tools/encyclopedia.py`. Costs and numbers come from the data by themselves.
 
 ## 4. Verify
 

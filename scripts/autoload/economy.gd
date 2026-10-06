@@ -31,8 +31,14 @@ var offline_report: Dictionary = {}
 var offline_seconds: float = 0.0
 ## Messages for the player about the save (couldn't be read, something was dropped). Empty = fine.
 var save_notes: Array[String] = []
+## How long the last tick took, in microseconds: "rules" (settling) and "screens" (everything
+## that refreshed on `changed`). Shown by the performance overlay (scenes/debug/).
+var last_tick_usec := {"rules": 0, "screens": 0}
 
 var _dirty := false  # a player action changed the state since the last save
+var _data := {}  # see data()
+var _memo := {}  # answers to heavy questions, kept until the state changes (see _remember)
+var _hiring := {}  # what the last tick's hiring worked out (settle's `moment`); {} once anything else changed the state
 
 
 func _ready() -> void:
@@ -65,14 +71,27 @@ func _exit_tree() -> void:
 	save_game()  # covers get_tree().quit() (the Quit button), which sends no close request
 
 
-## Content data bundled the way Simulation expects it.
+## Content data bundled the way Simulation expects it, made once. Its "cache" keeps prices
+## Simulation has worked out (data/*.json never changes while playing).
 func data() -> Dictionary:
-	return {"resources": GameData.resources, "buildings": GameData.buildings, "config": GameData.config}
+	if _data.is_empty():
+		_data = {"resources": GameData.resources, "buildings": GameData.buildings, "config": GameData.config, "cache": {}}
+	return _data
 
 
 ## Brings everything up to date. Returns what was produced (the offline summary uses this).
 func tick() -> Dictionary:
-	var report: Dictionary = Simulation.settle(state, data(), TimeService.now())
+	var started := Time.get_ticks_usec()
+	var moment := _hiring  # nothing changed since the last tick (actions forget it), so settle may reuse it
+	var report: Dictionary = Simulation.settle(state, data(), TimeService.now(), moment)
+	_hiring = moment
+	last_tick_usec.rules = Time.get_ticks_usec() - started
+	_memo.clear()
+	# Who lives where and the power were just worked out for this very moment: keep them.
+	if not moment.housing.is_empty():
+		_memo["housing"] = moment.housing
+	if not moment.power.is_empty():
+		_memo["power_summary"] = moment.power
 	if int(report.get("water", 0)) > 0 and not water_bills().is_empty():
 		water_bill_paid.emit(int(report.water), float(water_bills()[-1].m3))
 		_dirty = true  # save soon after a bill
@@ -89,7 +108,9 @@ func tick() -> Dictionary:
 			break
 	if _dirty:
 		save_game()  # once per second at most, so a burst of taps is one write
+	var refreshing := Time.get_ticks_usec()
 	changed.emit()
+	last_tick_usec.screens = Time.get_ticks_usec() - refreshing
 	return report
 
 
@@ -127,6 +148,8 @@ func save_game() -> bool:
 ## as the backup until the next save replaces it.
 func start_new_game() -> void:
 	state = Simulation.new_game(data(), TimeService.now())
+	_memo.clear()
+	_hiring = {}
 	offline_report = {}
 	offline_seconds = 0.0
 	save_game()
@@ -163,6 +186,8 @@ func _load_game() -> void:
 		now = settled
 	offline_seconds = maxf(now - settled, 0.0)
 	offline_report = Simulation.settle(state, data(), now)
+	_memo.clear()
+	_hiring = {}
 
 
 ## {"ok", "error" ("" when there simply is no file), "state", "warnings"}
@@ -253,7 +278,7 @@ func upgrade_quote(building: Dictionary) -> Dictionary:
 	var level := Simulation.building_level(building)
 	if level >= Simulation.max_level(data(), building.type):
 		return {}
-	return Simulation.construction_quote(data(), building.type, level + 1, TimeService.now())
+	return Simulation.construction_plan(state, data(), building.type, level + 1, TimeService.now())
 
 
 ## The next level's entry in buildings.json (what changes); {} at the top.
@@ -309,6 +334,16 @@ func sales_tax(gross: int) -> int:
 ## {"sold" (Retailer sales, last 24 h), "rate" (bracket the next sale starts in), "next_at"}.
 func tax_bracket() -> Dictionary:
 	return Simulation.tax_bracket(state, data(), TimeService.now())
+
+
+## Several screens ask the same heavy questions every second (who lives where, happiness, the
+## power), and each answer walks every building. So the first answer is kept, under `key`, until
+## the state changes: every tick and every player action forget them all (in between, an answer
+## is at most a second old, like everything else on screen). Read them; don't change them.
+func _remember(key: String, work: Callable) -> Variant:
+	if not _memo.has(key):
+		_memo[key] = work.call()
+	return _memo[key]
 
 
 ## Developer tools only (the dev panel in scenes/debug/, test builds only). Amounts in dollars.
@@ -511,7 +546,7 @@ func water_supply(building: Dictionary) -> float:
 ## The company's water right now (m³/h): {"own", "used", "from_own", "public", "spare",
 ## "own_price" (dollars per own m³)}.
 func water_summary() -> Dictionary:
-	return Simulation.water_summary(state, data(), TimeService.now())
+	return _remember("water_summary", func(): return Simulation.water_summary(state, data(), TimeService.now()))
 
 
 ## The water bill building up this cycle: {"m3", "cost" (cents, heavy-user extra included),
@@ -555,12 +590,12 @@ func power_radius(building: Dictionary) -> float:
 ## The power right now: {"own", "grid", "used", "wanted", "from_own", "public", "spare", "left",
 ## "own_price", "status"} (see Simulation.power_summary).
 func power_summary() -> Dictionary:
-	return Simulation.power_summary(state, data(), TimeService.now())
+	return _remember("power_summary", func(): return Simulation.power_summary(state, data(), TimeService.now(), housing()))
 
 
 ## The power network: {"ids" (buildings joined), "areas" [[centre (Vector2, in tiles), radius]]}.
 func power_network() -> Dictionary:
-	return Simulation.power_network(state, data(), TimeService.now())
+	return _remember("power_network", func(): return Simulation.power_network(state, data(), TimeService.now()))
 
 
 ## Whether `cell` is inside the power network's reach.
@@ -575,14 +610,15 @@ func is_powered_point(point: Vector2) -> bool:
 
 ## Every tile of the plot inside the power network's reach: Vector2i -> true (for the map).
 func powered_cells() -> Dictionary:
-	var network := power_network()
-	var cells := {}
-	var size: Array = state.plot.grid_size
-	for y in int(size[1]):
-		for x in int(size[0]):
-			if Simulation.is_powered_cell(network, Vector2i(x, y)):
-				cells[Vector2i(x, y)] = true
-	return cells
+	return _remember("powered_cells", func():
+		var network := power_network()
+		var cells := {}
+		var size: Array = state.plot.grid_size
+		for y in int(size[1]):
+			for x in int(size[0]):
+				if Simulation.is_powered_cell(network, Vector2i(x, y)):
+					cells[Vector2i(x, y)] = true
+		return cells)
 
 
 ## Whether a plant or substation of this kind, reaching `radius` tiles, would join the network
@@ -709,16 +745,18 @@ func average_cost(resource_id: String) -> float:
 	return Simulation.average_cost(state, resource_id)
 
 
-## What building this type costs at today's material prices, in cents (plan.md §5.15).
+## The money building this type takes at today's material prices, in cents (plan.md §5.15; the
+## warehouse's own materials are used first).
 func build_cost(type_id: String) -> int:
 	return int(build_quote(type_id).cost)
 
 
-## What building this type needs and costs at today's prices: {"cost" (cents), "seconds",
-## "lines": [{"id", "name", "unit", "amount", "price" (cents each), "cost"}]}; the crew's line has
-## id "labor", amount = workers and "hours".
+## What building this type needs and costs at today's prices, the warehouse's own materials used
+## first: {"cost" (cents of money), "seconds", "lines": [{"id", "name", "unit", "amount",
+## "from_stock", "buy", "price" (cents each), "cost" (of what's bought)}]}; the crew's line has id
+## "labor", amount = workers and "share" (of the materials' value).
 func build_quote(type_id: String) -> Dictionary:
-	return Simulation.construction_quote(data(), type_id, 1, TimeService.now())
+	return Simulation.construction_plan(state, data(), type_id, 1, TimeService.now())
 
 
 ## Seconds until construction material prices change next.
@@ -731,7 +769,7 @@ func population() -> int:
 
 
 func population_capacity() -> int:
-	return Simulation.population_capacity(state, data(), TimeService.now())
+	return _remember("population_capacity", func(): return Simulation.population_capacity(state, data(), TimeService.now()))
 
 
 ## People living in this home (adults and children; 0 while it's being built).
@@ -743,7 +781,7 @@ func home_residents(building: Dictionary) -> int:
 ## "classes": {class: {"households", "adults", "homeless"}}, "homeless", "rent_per_hour",
 ## "child_places", "power_mw", "households"} (see Simulation.housing).
 func housing() -> Dictionary:
-	return Simulation.housing(state, data(), TimeService.now())
+	return _remember("housing", func(): return Simulation.housing(state, data(), TimeService.now()))
 
 
 ## The wealth classes, poorest first: [{"id", "name", "from_wage"}].
@@ -760,12 +798,12 @@ func adult_room() -> int:
 ## village is too unhappy).
 func next_arrival_in() -> float:
 	var now := TimeService.now()
-	return Simulation.next_arrival_at(state, data(), now) - now
+	return Simulation.next_arrival_at(state, data(), now, happiness(), employment()) - now
 
 
 ## How many job seekers the next group brings (0 when nobody is coming).
 func next_arrival_count() -> int:
-	return Simulation.next_arrival_count(state, data(), TimeService.now())
+	return Simulation.next_arrival_count(state, data(), TimeService.now(), happiness(), employment())
 
 
 ## Seconds until the next baby is born (INF when none is coming).
@@ -800,7 +838,7 @@ func people_stats() -> Dictionary:
 ## "leave_per_hour", ...}
 ## (see Simulation.happiness).
 func happiness() -> Dictionary:
-	return Simulation.happiness(state, data(), TimeService.now())
+	return _remember("happiness", func(): return Simulation.happiness(state, data(), TimeService.now(), housing(), employment()))
 
 
 func warehouse_total() -> int:
@@ -808,7 +846,7 @@ func warehouse_total() -> int:
 
 
 func warehouse_cap() -> int:
-	return Simulation.warehouse_cap(state, data())
+	return _remember("warehouse_cap", func(): return Simulation.warehouse_cap(state, data()))
 
 
 ## Whether type_id could be built on cell right now ({"ok", "error", and the quote's "cost",
@@ -838,10 +876,10 @@ func footprint(type_id: String, cell: Vector2i) -> Array[Vector2i]:
 	return Simulation.footprint(data(), type_id, cell)
 
 
-## Whether a building of this kind would fit at `cell`: its whole footprint on the plot, with no
-## building or road on it (`ignore_id` = a building allowed there: the one being moved).
-func fits(type_id: String, cell: Vector2i, ignore_id := "") -> bool:
-	return Simulation._footprint_problem(state, data(), type_id, cell, ignore_id) == ""
+## The free spot for a building of this kind closest to `near` (the tile its whole footprint
+## fits on, with no building or road), or `near` itself when there's none.
+func free_spot_near(type_id: String, near: Vector2i) -> Vector2i:
+	return Simulation.free_spot_near(state, data(), type_id, near)
 
 
 ## The building with this id, or {} if there is none. Read it; don't change it.
@@ -873,12 +911,12 @@ func road_price() -> int:
 
 ## Every road tile: Vector2i -> cents paid for it.
 func road_cells() -> Dictionary:
-	return Simulation.road_cells(state)
+	return _remember("road_cells", func(): return Simulation.road_cells(state))
 
 
 ## The road tiles linked to City Hall: Vector2i -> true.
 func linked_roads() -> Dictionary:
-	return Simulation.linked_roads(state, data())
+	return _remember("linked_roads", func(): return Simulation.linked_roads(state, data()))
 
 
 func is_road(cell: Vector2i) -> bool:
@@ -916,7 +954,8 @@ func crew_needed(type_id: String, level := 1) -> int:
 
 
 
-## What demolishing would give back ({"ok", "error", "money", "goods"}); changes nothing.
+## What demolishing would give back ({"ok", "error", "materials", "goods"}: no money, all of it
+## into the warehouse); changes nothing.
 func can_demolish(building_id: String) -> Dictionary:
 	return Simulation.can_demolish(state, data(), building_id)
 
@@ -960,6 +999,27 @@ func workers(building: Dictionary) -> Dictionary:
 	}
 
 
+## How many people are working there right now (0 while it's built, idle, suspended or without
+## power), and how many it asks for at its staffing level. Cheaper than workers() for screens that
+## count every building.
+func workers_working(building: Dictionary) -> float:
+	return Simulation.workers_working(state, data(), building, TimeService.now())
+
+
+func workers_wanted(building: Dictionary) -> int:
+	return Simulation.workers_wanted(data(), building)
+
+
+## A number that changes whenever a road or building is added, removed or moved, so screens can
+## redraw the map only then.
+func layout_key() -> int:
+	return _remember("layout_key", func():
+		var parts: Array = [state.get("roads", [])]
+		for b in state.buildings:
+			parts.append([b.type, b.position])
+		return hash(parts))
+
+
 ## False while the building is still under construction.
 func is_built(building: Dictionary) -> bool:
 	return Simulation.is_built(building, TimeService.now())
@@ -983,7 +1043,7 @@ func production_rates() -> Dictionary:
 ## {"population" (everyone), "adults", "children", "jobs", "employed", "unemployed" (adults
 ## without a job), "open_jobs"}
 func employment() -> Dictionary:
-	return Simulation.employment(state, data(), TimeService.now())
+	return _remember("employment", func(): return Simulation.employment(state, data(), TimeService.now()))
 
 
 ## Money in and out over (up to) the last `window` seconds: {"income", "spending", "seconds"}.
@@ -1012,6 +1072,8 @@ func construction_left(building: Dictionary) -> float:
 
 
 func _after(result: Dictionary) -> Dictionary:
+	_memo.clear()  # a refused action may still have settled first
+	_hiring = {}
 	if result.ok:
 		_dirty = true
 		changed.emit()

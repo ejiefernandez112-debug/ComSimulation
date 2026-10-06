@@ -8,6 +8,8 @@ extends SceneTree
 ##   3. Architecture rules from CLAUDE.md that a text search can check: one clock, a pure
 ##      simulation, no Resource files as saves, debug tools only in debug builds, screens that
 ##      don't change the game state behind Economy's back.
+##   4. Performance rules from CLAUDE.md (plan.md §9.1.1): patterns that made the game slow once
+##      (see _check_performance). A line that really needs one says why with "# perf-ok: ...".
 ## Run (from the project folder):
 ##   "C:\Program Files\Godot\Godot.exe.exe" --headless --path . -s tests/check_project.gd
 ## Exit code 0 = no problems. NOTE lines are worth a look but don't fail the check.
@@ -31,9 +33,9 @@ const BUILDING_KEYS := ["name", "category", "description", "menu_tab", "build_co
 ## least each may be.
 const UPGRADE_STATS := {"max_workers": 0, "capacity": 1, "shelves": 1, "households": 1, "water_supply": 1, "power_supply": 1, "power_radius": 1}
 const RECIPE_KEYS := ["id", "inputs", "outputs", "duration", "cost_share"]
-const RESOURCE_KEYS := ["name", "tier", "appetite", "price", "category"]
+const RESOURCE_KEYS := ["name", "tier", "appetite", "price", "category", "unit"]
 const CONFIG_KEYS := ["starting_cash", "starting_population", "population_growth_seconds", "move_in_group_size", "move_in_only_for_jobs", "move_in_needs_home", "life", "housing", "happiness", "grid_size", "autosave_seconds",
-	"welcome_back_after_seconds", "cancel_refund_in_progress", "demolish_refund", "batch",
+	"welcome_back_after_seconds", "cancel_refund_in_progress", "batch",
 	"stats_sample_seconds", "stats_history_size", "money_log_minutes", "money_log_size", "pricing", "water", "sales_tax_window_hours",
 	"sales_tax_brackets", "market_fee", "retail", "staffing_levels", "default_staffing", "wage_bonuses",
 	"bonus_output", "default_bonus", "worker_types", "island", "starting_buildings", "construction", "roads", "power",
@@ -67,6 +69,8 @@ func _initialize() -> void:
 	_check_data()
 	print("3. Architecture rules (CLAUDE.md)")
 	_check_rules(scripts)
+	print("4. Performance rules (CLAUDE.md)")
+	_check_performance(scripts)
 	OS.remove_logger(_errors)
 	print("")
 	for note in _notes:
@@ -135,7 +139,7 @@ func _check_buildings(data: Dictionary, tabs: Dictionary) -> void:
 			_fail("%s: has no name" % where)
 		_number_at_least(def, "build_cost", 0.0, where, false)
 		_number_at_least(def, "build_time", 0.0, where, false)
-		_check_materials(config, def, where)
+		_check_materials(data, def, where)
 		_whole_at_least(def, "max_workers", 0, where, false)
 		_whole_at_least(def, "max_count", 1, where, false)
 		_whole_at_least(def, "size", 1, where, false)
@@ -179,9 +183,10 @@ func _check_buildings(data: Dictionary, tabs: Dictionary) -> void:
 			_note("%s: no sprite in assets/buildings/ yet (it shows as a placeholder)" % where)
 
 
-## What building it needs (plan.md §5.15): known construction materials in whole amounts, and a
-## crew. A building you can build needs materials (or, like the test data, a fixed build_cost).
-func _check_materials(config: Dictionary, def: Dictionary, where: String) -> void:
+## What building it needs (plan.md §5.15): building materials (resources.json items of category
+## building_material) in whole amounts, and a crew. A building you can build needs materials (or,
+## like the test data, a fixed build_cost).
+func _check_materials(data: Dictionary, def: Dictionary, where: String) -> void:
 	_whole_at_least(def, "crew", 0, where, false)
 	if def.get("buildable", false) and not def.has("materials") and not def.has("build_cost"):
 		_fail("%s: can be built but has no materials (and no build_cost), so it would be free" % where)
@@ -190,10 +195,11 @@ func _check_materials(config: Dictionary, def: Dictionary, where: String) -> voi
 	if typeof(def.materials) != TYPE_DICTIONARY:
 		_fail("%s: 'materials' must be a list of amounts" % where)
 		return
-	var known: Dictionary = config.get("construction", {}).get("materials", {})
 	for m in def.materials:
-		if not known.has(m):
-			_fail("%s materials: '%s' isn't in game_config.json construction materials" % [where, m])
+		if not Simulation.is_building_material(data, m):
+			_fail("%s materials: '%s' isn't a resources.json item of category building_material" % [where, m])
+		elif float(data.resources[m].get("price", 0.0)) <= 0.0:
+			_fail("%s materials: '%s' needs a base price in resources.json (the supplier's price)" % [where, m])
 		_whole_at_least(def.materials, m, 0, where + " materials", true)
 
 
@@ -283,6 +289,8 @@ func _check_resources(data: Dictionary) -> void:
 				made[res] = true
 			for res in recipe.get("inputs", {}):
 				used[res] = true
+		for res in data.buildings[id].get("materials", {}):  # building materials (plan.md §5.15)
+			used[res] = true
 	for res in data.resources:
 		var def: Dictionary = data.resources[res]
 		var where := "resources.json '%s'" % res
@@ -381,8 +389,7 @@ func _check_config(data: Dictionary) -> void:
 	_number_at_least(c, "money_log_minutes", 1.0, where, false)
 	_whole_at_least(c, "money_log_size", 2, where, false)
 	_number_at_least(c, "sales_tax_window_hours", 0.001, where, true)
-	for key in ["cancel_refund_in_progress", "demolish_refund"]:
-		_share(c.get(key), "%s %s" % [where, key], true)
+	_share(c.get("cancel_refund_in_progress"), "%s cancel_refund_in_progress" % where, true)
 	if c.has("roads"):
 		_check_roads(data)
 	if c.has("batch"):
@@ -470,19 +477,13 @@ func _check_crew_office(data: Dictionary, id: String, def: Dictionary, where: St
 			_fail("%s: only one building type may have construction_crew (also '%s')" % [where, other])
 
 
-## Building and upgrading (plan.md §5.15): materials with a base price, a crew paid at a known
-## wage, a growth per level of at least 1 (never cheaper), times, and how much prices swing.
+## Building and upgrading (plan.md §5.15): a crew paid a share of the materials' value, a growth
+## per level of at least 1 (never cheaper), times, and how much prices swing. (The materials and
+## their base prices are items in resources.json, checked with the buildings.)
 func _check_construction(c: Dictionary, where: String) -> void:
 	var k: Dictionary = c.construction
-	_unknown_keys(k, ["materials", "labor_worker_type", "crew", "crew_per_level", "level_growth", "level_seconds", "price_swing", "price_change_seconds"], where)
-	for m in k.get("materials", {}):
-		var at := "%s materials '%s'" % [where, m]
-		_unknown_keys(k.materials[m], ["name", "unit", "price"], at)
-		if str(k.materials[m].get("name", "")) == "":
-			_fail("%s: has no name" % at)
-		_number_at_least(k.materials[m], "price", 0.01, at, true)
-	if not c.get("worker_types", {}).has(str(k.get("labor_worker_type", "low_skilled"))):
-		_fail("%s: labor_worker_type '%s' isn't in worker_types" % [where, k.get("labor_worker_type")])
+	_unknown_keys(k, ["labor_share", "crew", "crew_per_level", "level_growth", "level_seconds", "price_swing", "price_change_seconds"], where)
+	_share(k.get("labor_share", 0.0), where + " labor_share", false)
 	_whole_at_least(k, "crew", 0, where, false)
 	_whole_at_least(k, "crew_per_level", 0, where, false)
 	_number_at_least(k, "level_growth", 1.0, where, true)
@@ -648,6 +649,64 @@ func _check_rules(scripts: Array[String]) -> void:
 	for scene in _find_files("res://scenes/", ".tscn"):
 		if not scene.begins_with("res://scenes/debug/") and FileAccess.get_file_as_string(scene).contains("res://scenes/debug/"):
 			_fail("%s includes a debug tool, so real players would get it too" % scene.trim_prefix("res://"))
+
+
+# --- 4. Performance rules -----------------------------------------------------------
+
+## Patterns that made the game slow before (plan.md §9.1.1), found by text search. A line that
+## really needs one is marked with a "# perf-ok: why" comment.
+## - Screens refresh on Economy.changed every second: their refresh function must not re-apply a
+##   colour (UITheme.set_font_color does it only when it changes) or make or free nodes (update
+##   labels in place; rebuild in a separate function, only when something changed).
+## - In a loop, never look buildings or roads up one by one (building_at, is_road, find_building,
+##   Economy.building): each walks every building or road. Make a map once (_plot_map, road_cells).
+## - Economy hands out the heavy village-wide answers only through _remember.
+## - A script with _process must switch it off when there's nothing to do (set_process).
+func _check_performance(scripts: Array[String]) -> void:
+	var lookup := RegEx.create_from_string("\\b(building_at|is_road|find_building|Economy\\.building)\\(")
+	var heavy := RegEx.create_from_string("Simulation\\.(housing|happiness|employment|power_summary|power_network|water_summary|population_capacity|warehouse_cap|road_cells|linked_roads)\\(")
+	var handler := RegEx.create_from_string("Economy\\.changed\\.connect\\((\\w+)\\)")
+	for path in scripts:
+		if path.begins_with("res://tests/") or path.begins_with("res://tools/"):
+			continue
+		var text := FileAccess.get_file_as_string(path)
+		var lines := text.split("\n")
+		var where := path.trim_prefix("res://")
+		var refreshers := {}
+		for found in handler.search_all(text):
+			refreshers[found.get_string(1)] = true
+		if text.contains("func _process(") and not text.contains("set_process("):
+			_fail("%s has _process but never switches it off (set_process): only things that are moving should work every frame" % where)
+		var loops: Array[int] = []  # indents of the for / while loops the current line is in
+		var function := ""
+		for i in lines.size():
+			var raw: String = lines[i]
+			var line := _without_comment(raw)
+			if line.strip_edges() == "":
+				continue
+			var indent := line.length() - line.lstrip("\t").length()
+			while not loops.is_empty() and indent <= loops[-1]:
+				loops.pop_back()
+			if indent == 0:
+				function = line.trim_prefix("static ").trim_prefix("func ").get_slice("(", 0) if line.begins_with("func ") or line.begins_with("static func ") else ""
+			var at := "%s:%d" % [where, i + 1]
+			if raw.contains("perf-ok"):
+				pass
+			elif refreshers.has(function) and path.begins_with("res://scenes/"):
+				if line.contains("add_theme_color_override("):
+					_fail("%s: %s() refreshes every tick: use UITheme.set_font_color() (re-applying a colour re-lays-out the screen)" % [at, function])
+				if line.contains("queue_free()") or line.contains(".new()"):
+					_fail("%s: %s() refreshes every tick: don't make or free nodes there (update them in place; rebuild only when something changed)" % [at, function])
+			if not loops.is_empty() and not raw.contains("perf-ok"):
+				if lookup.search(line):
+					_fail("%s: looks up a building or road one by one inside a loop: make a map once before the loop (_plot_map, road_cells)" % at)
+				if line.contains("_footprint_problem(") and not line.contains("map"):
+					_fail("%s: _footprint_problem in a loop without a plot map: make one with _plot_map() before the loop" % at)
+			if path == "res://scripts/autoload/economy.gd" and heavy.search(line) and not line.contains("_remember("):
+				_fail("%s: heavy village-wide question without _remember(): many screens ask it every tick" % at)
+			var stripped := line.strip_edges()
+			if stripped.begins_with("for ") or stripped.begins_with("while "):
+				loops.append(indent)
 
 
 ## The line without a trailing # comment (a # inside a "string" is kept).

@@ -494,13 +494,14 @@ func _refresh() -> void:
 		_cost.text = UITheme.money(Economy.road_price())
 		_needs.visible = false
 	else:
-		# Materials are bought at today's market price, so the cost is "about" and moves every hour.
+		# The warehouse's own materials are used first; the rest is bought at today's market price,
+		# so the cost is "about" and moves every hour.
 		var quote := Economy.build_quote(_shown)
 		_cost.text = "≈ " + UITheme.money(int(quote.cost))
 		_needs.visible = not locked and not quote.lines.is_empty()
 		_needs.text = "Needs %s. Material prices change in %s." % [BuildingInfo.construction_needs(quote), UITheme.duration(Economy.price_change_in())]
 	var short := _shortfall(_shown)
-	_cost.add_theme_color_override("font_color", UITheme.BAD_TEXT if short > 0 and not locked else UITheme.TEXT_DARK)
+	UITheme.set_font_color(_cost, UITheme.BAD_TEXT if short > 0 and not locked else UITheme.TEXT_DARK)
 	_cost_note.text = str(_def(_shown).get("coming_soon", "Not available yet")) if locked else ("Need %s more" % UITheme.money(short) if short > 0 else "")
 	if not locked and _shown != ROAD and Economy.at_build_limit(_shown):
 		_cost_note.text = "Already built: one is all you need"  # max_count (the Trading Post: 1)

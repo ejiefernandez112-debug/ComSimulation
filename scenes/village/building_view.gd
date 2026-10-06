@@ -28,6 +28,7 @@ const CATEGORY_COLORS := {
 static var show_names := false
 static var _manifest := {}  # what the sprite studio wrote: which pictures exist, and their anchors
 static var _hit_images := {}  # building type -> Image, to check whether a tap landed on the picture
+static var _pictures := {}  # building type -> picture(): worked out once, it's asked for often
 
 var type_id := ""
 var building_id := ""
@@ -267,18 +268,22 @@ static func preview_rect(type_id: String, at: Vector2) -> Rect2:
 
 
 ## The building's picture as {"texture", "anchor" (footprint centre, in picture pixels), "scale"},
-## or {} if the sprite studio hasn't made one for this building type.
+## or {} if the sprite studio hasn't made one for this building type. Read it; don't change it.
 static func picture(type_id: String) -> Dictionary:
+	if _pictures.has(type_id):
+		return _pictures[type_id]
 	if _manifest.is_empty() and FileAccess.file_exists(SPRITES + "sprites.json"):
 		_manifest = GameData.load_json(SPRITES + "sprites.json")
 	var entry: Dictionary = _manifest.get("sprites", {}).get(type_id, {})
-	if entry.is_empty():
-		return {}
-	return {
-		"texture": load(SPRITES + type_id + ".png"),
-		"anchor": Vector2(entry.anchor[0], entry.anchor[1]),
-		"scale": Iso.TILE_W / float(_manifest.pixels_per_tile),
-	}
+	var art := {}
+	if not entry.is_empty():
+		art = {
+			"texture": load(SPRITES + type_id + ".png"),
+			"anchor": Vector2(entry.anchor[0], entry.anchor[1]),
+			"scale": Iso.TILE_W / float(_manifest.pixels_per_tile),
+		}
+	_pictures[type_id] = art
+	return art
 
 
 ## The building's name, just above its top, in the game's outlined font.

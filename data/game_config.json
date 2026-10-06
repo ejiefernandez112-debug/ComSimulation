@@ -35,9 +35,10 @@
 		"crop": { "name": "Crops" },
 		"animal": { "name": "Animals" },
 		"ingredient": { "name": "Ingredients" },
-		"material": { "name": "Materials" }
+		"material": { "name": "Materials" },
+		"building_material": { "name": "Building materials" }
 	},
-	"_happiness": "Village happiness (plan.md 5.6 'Needs & happiness'): Food, Jobs and Housing needs, mixed by weights (shares of their total) into one 0-1 score. food_scores = score for 0, 1, 2, ... or more different foods selling at a staffed store (the last number = that many or more; variety counts, plan.md 5.21). Jobs = share of adults with a job. Housing = share of households with a real home (homeless households in huts lower it). homeless_penalty = on top of that, per_household is taken off the score for every household living in a hut, at most max (shares of 1). Needs only count from needs_from_population people (below that, happiness is 100%) and after a new village's first grace_hours. growth_speeds: for each happiness band (from = lowest score of the band), speed = the birth speed (1 = normal, 0 = no babies), move_in = the speed job seekers move in (1 = one group every population_growth_seconds, 0 = nobody comes; same as speed if left out) and leave_per_hour = share of people (adults and children alike) who leave the island each hour. leave_group_size = people leave in groups this big (adults and children each in their own groups). PLACEHOLDERS.",
+	"_happiness": "Village happiness (plan.md 5.6 'Needs & happiness'): Food, Jobs and Housing needs, mixed by weights (shares of their total) into one 0-1 score. food_scores = score for 0, 1, 2, ... or more different foods selling at a staffed store (the last number = that many or more; variety counts, plan.md 5.21). Jobs = share of adults with a job. Housing = share of households with a real home (homeless households in huts lower it). homeless_penalty = on top of that, per_household is taken off the score for every household living in a hut, at most max (shares of 1). Needs only count from needs_from_population people (below that, happiness is 100%) and after a new village's first grace_hours. growth_speeds: for each happiness band (from = lowest score of the band), speed = the birth speed (1 = normal, 0 = no babies), move_in = the speed job seekers move in (1 = one group every population_growth_seconds, 0 = nobody comes; same as speed if left out; today: nobody at 20% or less, above that only the open jobs decide) and leave_per_hour = share of people (adults and children alike) who leave the island each hour. leave_group_size = people leave in groups this big (adults and children each in their own groups). PLACEHOLDERS.",
 	"happiness": {
 		"needs_from_population": 10,
 		"grace_hours": 3,
@@ -48,8 +49,9 @@
 		"growth_speeds": [
 			{ "from": 0, "speed": 0.0, "move_in": 0.0, "leave_per_hour": 0.05 },
 			{ "from": 0.2, "speed": 0.5, "move_in": 0.0, "leave_per_hour": 0.02 },
+			{ "from": 0.205, "speed": 0.5, "move_in": 1.0, "leave_per_hour": 0.02 },
 			{ "from": 0.5, "speed": 1.0, "move_in": 1.0, "leave_per_hour": 0.0 },
-			{ "from": 0.8, "speed": 1.5, "move_in": 1.5, "leave_per_hour": 0.0 }
+			{ "from": 0.8, "speed": 1.5, "move_in": 1.0, "leave_per_hour": 0.0 }
 		]
 	},
 	"grid_size": [26, 26],
@@ -64,25 +66,18 @@
 			[19, 13], [20, 13], [21, 13]
 		]
 	},
-	"_construction": "Building and upgrading (plan.md 5.15). Every building's materials (buildings.json) are its Level 1 amounts; each level needs level_growth times the level below (2 = doubles: Level 2 = 2x, Level 3 = 4x, Level 4 = 8x). The materials are bought from an in-game supplier when the work starts, at today's market price: the base price (dollars) plus or minus up to price_swing (0.2 = 20%), a new price every price_change_seconds. Labor = construction workers from your Construction Offices: crew of them to build anything with materials (a building can set its own crew), crew_per_level more for each upgrade level (1, then 2 for Level 2, 3 for Level 3, 4 for Level 4); they are busy until the work is done, so more offices or bigger ones let you build more at once. Paid once at the labor_worker_type's minimum wage for the hours the work takes. level_seconds = how long it takes: building (Level 1), then each upgrade (to Level 2, 3, 4, ...; levels past the list take the last time). All PLACEHOLDERS.",
+	"_construction": "Building and upgrading (plan.md 5.15). Every building's materials (buildings.json) are its Level 1 amounts; each level needs level_growth times the level below (2 = doubles: Level 2 = 2x, Level 3 = 4x, Level 4 = 8x). The materials are items (resources.json, category building_material, with their base price): the warehouse's own are used first, the rest is bought from an in-game supplier when the work starts, at today's market price: the base price (dollars) plus or minus up to price_swing (0.2 = 20%), a new price every price_change_seconds. Labor = construction workers from your Construction Offices: crew of them to build anything with materials (a building can set its own crew), crew_per_level more for each upgrade level (1, then 2 for Level 2, 3 for Level 3, 4 for Level 4); they are busy until the work is done, so more offices or bigger ones let you build more at once. Paid once, labor_share of the materials' value at today's prices (0.1 = 10%; warehouse materials count too). level_seconds = how long it takes: building (Level 1), then each upgrade (to Level 2, 3, 4, ...; levels past the list take the last time). All PLACEHOLDERS.",
 	"construction": {
-		"materials": {
-			"bricks": { "name": "Bricks", "unit": "brick", "price": 1 },
-			"cement": { "name": "Cement", "unit": "bag", "price": 10 },
-			"steel": { "name": "Steel", "unit": "beam", "price": 50 },
-			"construction_materials": { "name": "Construction materials", "unit": "crate", "price": 20 }
-		},
-		"labor_worker_type": "low_skilled",
+		"labor_share": 0.1,
 		"crew": 1,
 		"crew_per_level": 1,
 		"level_growth": 2,
-		"level_seconds": [3600, 3600, 7200, 10800],
+		"level_seconds": [10, 3600, 7200, 10800],
 		"price_swing": 0.2,
 		"price_change_seconds": 3600
 	},
-	"_refunds": "Share given back (0-1). cancel_refund_in_progress = cancelling a running batch gives back this share of the ingredients and wages of the hours not finished yet (hours already made are kept); demolish_refund = share of the building's value (its materials and labor at base prices) back when demolishing.",
+	"_refunds": "Share given back (0-1). cancel_refund_in_progress = cancelling a running batch gives back this share of the ingredients and wages of the hours not finished yet (hours already made are kept). Demolishing gives no money: every unit of material the building and its upgrades used goes back to the warehouse (plan.md 5.15).",
 	"cancel_refund_in_progress": 0.5,
-	"demolish_refund": 0.5,
 	"_batch": "Production batches (plan.md 5.1): the player picks how many hours a Farm, Mill or Bakery works, from 1 to max_hours (fewer if the Warehouse's ingredients or the cash for the wages run out). default_hours = what the panel offers first. All the ingredients and wages are paid when it starts. PLACEHOLDERS.",
 	"batch": { "max_hours": 48, "default_hours": 24 },
 	"_stats": "Statistics graphs: a point is recorded every stats_sample_seconds while playing (one point covers time spent away), keeping the latest stats_history_size points (360 x 60s = 6 hours).",

@@ -31,7 +31,7 @@ const SIDES: Array[Vector2i] = [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1),
 
 @onready var _objects: Node2D = $"../Objects"
 var _lamps: Array[Node2D] = []
-var _drawn_key := ""  # what the roads and buildings looked like at the last redraw
+var _drawn_key := -1  # Economy.layout_key() at the last redraw
 
 
 func _ready() -> void:
@@ -40,9 +40,7 @@ func _ready() -> void:
 
 
 func _on_economy_changed() -> void:
-	var key := str(Economy.state.get("roads", [])) + "|"
-	for b in Economy.state.buildings:
-		key += "%s%s%s," % [b.type, b.position[0], b.position[1]]
+	var key := Economy.layout_key()
 	if key != _drawn_key:
 		_drawn_key = key
 		queue_redraw()
