@@ -28,6 +28,9 @@ const MAX_MIDDLE_HEIGHT := 0.8
 ## double-tap on the building that opened it) would otherwise shut it straight away.
 const IGNORE_OUTSIDE_TAPS_MS := 300
 const ROW_GAP := 8  # space between rows, in the window and in the extra panels
+## Every window is in this group (and the Build panel and the building card at the bottom): while
+## one is open the map behind it doesn't zoom (village_camera.gd).
+const GROUP := "modal_windows"
 
 var content: VBoxContainer
 ## Wide screens: dock along the left edge (true) or sit in the middle (false). Set it in _init().
@@ -45,6 +48,7 @@ var _last_place: Array[int] = []
 
 
 func _ready() -> void:
+	add_to_group(GROUP)
 	set_anchors_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	if has_node("Window"):

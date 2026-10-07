@@ -70,12 +70,13 @@ var _name: Label
 var _tag: Dictionary  # UITheme.tag(): {"tag", "dot", "label"}
 var _about: Label
 var _makes: HFlowContainer  # what it makes or does (wraps onto more lines when it lists many items)
+var _details: VBoxContainer  # the right side; as wide as the category's widest building (_fit_all)
 var _materials: VBoxContainer  # one row per material (and the crew)
 ## The material rows, made once and reused (the extra ones hidden): {"row", "icon", "name",
 ## "amount", "status"}. Only the first _material_count are in use.
 var _material_rows: Array[Dictionary] = []
 var _material_count := 0
-var _fit := 0.0  # the height this category's panel needs (see _fit_height)
+var _fit := 0.0  # the height the panel needs for its biggest building (see _fit_all; 0 = not yet)
 var _note: Label  # why it can't be built: locked, already built, not enough cash
 var _build: Button
 
@@ -107,6 +108,8 @@ func open(tab_id := "") -> void:
 	_window.show()
 	_about.custom_minimum_size.y = _about.get_line_height() * 2  # short and long texts take the same room
 	_show_tab(tab_id)
+	if _fit <= 0.0:
+		_fit_all()  # the first time (and after the look changed): one size for every category
 	_apply_layout()
 	_apply_layout.call_deferred()  # again once new text has been measured
 	if not was_open:
@@ -211,6 +214,12 @@ func _make_placing_buttons() -> void:
 	row.add_child(_confirm)
 
 
+## A new look (Developer window → Look) can change text and button sizes: measure again next time.
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_THEME_CHANGED:
+		_fit = 0.0
+
+
 func _unhandled_input(event: InputEvent) -> void:
 	if not _window.visible or not event.is_action_pressed("ui_cancel"):
 		return
@@ -224,6 +233,7 @@ func _make_window() -> void:
 	_window = Control.new()
 	_window.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_window.mouse_filter = Control.MOUSE_FILTER_IGNORE  # the map stays live around the panel
+	_window.add_to_group(ModalWindow.GROUP)  # ...but the mouse wheel doesn't zoom it while it's open
 	_window.hide()
 	add_child(_window)
 	_frame = PanelContainer.new()
@@ -296,6 +306,7 @@ func _make_header() -> Control:
 func _make_details() -> Control:
 	var box := VBoxContainer.new()
 	box.custom_minimum_size.x = UITheme.BUILD_DETAILS_WIDTH
+	_details = box
 	box.add_theme_constant_override("separation", 8)
 	var top := HBoxContainer.new()
 	top.add_theme_constant_override("separation", 8)
@@ -307,7 +318,7 @@ func _make_details() -> Control:
 	_tag = UITheme.tag()
 	top.add_child(_tag.tag)
 	# The middle: no scroll bar. The panel is made tall enough for the biggest building of the
-	# category when it opens (_fit_height), so it never changes size while pointing at cards.
+	# category when it opens (_fit_all), so it never changes size while pointing at cards.
 	var middle := VBoxContainer.new()
 	middle.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	middle.add_theme_constant_override("separation", 8)
@@ -423,7 +434,6 @@ func _show_tab(tab_id: String) -> void:
 	var types := BuildingInfo.menu_types(tab_id)
 	for type_id in types:
 		_add_card(type_id)
-	_fit_height(types)
 	# Keep the chosen building if it's in this category; otherwise choose the first one that can be built.
 	if not types.has(_selected):
 		_selected = types[0] if not types.is_empty() else ""
@@ -452,17 +462,27 @@ func _start(type_id: String) -> void:
 	placement_requested.emit(type_id)  # the village's first check of the ghost comes back here
 
 
-## Shows each building of the category in the details in turn and keeps the most height the panel
-## needs (with room for a one-line note), so pointing from card to card never changes its size and
-## nothing needs a scroll bar. Done once, when the category opens.
-func _fit_height(types: Array) -> void:
+## Shows every building of every category in the details in turn and keeps the most height the
+## panel needs (with room for a one-line note) and the widest the details get. So the panel and the
+## Build button keep one size, whichever card is pointed at and whichever category is open, and
+## nothing needs a scroll bar. Done once, the first time the panel opens (again after the look
+## changes, see _notification).
+func _fit_all() -> void:
+	var types: Array[String] = []
+	for tab: Dictionary in BuildingInfo.menu_tabs():
+		types.append_array(BuildingInfo.menu_types(str(tab.id)))
 	_fit = 0.0
+	_details.custom_minimum_size.x = UITheme.BUILD_DETAILS_WIDTH
+	var widest := 0.0
 	for type_id in types:
 		_shown = ""
 		_show_details(type_id)
 		var note_room := 0.0 if _note.visible else _note.get_line_height() + 8.0
 		_fit = maxf(_fit, _frame.get_combined_minimum_size().y + note_room)
+		widest = maxf(widest, _details.get_combined_minimum_size().x)
+	_details.custom_minimum_size.x = widest
 	_shown = ""
+	_show_details(_selected)  # back to the chosen building
 
 
 ## Tapping a card chooses it (Build then places it).
@@ -578,7 +598,7 @@ func _fill_makes(type_id: String) -> void:
 			parts.append("free" if rent <= 0.0 else "rent %s/h each" % UITheme.price(roundi(rent * 100.0)))
 			if float(def.get("power_mw", 0.0)) > 0.0:
 				parts.append("%s MW when lived in" % str(def.power_mw))
-			_makes.add_child(_words(" ⋅ ".join(parts)))
+			_add_parts(parts)
 		"storage":
 			_makes.add_child(UITheme.icon_rect("warehouse", 22))
 			_makes.add_child(_words("Room for %s goods (%d workers)" % [UITheme.number(int(def.get("capacity", 0))), int(def.get("max_workers", 0))]))
@@ -605,7 +625,7 @@ func _fill_makes(type_id: String) -> void:
 			else:
 				parts.append("Makes no power: carries it")
 			parts.append("reaches %s tiles" % _num(def.get("power_radius", 0)))
-			_makes.add_child(_words(" ⋅ ".join(parts)))
+			_add_parts(parts)
 		"road":
 			_makes.add_child(UITheme.icon_rect("road", 22))
 			_makes.add_child(_words("%s a tile" % UITheme.money(Economy.road_price())))
@@ -781,13 +801,20 @@ func _apply_layout() -> void:
 		_frame.size = Vector2(size.x, bottom - _frame.position.y)
 	else:
 		# Wide screen (PC / landscape): a wide panel just above the toolbar, below the HUD strip. Its
-		# height stays the same whatever building is shown (_fit_height).
+		# height stays the same whatever building is shown (_fit_all).
 		var height := minf(maxf(UITheme.BUILD_PANEL_HEIGHT, _fit), bottom - HUD_SPACE)
 		_frame.size = Vector2(minf(UITheme.BUILD_PANEL_WIDTH, size.x - 24.0), height)
 		_frame.position = Vector2(roundf((size.x - _frame.size.x) / 2.0), bottom - _frame.size.y)
 
 
 # --- Small helpers -------------------------------------------------------------
+
+## "6 households ⋅ for Poor ⋅ free": one label per part, so a long line wraps between the parts
+## instead of making the details wider.
+func _add_parts(parts: Array[String]) -> void:
+	for i in parts.size():
+		_makes.add_child(_words(parts[i] + (" ⋅" if i < parts.size() - 1 else "")))
+
 
 ## [icon] 40 for each item, e.g. [wheat] 40 [milk] 4.
 func _add_amounts(items: Dictionary) -> void:

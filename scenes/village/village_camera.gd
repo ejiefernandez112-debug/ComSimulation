@@ -102,9 +102,9 @@ func _unhandled_input(event: InputEvent) -> void:
 					_on_tap(event.position)
 				_pressed = false
 				_dragging = false
-		elif event.pressed and event.button_index == MOUSE_BUTTON_WHEEL_UP:
+		elif event.pressed and event.button_index == MOUSE_BUTTON_WHEEL_UP and not _window_open():
 			_zoom_at(ZOOM_STEP, event.position)
-		elif event.pressed and event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
+		elif event.pressed and event.button_index == MOUSE_BUTTON_WHEEL_DOWN and not _window_open():
 			_zoom_at(1.0 / ZOOM_STEP, event.position)
 	elif event is InputEventMouseMotion:
 		if event.button_mask & MOUSE_BUTTON_MASK_MIDDLE:  # PC: middle-drag always pans
@@ -122,8 +122,18 @@ func _unhandled_input(event: InputEvent) -> void:
 			if _dragging:
 				position -= event.relative / zoom
 				_clamp()
-	elif event is InputEventMagnifyGesture:  # pinch on PC trackpads (phones are handled below)
+	elif event is InputEventMagnifyGesture and not _window_open():  # pinch on PC trackpads (phones: below)
 		_zoom_at(event.factor, event.position)
+
+
+## Whether a window is open (Statistics, a building's window, Settings..., the Build panel or the
+## building card at the bottom): the mouse wheel, a trackpad pinch or two fingers then don't zoom
+## or move the map behind it. (Placing a building closes the Build panel, so zooming works again.)
+func _window_open() -> bool:
+	for window in get_tree().get_nodes_in_group("modal_windows"):
+		if window.visible:
+			return true
+	return false
 
 
 ## A finger went down or came up. When a second finger lands, a pinch starts: the first finger's
@@ -152,7 +162,7 @@ func _on_finger_moved(event: InputEventScreenDrag) -> void:
 	if not _touches.has(event.index):
 		return
 	_touches[event.index] = event.position
-	if _touches.size() < 2:
+	if _touches.size() < 2 or _window_open():
 		return
 	var fingers: Array = _touches.values()
 	var dist: float = fingers[0].distance_to(fingers[1])

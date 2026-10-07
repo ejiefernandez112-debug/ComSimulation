@@ -82,6 +82,7 @@ func _ready() -> void:
 	_card.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM, Control.PRESET_MODE_MINSIZE, 12)
 	_card.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	_card.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	add_to_group(ModalWindow.GROUP)  # while it's up, the mouse wheel doesn't zoom the map
 	hide()
 	Economy.changed.connect(_refresh)
 
