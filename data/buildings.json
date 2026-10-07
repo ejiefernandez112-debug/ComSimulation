@@ -19,19 +19,19 @@
 			{ "max_workers": 10 }
 		]
 	},
-	"_housing": "Homes (plan.md 5.18). households = how many households live there (a household = up to 2 adults + 2 children, game_config.json housing). wealth = the wealth classes allowed to live there (empty = anyone); each household takes the best home it may live in and can afford (highest housing_tier, then the oldest). rent_per_household = dollars an hour each household pays the player (0 = free). power_mw = power it uses while anyone lives there (none when empty; used once electricity exists, plan.md 5.5). hut = a Makeshift Hut: it appears by itself for each homeless household and goes when they get a real home. All PLACEHOLDERS. small_house keeps its id so saves keep their houses; it is shown as the Regular House.",
+	"_housing": "Homes (plan.md 5.18). households = how many households live there (a household = up to 2 adults + 2 children, game_config.json housing). wealth = the wealth classes allowed to live there (empty = anyone); each household takes the best home it may live in and can afford (highest housing_tier, then the oldest). rent_per_household = dollars an hour each household pays the player (0 = free). power_mw = power it uses while anyone lives there (none when empty; used once electricity exists, plan.md 5.5). hut = a Makeshift Hut: it appears by itself for each homeless household and goes when they get a real home. housing_quality = how good it is to live in, 0-1, for the Housing need (plan.md 5.6; without power it counts for less, game_config.json happiness). All PLACEHOLDERS. small_house keeps its id so saves keep their houses; it is shown as the Regular House.",
 	"makeshift_hut": {
 		"name": "Makeshift Hut", "category": "residential",
 		"description": "Put up by a homeless household. It goes by itself once they get a real home.",
 		"buildable": false, "max_workers": 0,
-		"households": 1, "housing_tier": 0, "hut": true, "rent_per_household": 0, "power_mw": 0
+		"households": 1, "housing_tier": 0, "housing_quality": 0.0, "hut": true, "rent_per_household": 0, "power_mw": 0
 	},
 	"public_housing": {
 		"name": "Public Housing", "category": "residential", "menu_tab": "housing",
 		"description": "Free homes for Broke and Poor households. You pay to build it; it earns no rent.",
 		"buildable": true, "max_workers": 0,
 		"materials": { "bricks": 160, "cement": 16, "steel": 4, "construction_materials": 8 },
-		"households": 6, "housing_tier": 1, "wealth": ["broke", "poor"], "rent_per_household": 0, "power_mw": 0.3,
+		"households": 6, "housing_tier": 1, "housing_quality": 0.5, "wealth": ["broke", "poor"], "rent_per_household": 0, "power_mw": 0.3,
 		"upgrades": [
 			{ "households": 9 },
 			{ "households": 12 },
@@ -43,7 +43,7 @@
 		"description": "Homes for working households. Each household pays you rent.",
 		"buildable": true, "max_workers": 0,
 		"materials": { "bricks": 200, "cement": 20, "steel": 5, "construction_materials": 10 },
-		"households": 6, "housing_tier": 2, "wealth": ["poor", "well_off"], "rent_per_household": 1, "power_mw": 0.5,
+		"households": 6, "housing_tier": 2, "housing_quality": 0.75, "wealth": ["poor", "well_off"], "rent_per_household": 1, "power_mw": 0.5,
 		"upgrades": [
 			{ "households": 9 },
 			{ "households": 12 },
@@ -55,7 +55,7 @@
 		"description": "Luxury homes for Rich and Filthy rich households. High rent.",
 		"buildable": true, "max_workers": 0,
 		"materials": { "bricks": 1200, "cement": 120, "steel": 30, "construction_materials": 60 },
-		"households": 2, "housing_tier": 3, "wealth": ["rich", "filthy_rich"], "rent_per_household": 15, "power_mw": 1.0,
+		"households": 2, "housing_tier": 3, "housing_quality": 1.0, "wealth": ["rich", "filthy_rich"], "rent_per_household": 15, "power_mw": 1.0,
 		"upgrades": [
 			{ "households": 3 },
 			{ "households": 4 },
@@ -86,6 +86,59 @@
 			{ "max_workers": 6, "water_supply": 100 },
 			{ "max_workers": 8, "water_supply": 140 },
 			{ "max_workers": 10, "water_supply": 180 }
+		]
+	},
+	"_services": "Services (plan.md 5.23): each meets one happiness need (service_need: health, fun, faith or safety; game_config.json happiness) for up to service_capacity people anywhere in the village (no radius), with all its workers working (2 of 4 = half), at service_quality (0-1). No output: it only costs its workers' wages, paid by the hour like a warehouse (always working unless suspended), and power where it uses some. Stays open while upgrading. Doctors and teachers (high-skilled workers) come later with schools. All PLACEHOLDERS.",
+	"clinic": {
+		"name": "Clinic", "category": "service", "menu_tab": "services", "size": 2,
+		"description": "Doctors and nurses for 100 people. Raises the Health need.",
+		"buildable": true, "max_workers": 4, "fixed_workers": true, "fixed_wage": true, "worker_type": "low_skilled",
+		"materials": { "bricks": 700, "cement": 70, "steel": 20, "construction_materials": 35 },
+		"power_mw": 1.0,
+		"service_need": "health", "service_capacity": 100, "service_quality": 1.0,
+		"upgrades": [
+			{ "max_workers": 6, "service_capacity": 150 },
+			{ "max_workers": 8, "service_capacity": 200 },
+			{ "max_workers": 10, "service_capacity": 250 }
+		]
+	},
+	"tavern": {
+		"name": "Tavern", "category": "service", "menu_tab": "services",
+		"description": "Music and drinks for 80 people. Raises the Fun need.",
+		"buildable": true, "max_workers": 3, "fixed_workers": true, "fixed_wage": true, "worker_type": "low_skilled",
+		"materials": { "bricks": 300, "cement": 30, "steel": 6, "construction_materials": 15 },
+		"power_mw": 0.5,
+		"service_need": "fun", "service_capacity": 80, "service_quality": 0.9,
+		"upgrades": [
+			{ "max_workers": 4, "service_capacity": 120 },
+			{ "max_workers": 5, "service_capacity": 160 },
+			{ "max_workers": 6, "service_capacity": 200 }
+		]
+	},
+	"chapel": {
+		"_comment": "Needs no power on purpose: faith can be met before the first power plant.",
+		"name": "Chapel", "category": "service", "menu_tab": "services",
+		"description": "A quiet place of worship for 120 people. Raises the Faith need. Needs no power.",
+		"buildable": true, "max_workers": 2, "fixed_workers": true, "fixed_wage": true, "worker_type": "low_skilled",
+		"materials": { "bricks": 400, "cement": 40, "steel": 5, "construction_materials": 20 },
+		"service_need": "faith", "service_capacity": 120, "service_quality": 1.0,
+		"upgrades": [
+			{ "max_workers": 3, "service_capacity": 180 },
+			{ "max_workers": 4, "service_capacity": 240 },
+			{ "max_workers": 5, "service_capacity": 300 }
+		]
+	},
+	"police_station": {
+		"name": "Police Station", "category": "service", "menu_tab": "services", "size": 2,
+		"description": "Keeps crime down for 150 people. Raises the Safety need.",
+		"buildable": true, "max_workers": 4, "fixed_workers": true, "fixed_wage": true, "worker_type": "low_skilled",
+		"materials": { "bricks": 500, "cement": 50, "steel": 15, "construction_materials": 25 },
+		"power_mw": 0.5,
+		"service_need": "safety", "service_capacity": 150, "service_quality": 1.0,
+		"upgrades": [
+			{ "max_workers": 6, "service_capacity": 225 },
+			{ "max_workers": 8, "service_capacity": 300 },
+			{ "max_workers": 10, "service_capacity": 375 }
 		]
 	},
 	"_power": "Electricity (plan.md 5.5). power_mw = MW a building needs while it runs (a Mill or Bakery while making a batch, a home while anyone lives there). power_supply = MW a power plant makes (with workers: its share of them, 2 of 4 = half). power_radius = tiles around it that its power reaches; circles that overlap join one network, starting at your power plants (since 2026-10-06 City Hall has no power: the village starts without any until a plant is built). grid_mw = MW a public grid link can draw, billed like water (game_config.json power); no building has one now. Buildings outside the network get no power. When there isn't enough, buildings are served oldest first and one that doesn't fit gets none and stops. coming_soon = shown greyed out in the Build menu with this reason. All PLACEHOLDERS.",

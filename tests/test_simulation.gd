@@ -752,6 +752,8 @@ func test_real_worker_data() -> void:
 		_check(types.has(kind) and float(types[kind].get("wage_per_hour", -1)) >= 0, "%s's worker type '%s' exists with a wage" % [type_id, kind])
 		if def.get("buildable", false):  # "coming soon" buildings may wait for schools
 			_check(types.get(kind, {}).get("available", false), "%s uses a worker type that can be hired" % type_id)
+		if def.get("fixed_workers", false):
+			continue  # always all its workers: no Low / Medium / High to choose
 		for level in config.staffing_levels:
 			var wanted: float = most * float(config.staffing_levels[level])
 			_check(is_equal_approx(wanted, roundf(wanted)), "%s at %s staffing is a whole number of workers" % [type_id, level])
@@ -2273,12 +2275,12 @@ func test_supermarket_fixed_workers() -> void:
 # --- Needs & happiness (plan.md §5.6) ----------------------------------------------
 
 ## Shop test data with needs switched on: Food (0 / 1 / 2+ foods selling = 0 / 70% / 100%) and
-## Jobs, half and half; needs count from 10 people; a big house with room for 100 more, and
-## people moving in every 10 s at normal speed.
+## Jobs, half and half (no expectations: happiness is the needs met); a big house with room for
+## 100 more, and people moving in every 10 s at normal speed.
 func _needs_data() -> Dictionary:
 	var data := _shop_data()
 	data.config["population_growth_seconds"] = 10
-	data.config["happiness"] = {"needs_from_population": 10, "food_scores": [0.0, 0.7, 1.0],
+	data.config["happiness"] = {"needs": {"food": {"name": "Food", "scores": [0.0, 0.7, 1.0]}},
 		"weights": {"food": 0.5, "jobs": 0.5},
 		"growth_speeds": [{"from": 0, "speed": 0.0}, {"from": 0.2, "speed": 0.5}, {"from": 0.5, "speed": 1.0}, {"from": 0.8, "speed": 1.5}]}
 	data.buildings["big_house"] = {"category": "residential", "build_cost": 0, "buildable": true, "households": 50}
@@ -2291,19 +2293,16 @@ func test_happiness_score() -> void:
 	_check(happy.score == 1.0 and happy.growth_speed == 1.0, "no happiness block in the config: no needs, normal speed")
 	var data := _needs_data()
 	var state := Sim.new_game(data, T0)
-	state.population.current = 5
-	happy = Sim.happiness(state, data, T0)
-	_check(not happy.needs_count and happy.score == 1.0 and happy.growth_speed == 1.5, "5 people: a small village doesn't complain (100%, x1.5)")
 	state.population.current = 10
 	happy = Sim.happiness(state, data, T0)
-	_check(happy.needs_count and happy.food == 0.0 and happy.jobs == 0.0 and happy.growth_speed == 0.0, "10 people, no food, no jobs: 0%, nobody moves in")
+	_check(happy.needs.food == 0.0 and happy.needs.jobs == 0.0 and happy.growth_speed == 0.0, "10 people, no food, no jobs: 0%, nobody moves in")
 	var market := Sim.find_building(state, Sim.build(state, data, "market", Vector2i(5, 5), T0).building_id)
 	state.inventory["flour"] = 100
 	state.inventory["bread"] = 100
 	Sim.stock_shelf(state, data, market.id, "flour", 100, "normal", T0)
 	Sim._hire(state, data, T0)
 	happy = Sim.happiness(state, data, T0)
-	_check(happy.foods == 1 and is_equal_approx(happy.food, 0.7) and is_equal_approx(happy.jobs, 0.2), "one food selling (70%), 2 of 10 people work (20%)")
+	_check(happy.foods == 1 and is_equal_approx(happy.needs.food, 0.7) and is_equal_approx(happy.needs.jobs, 0.2), "one food selling (70%), 2 of 10 people work (20%)")
 	_check(is_equal_approx(happy.score, 0.45) and happy.growth_speed == 0.5, "45%: half speed")
 	Sim.stock_shelf(state, data, market.id, "bread", 100, "normal", T0)
 	happy = Sim.happiness(state, data, T0)
@@ -2312,14 +2311,12 @@ func test_happiness_score() -> void:
 	Sim.build(state, data, "crew_mill", Vector2i(7, 7), T0)
 	Sim._hire(state, data, T0)
 	happy = Sim.happiness(state, data, T0)
-	_check(is_equal_approx(happy.jobs, 0.7) and is_equal_approx(happy.score, 0.85) and happy.growth_speed == 1.5, "7 of 10 work: 85%, x1.5")
-	state.population.current = 7  # 3 people moved away: everyone left has a job...
-	Sim._hire(state, data, T0)
-	_check(Sim.happiness(state, data, T0).score == 1.0, "...but below 10 people needs don't count")
-	state.population.current = 10
-	Sim._hire(state, data, T0)
+	_check(is_equal_approx(happy.needs.jobs, 0.7) and is_equal_approx(happy.score, 0.85) and happy.growth_speed == 1.5, "7 of 10 work: 85%, x1.5")
+	_check(is_equal_approx(float(happy.needs_met), 0.85) and float(happy.expected) == 0.0, "no expectations: happiness = needs met")
 	market.hired = 0  # a store with nobody working sells nothing, so feeds nobody
 	_check(Sim.foods_selling(state, data, T0) == 0, "no workers at the store: no food selling")
+	var empty := Sim.new_game(data, T0)
+	_check(is_equal_approx(float(Sim.happiness(empty, data, T0).score), 0.5), "nobody lives here yet: newcomers judge it by what's on offer (no food, no jobs or homes lacking: 50%)")
 
 
 ## Stores sell the item categories in their "sells" list (plan.md §5.16); a store without that
@@ -2346,10 +2343,10 @@ func test_store_sells_only_its_categories() -> void:
 
 
 ## The Food need counts only food on shelves, and more different foods count for more
-## (happiness.food_scores, the last number for that many or more).
+## (happiness.needs.food.scores, the last number for that many or more).
 func test_food_need_counts_only_food() -> void:
 	var data := _needs_data()
-	data.config.happiness["food_scores"] = [0.0, 0.4, 0.6, 1.0]
+	data.config.happiness.needs.food["scores"] = [0.0, 0.4, 0.6, 1.0]
 	data.buildings.market["shelves"] = 5
 	data.resources["shirt"] = {"name": "Shirt", "price": 20, "appetite": 1.0, "category": "clothing"}
 	data.resources["pie"] = {"name": "Pie", "price": 7, "appetite": 1.0, "category": "food"}
@@ -2360,16 +2357,16 @@ func test_food_need_counts_only_food() -> void:
 		state.inventory[res] = 100
 	Sim._hire(state, data, T0)
 	Sim.stock_shelf(state, data, market.id, "shirt", 100, "normal", T0)
-	_check(Sim.foods_selling(state, data, T0) == 0 and Sim.happiness(state, data, T0).food == 0.0, "shirts on a shelf feed nobody: 0 foods")
+	_check(Sim.foods_selling(state, data, T0) == 0 and Sim.happiness(state, data, T0).needs.food == 0.0, "shirts on a shelf feed nobody: 0 foods")
 	_check(Sim.selling_counts(state, data, T0).has("shirt"), "but they are selling (they still share shoppers)")
 	Sim.stock_shelf(state, data, market.id, "flour", 100, "normal", T0)
-	_check(Sim.foods_selling(state, data, T0) == 1 and is_equal_approx(Sim.happiness(state, data, T0).food, 0.4), "1 food: 40%")
+	_check(Sim.foods_selling(state, data, T0) == 1 and is_equal_approx(Sim.happiness(state, data, T0).needs.food, 0.4), "1 food: 40%")
 	Sim.stock_shelf(state, data, market.id, "bread", 100, "normal", T0)
-	_check(is_equal_approx(Sim.happiness(state, data, T0).food, 0.6), "2 foods: 60%")
+	_check(is_equal_approx(Sim.happiness(state, data, T0).needs.food, 0.6), "2 foods: 60%")
 	Sim.stock_shelf(state, data, market.id, "cake", 100, "normal", T0)
-	_check(is_equal_approx(Sim.happiness(state, data, T0).food, 1.0), "3 foods: 100%")
+	_check(is_equal_approx(Sim.happiness(state, data, T0).needs.food, 1.0), "3 foods: 100%")
 	Sim.stock_shelf(state, data, market.id, "pie", 100, "normal", T0)
-	_check(Sim.foods_selling(state, data, T0) == 4 and is_equal_approx(Sim.happiness(state, data, T0).food, 1.0), "4 foods: still 100% (the last score is for that many or more)")
+	_check(Sim.foods_selling(state, data, T0) == 4 and is_equal_approx(Sim.happiness(state, data, T0).needs.food, 1.0), "4 foods: still 100% (the last score is for that many or more)")
 
 
 ## Happiness changes how fast people move in, and settling follows it exactly while away.
@@ -2496,7 +2493,7 @@ func test_job_seekers_come_after_the_unemployed() -> void:
 ## Happiness bands set the job seekers' speed (move_in) apart from the babies' speed.
 func test_job_seekers_need_happiness() -> void:
 	var data := _seeker_data()
-	data.config["happiness"] = {"needs_from_population": 0, "food_scores": [0.0, 1.0], "weights": {"food": 1},
+	data.config["happiness"] = {"needs": {"food": {"name": "Food", "scores": [0.0, 1.0]}}, "weights": {"food": 1},
 		"growth_speeds": [{"from": 0, "speed": 0.5, "move_in": 0.0}, {"from": 0.5, "speed": 1.0}]}
 	var state := Sim.new_game(data, T0)
 	Sim.build(state, data, "crew_farm", Vector2i(5, 5), T0)
@@ -2584,7 +2581,7 @@ func test_migrants_live_in_huts() -> void:
 ## Huts lower the Housing need; below the move-in band migrants stop coming.
 func test_migrants_stop_when_unhappy() -> void:
 	var data := _migrant_data()
-	data.config["happiness"] = {"needs_from_population": 0, "weights": {"housing": 1},
+	data.config["happiness"] = {"weights": {"housing": 1},
 		"growth_speeds": [{"from": 0, "speed": 0.0, "move_in": 0.0}, {"from": 0.8, "speed": 1.0}]}
 	var state := _migrant_town(data)
 	Sim.settle(state, data, T0 + 1000)
@@ -2807,18 +2804,18 @@ func test_dev_rent() -> void:
 	_check(not Sim.dev_set_rent(state, data, "crew_farm", 5.0, T0).ok, "only homes have rent")
 
 
-## Developer locks on happiness: the score or a need is forced, counts even in a new village, and
-## births, migrants and leaving follow. Time away = playing through with a lock on.
+## Developer locks on happiness: the score, what people expect or a need is forced, and births,
+## migrants and leaving follow. Time away = playing through with a lock on.
 func test_dev_happiness_locks() -> void:
 	var data := _band_data()
 	data.config.happiness["leave_group_size"] = 1
-	data.config.happiness["grace_hours"] = 100  # a new village: needs don't count yet
 	var state := _band_town(data, 20, 5, 10)  # 10 households, all with a home, all working
-	_check(not Sim.happiness(state, data, T0).needs_count and int(Sim.happiness(state, data, T0).percent) == 100, "a new village: 100%")
-	_check(not Sim.dev_lock_happiness(state, data, "mood", 0.5, T0).ok, "only score, food, jobs, housing and penalty can be locked")
+	_check(int(Sim.happiness(state, data, T0).percent) == 100, "everyone works and has a home: 100%")
+	_check(not Sim.dev_lock_happiness(state, data, "mood", 0.5, T0).ok, "only the score, the expectation and the needs that count can be locked")
+	_check(not Sim.dev_lock_happiness(state, data, "food", 0.5, T0).ok, "Food doesn't count in this village: it can't be locked")
 	_check(Sim.dev_lock_happiness(state, data, "score", 0.15, T0).ok and Sim.dev_active(state), "happiness locked at 15%")
 	var happy := Sim.happiness(state, data, T0)
-	_check(int(happy.percent) == 15 and happy.needs_count, "15%, even in the grace period")
+	_check(int(happy.percent) == 15, "15%")
 	_check(float(happy.growth_speed) == 0.0 and float(happy.move_in_speed) == 0.0 and is_equal_approx(float(happy.children_leave_per_hour), 0.05), "15%: no babies, no migrants, children leave")
 	_check(float(Sim.happiness_gains(data, happy).housing) == 0.0, "nothing to gain while the score is locked")
 	state.population.children = [{"count": 10, "grows_up_at": T0 + 1000 * 3600.0}]
@@ -2837,11 +2834,14 @@ func test_dev_happiness_locks() -> void:
 	var town := _band_town(needs, 20, 5, 10)  # no food, everyone works and has a home: 66%
 	_check(int(Sim.happiness(town, needs, T0).percent) == 66, "no food: 66%")
 	Sim.dev_lock_happiness(town, needs, "food", 1.0, T0)
-	_check(int(Sim.happiness(town, needs, T0).percent) == 100 and float(Sim.happiness_gains(needs, Sim.happiness(town, needs, T0)).food) == 0.0, "Food locked at 100%: 100%")
-	Sim.dev_lock_happiness(town, needs, "penalty", 0.3, T0)
-	_check(int(Sim.happiness(town, needs, T0).percent) == 70, "plus a 30-point hut penalty: 70%")
+	_check(int(Sim.happiness(town, needs, T0).percent) == 100 and float(Sim.happiness_gains(needs, Sim.happiness(town, needs, T0)).food) == 0.0, "Food locked at 100%: 100%, nothing to gain from more food")
 	Sim.dev_lock_happiness(town, needs, "food", -1.0, T0)
-	_check(int(Sim.happiness(town, needs, T0).percent) == 36, "Food unlocked again: 36%")
+	needs.config.happiness["expectations"] = [{"people": 0, "expected": 0.0}]
+	Sim.dev_lock_happiness(town, needs, "expected", 0.3, T0)
+	var expecting := Sim.happiness(town, needs, T0)
+	_check(is_equal_approx(float(expecting.expected), 0.3) and int(expecting.percent) == 86, "people expect 30%%: 50 + 66 - 30 = 86%% (%d%%)" % int(expecting.percent))
+	town.dev["locks"]["penalty"] = 0.3  # a lock on the hut penalty, from before it was gone
+	_check(not Sim.dev_locks(town).has("penalty") and int(Sim.happiness(town, needs, T0).percent) == 86, "an old hut-penalty lock is left out")
 
 
 ## Developer tuning: game_config.json numbers changed in memory, by path; they count only from
@@ -2873,7 +2873,7 @@ func test_dev_config_overrides() -> void:
 
 
 ## Developer tools for people: adults in or out (the jobless go first, never below none),
-## children added, children grown up at once, the new-village grace period ended.
+## children added, children grown up at once.
 func test_dev_people_tools() -> void:
 	var data := _life_data(0.0, 0.0)
 	var state := Sim.new_game(data, T0)  # 10 adults
@@ -2886,12 +2886,6 @@ func test_dev_people_tools() -> void:
 	_check(float(Sim.children_groups(state)[-1].grows_up_at) == T0 + 2 * 3600, "they grow up in 2 hours (grow_up_hours)")
 	_check(Sim.dev_children_grow_up(state, data, T0 + 60).ok and Sim.adults(state) == 3 and Sim.children_count(state) == 0, "grown up now: 3 adults")
 	_check(int(Sim.people_stats(state).grew_up) == 3 and Sim.hired(farm) == 2, "counted as growing up; 2 of them take the farm's posts")
-	var bands := _band_data()
-	bands.config.happiness["grace_hours"] = 3
-	var town := _band_town(bands, 22, 1, 0)
-	_check(not Sim.happiness(town, bands, T0 + 60).needs_count, "a new village: needs don't count yet")
-	_check(Sim.dev_end_grace(town, bands, T0 + 60).ok and Sim.happiness(town, bands, T0 + 60).needs_count, "grace ended: they count from now")
-	_check(not Sim.dev_end_grace(town, bands, T0 + 61).ok, "it's already over")
 
 
 ## Developer: everything being built or upgraded is finished at once; the construction workers
@@ -2923,7 +2917,8 @@ func test_dev_add_item_and_reset_all() -> void:
 	var town := _housing_town()
 	var home: Dictionary = town[0]
 	var rules: Dictionary = town[1]
-	Sim.dev_lock_happiness(home, rules, "food", 0.5, T0)
+	rules.config["happiness"] = {"weights": {"housing": 1}}
+	_check(Sim.dev_lock_happiness(home, rules, "housing", 0.5, T0).ok, "Housing locked at 50%")
 	Sim.dev_set_config(home, rules, "life.birth_rate_per_hour", 0.5, T0)
 	Sim.dev_set_rent(home, rules, "regular", 20.0, T0)
 	_check(Sim.dev_active(home) and Sim.dev_config(home).size() == 1, "a lock, a tuning change and a rent change are on")
@@ -2931,12 +2926,12 @@ func test_dev_add_item_and_reset_all() -> void:
 	_check(is_equal_approx(Sim.rent_per_household(home, rules, "regular"), 2.0), "the file's rent again")
 
 
-## Life test data where only the Housing need counts (no grace, needs from 1 person), with the
+## Life test data where only the Housing need counts (no expectations), with the
 ## real bands' shape: below 20% no births and 3% an hour leave; 20-49% half speed and 1% leave;
 ## 50% and up nobody leaves. A "duo" home has room for 2 households.
 func _leaving_data(birth: float, death: float) -> Dictionary:
 	var data := _life_data(birth, death)
-	data.config["happiness"] = {"needs_from_population": 1, "food_scores": [1.0], "weights": {"housing": 1},
+	data.config["happiness"] = {"weights": {"housing": 1},
 		"growth_speeds": [{"from": 0, "speed": 0.0, "leave_per_hour": 0.03}, {"from": 0.2, "speed": 0.5, "leave_per_hour": 0.01},
 			{"from": 0.5, "speed": 1.0, "leave_per_hour": 0.0}]}
 	data.buildings["duo"] = {"category": "residential", "build_cost": 0, "buildable": true, "households": 2}
@@ -2952,28 +2947,73 @@ func test_housing_need() -> void:
 	state.population.current = 30  # 15 households: 3 homeless
 	var happy := Sim.happiness(state, data, T0)
 	_check(int(happy.homeless) == 3 and int(happy.households) == 15, "15 households, 3 of them homeless")
-	_check(is_equal_approx(float(happy.housing), 0.8) and is_equal_approx(float(happy.score), 0.8), "Housing need 80% (12 of 15 have a home)")
+	_check(is_equal_approx(float(happy.needs.housing), 0.8) and is_equal_approx(float(happy.score), 0.8), "Housing need 80% (12 of 15 have a home)")
 	_check(float(happy.leave_per_hour) == 0.0, "80%: nobody leaves")
 
 
-## On top of the Housing need, every household in a hut takes a share off (up to a limit).
-func test_homeless_penalty() -> void:
-	var data := _leaving_data(0.0, 0.0)
-	data.config.happiness["homeless_penalty"] = {"per_household": 0.02, "max": 0.3}
-	var state := Sim.new_game(data, T0)  # the house: 5 households
+## The Housing need counts how good each home is (housing_quality; a hut 0), and a home that needs
+## power and has none counts for less (happiness.needs.housing.unpowered).
+func test_housing_quality() -> void:
+	var data := _band_data()
+	data.buildings.public["housing_quality"] = 0.5
+	var state := _band_town(data, 8, 1, 4)  # 8 workers (Poor), 4 households: 2 in the Public home, 2 in huts
 	var happy := Sim.happiness(state, data, T0)
-	_check(float(happy.homeless_penalty) == 0.0 and float(happy.score) == 1.0, "everyone has a home: no penalty")
-	state.population.current = 16  # 8 households: 3 homeless
+	_check(is_equal_approx(float(happy.needs.housing), 0.25) and is_equal_approx(float(happy.score), 0.25), "2 households at 50%%, 2 in huts at 0: Housing 25%% (%s)" % happy.needs.housing)
+	_check(int(happy.unpowered) == 0, "no electricity in this game: no home lacks power")
+	# Electricity: the Public home needs 0.3 MW and nothing makes any.
+	var powered := _band_data()
+	powered.buildings.public["housing_quality"] = 0.5
+	powered.config["power"] = {"price_per_mwh": 30, "billing_hours": 1, "tiers": [{"from": 0, "extra": 0.0}]}
+	powered.config.happiness["needs"] = {"housing": {"name": "Housing", "unpowered": 0.8}}
+	var dark := _band_town(powered, 8, 1, 4)
+	happy = Sim.happiness(dark, powered, T0)
+	_check(int(happy.unpowered) == 2 and is_equal_approx(float(happy.needs.housing), 0.2), "without power the Public home counts 80%%: 2 x 40%% / 4 = 20%% (%s)" % happy.needs.housing)
+	var gains := Sim.happiness_gains(powered, happy)
+	_check(is_equal_approx(float(gains.power), 0.05), "power for that home would add 5 points (%s)" % gains.power)
+	_check(is_equal_approx(float(gains.housing), 0.25), "real homes for the 2 households in huts would add at least 25 points: the cheapest home is 50%% (%s)" % gains.housing)
+
+
+## The Jobs need counts how good each job is: happiness.needs.jobs.quality for its wage bonus. No
+## job counts 0.
+func test_job_quality_from_bonus() -> void:
+	var data := _band_data()
+	data.config.happiness["needs"] = {"jobs": {"name": "Jobs", "quality": {"none": 0.6, "big": 1.0}}}
+	data.config.happiness["weights"] = {"jobs": 1}
+	var state := _band_town(data, 6, 0, 2)  # 4 workers at $15 (Poor), 2 jobless (Broke)
+	var happy := Sim.happiness(state, data, T0)
+	_check(is_equal_approx(float(happy.classes.poor.needs.jobs), 0.6) and float(happy.classes.broke.needs.jobs) == 0.0, "Poor workers with no bonus: 60%; the jobless: 0")
+	_check(is_equal_approx(float(happy.needs.jobs), 0.4), "the village: 4 x 60%% / 6 = 40%% (%s)" % happy.needs.jobs)
+	var farm: Dictionary = state.buildings.filter(func(b): return b.type == "crew_farm")[0]
+	Sim.set_bonus(state, data, farm.id, "big", T0)
+	Sim.settle(state, data, T0)
 	happy = Sim.happiness(state, data, T0)
-	_check(is_equal_approx(float(happy.homeless_penalty), 0.06), "3 households in huts: 2% each = 6% off")
-	_check(is_equal_approx(float(happy.score), 0.625 - 0.06), "score = Housing need (5 of 8) minus the penalty")
-	state.population.current = 50  # 25 households: 20 homeless
+	_check(is_equal_approx(float(happy.classes.rich.needs.jobs), 1.0) and is_equal_approx(float(happy.needs.jobs), (2 * 1.0 + 2 * 0.6) / 6.0), "the farm pays the big bonus: its 2 workers are Rich, with 100% jobs")
+	var gains := Sim.happiness_gains(data, happy)
+	_check(is_equal_approx(float(gains.jobs), 2 * 0.6 / 6.0), "jobs for the 2 jobless (no bonus) would add 20 points (%s)" % gains.jobs)
+
+
+## Each wealth class mixes the needs with its own weights (class_weights on top of weights); the
+## village is the classes weighted by their people, the children shared out by households.
+func test_per_class_happiness() -> void:
+	var data := _all_needs_data()
+	data.config.happiness["class_weights"] = {"broke": {"food": 0, "jobs": 1, "housing": 0}}
+	var state := _band_town(data, 8, 2, 3)  # 6 workers (Poor), 2 jobless (Broke); 4 households, all with a home
+	var happy := Sim.happiness(state, data, T0)
+	var poor: Dictionary = happy.classes.poor
+	var broke: Dictionary = happy.classes.broke
+	_check(int(poor.adults) == 6 and int(broke.adults) == 2, "6 Poor, 2 Broke")
+	_check(is_equal_approx(float(poor.score), 2.0 / 3.0), "Poor: no food, but jobs and homes: 66%")
+	_check(float(broke.score) == 0.0, "the Broke care only about jobs here: 0%")
+	_check(is_equal_approx(float(happy.needs_met), (6 * 2.0 / 3.0) / 8.0), "the village: weighted by people (50%%: %s)" % happy.needs_met)
+	state.population.children = [{"count": 4, "grows_up_at": T0 + 1000 * 3600.0}]
+	state.population.current = 12
 	happy = Sim.happiness(state, data, T0)
-	_check(is_equal_approx(float(happy.homeless_penalty), 0.3), "20 households in huts: at most 30% off")
-	_check(float(happy.score) == 0.0, "the score never goes below 0 (20% Housing need - 30%)")
-	data.config.happiness.needs_from_population = 100
-	happy = Sim.happiness(state, data, T0)
-	_check(float(happy.homeless_penalty) == 0.0 and float(happy.score) == 1.0, "while needs don't count, huts don't either")
+	_check(is_equal_approx(float(happy.classes.poor.people), 6 + 3.0) and is_equal_approx(float(happy.classes.broke.people), 2 + 1.0), "the 4 children are shared out by households: 3 with the Poor, 1 with the Broke")
+	_check(is_equal_approx(float(happy.needs_met), (9 * 2.0 / 3.0) / 12.0), "and counted with them")
+	var plain := _needs_data()  # no wealth classes: everyone in one group
+	var town := Sim.new_game(plain, T0)
+	town.population.current = 10
+	_check(Sim.happiness(town, plain, T0).classes.keys() == [""], "a game without wealth classes has one group")
 
 
 ## An unhappy village loses people: the homeless first, workers keep their posts; time away
@@ -3025,13 +3065,13 @@ func test_unhappy_people_leave_in_groups() -> void:
 # --- Happiness bands: what the % on screen means, and who leaves (review 2026-10-06) ----
 
 ## The real bands' shape (game_config.json) on the housing test data (wealth classes, free
-## "public" homes of 2 households, huts): only the Housing need counts, from 1 person, no grace;
+## "public" homes of 2 households, huts): only the Housing need counts, no expectations;
 ## no births or deaths, nobody moves in. Shown %: 0-10 workers in huts leave too, 11-15 children
 ## leave too, 16-19 no babies (5% an hour of the jobless leave), 20 half-speed babies but no
 ## migrants, 21-49 migrants come (2% an hour leave), 50 and up nobody leaves.
 func _band_data() -> Dictionary:
 	var data := _housing_data()
-	data.config["happiness"] = {"needs_from_population": 1, "food_scores": [1.0], "weights": {"housing": 1},
+	data.config["happiness"] = {"weights": {"housing": 1},
 		"growth_speeds": [
 			{"from": 0, "speed": 0.0, "move_in": 0.0, "leave_per_hour": 0.05, "children_leave_per_hour": 0.05, "homeless_workers_leave": true},
 			{"from": 0.11, "speed": 0.0, "move_in": 0.0, "leave_per_hour": 0.05, "children_leave_per_hour": 0.05},
@@ -3042,12 +3082,11 @@ func _band_data() -> Dictionary:
 	return data
 
 
-## _band_data with all three needs and the real food scores and hut penalty (2 points a hut, at
-## most 30).
+## _band_data with Food, Jobs and Housing weighted the same and the real food scores.
 func _all_needs_data() -> Dictionary:
 	var data := _band_data()
-	data.config.happiness.merge({"food_scores": [0.0, 0.4, 0.6, 0.75, 0.9, 1.0], "weights": {"food": 1, "jobs": 1, "housing": 1},
-		"homeless_penalty": {"per_household": 0.02, "max": 0.3}}, true)
+	data.config.happiness.merge({"needs": {"food": {"name": "Food", "scores": [0.0, 0.4, 0.6, 0.75, 0.9, 1.0]}},
+		"weights": {"food": 1, "jobs": 1, "housing": 1}}, true)
 	return data
 
 
@@ -3110,16 +3149,15 @@ func test_no_babies_below_20_with_a_leftover_baby() -> void:
 
 
 ## 0% needs every need unmet: no food, no jobs, everyone in a hut. Each fix then adds what
-## happiness_gains said it would. With everyone working, the hut penalty (at most 30 points)
-## can't take it to 0.
+## happiness_gains said it would.
 func test_happiness_floor_and_how_to_raise_it() -> void:
 	var data := _all_needs_data()
 	var state := _band_town(data, 20, 0, 0)  # 10 households in huts, no jobs, no food
 	var happy := Sim.happiness(state, data, T0)
 	_check(float(happy.score) == 0.0 and int(happy.percent) == 0, "no food, no jobs, everyone in a hut: 0%")
 	var gains := Sim.happiness_gains(data, happy)
-	_check(is_equal_approx(float(gains.housing), 1.0 / 3.0) and is_equal_approx(float(gains.jobs), 1.0 / 3.0 - 0.2), "homes for all would add 33 points, jobs for all 13 (the huts still take 20)")
-	_check(float(gains.food) == 0.0, "one food (+13) wouldn't get past the hut penalty (-20)")
+	_check(is_equal_approx(float(gains.housing), 1.0 / 3.0) and is_equal_approx(float(gains.jobs), 1.0 / 3.0), "homes for all would add 33 points, jobs for all 33")
+	_check(is_equal_approx(float(gains.food), 0.4 / 3.0), "one food would add 13")
 	for i in 5:
 		_build_anywhere(state, data, "public")
 	Sim.settle(state, data, T0)
@@ -3133,21 +3171,31 @@ func test_happiness_floor_and_how_to_raise_it() -> void:
 	gains = Sim.happiness_gains(data, happy)
 	_check(is_equal_approx(float(gains.food), 0.4 / 3.0) and float(gains.jobs) == 0.0 and float(gains.housing) == 0.0, "only food is left: 1 food +13 points")
 	happy = Sim.happiness(_band_town(data, 40, 0, 20), data, T0)  # everyone works, 20 households in huts
-	_check(is_equal_approx(float(happy.homeless_penalty), 0.3) and int(happy.percent) == 3, "everyone working but in huts: 3%%, the penalty stops at 30 points (%d%%)" % int(happy.percent))
+	_check(int(happy.percent) == 33, "everyone working but in huts: 33%% (%d%%)" % int(happy.percent))
 
 
-## happiness_gains with the numbers of the 2026-10-06 playtest village: no food, 76 of 79 adults
-## working, 10 of 40 households in huts.
+## happiness_gains: each fix adds what it says, checked by making the fix (the 2026-10-06 playtest
+## shape: no food, some jobless, some households in huts).
 func test_happiness_gains() -> void:
 	var data := _all_needs_data()
-	var happy := {"needs_count": true, "food": 0.0, "foods": 0, "jobs": 76.0 / 79.0, "housing": 0.75, "homeless": 10}
-	happy["score"] = (76.0 / 79.0 + 0.75) / 3.0 - 0.2
-	_check(Sim.happiness_percent(happy.score) == 37, "the playtest village: 37%")
+	var state := _band_town(data, 24, 4, 10)  # 20 work (Poor), 4 don't (Broke); 12 households, 8 with a home
+	var happy := Sim.happiness(state, data, T0)
+	_check(is_equal_approx(float(happy.score), 0.5), "the village: 50%% (%s)" % happy.score)
 	var gains := Sim.happiness_gains(data, happy)
-	_check(roundi(100.0 * gains.food) == 13 and roundi(100.0 * gains.housing) == 28 and roundi(100.0 * gains.jobs) == 1, "1 food +13, homes for the huts +28, jobs for the 3 jobless +1")
-	happy.needs_count = false
-	gains = Sim.happiness_gains(data, happy)
-	_check(float(gains.food) == 0.0 and float(gains.housing) == 0.0 and float(gains.jobs) == 0.0, "while needs don't count there's nothing to gain")
+	_check(is_equal_approx(float(gains.food), 0.4 / 3.0), "1 food would add 13 points")
+	var homes := state.duplicate(true)
+	for i in 2:
+		_build_anywhere(homes, data, "public")
+	Sim.settle(homes, data, T0)
+	var housed := float(Sim.happiness(homes, data, T0).score)
+	_check(is_equal_approx(float(gains.housing), housed - 0.5), "homes for the households in huts: +%d points, as promised (%d)" % [roundi(100 * gains.housing), roundi(100 * (housed - 0.5))])
+	var jobs := state.duplicate(true)
+	for i in 2:
+		_build_anywhere(jobs, data, "crew_farm")
+	Sim.settle(jobs, data, T0)
+	var employed := float(Sim.happiness(jobs, data, T0).score)
+	_check(is_equal_approx(float(gains.jobs), employed - 0.5), "jobs for the 4 jobless: +%d points, as promised (%d)" % [roundi(100 * gains.jobs), roundi(100 * (employed - 0.5))])
+	_check(not gains.has("health") and float(gains.power) == 0.0, "only the needs that count have a hint; no home lacks power")
 
 
 ## From 16% to 49% only the jobless leave, and children stay. Once everyone left has a job,
@@ -3296,17 +3344,134 @@ func test_life_away_equals_playing() -> void:
 	_check(int(Sim.people_stats(state).born) > 0 and int(Sim.people_stats(state).died) > 0 and int(Sim.people_stats(state).grew_up) > 0, "(the test saw births, deaths and children growing up)")
 
 
-## A new village gets a grace period: needs don't count for its first hours.
-func test_happiness_grace_period() -> void:
-	var data := _needs_data()
-	data.config.happiness["grace_hours"] = 1
-	var state := Sim.new_game(data, T0)
-	state.population.current = 10  # no food, no jobs: 0% once needs count
-	var happy := Sim.happiness(state, data, T0 + 100)
-	_check(not happy.needs_count and happy.score == 1.0 and is_equal_approx(float(happy.grace_left), 3500.0), "in the first hour needs don't count")
-	_check(Sim.happiness(state, data, T0 + 3600).needs_count and Sim.happiness(state, data, T0 + 3600).score == 0.0, "after it, they do")
-	state.erase("started_at")  # a village from before the grace period existed
-	_check(Sim.happiness(state, data, T0 + 100).needs_count, "older villages get no grace")
+## What people expect rises with the village (happiness.expectations, in a straight line between
+## the points): happiness = content_at + needs met - expected. A small village expects little.
+func test_expectations() -> void:
+	var config := {"expectations": [{"people": 0, "expected": 0.0}, {"people": 10, "expected": 0.0}, {"people": 30, "expected": 0.4}], "content_at": 0.5}
+	_check(Sim.expected_happiness(config, 5) == 0.0 and is_equal_approx(Sim.expected_happiness(config, 20), 0.2) and is_equal_approx(Sim.expected_happiness(config, 100), 0.4), "0 up to 10 people, 20% at 20, then 40% for good")
+	_check(Sim.expected_happiness({}, 500) == 0.0, "no expectations: 0")
+	_check(Sim.next_expectation(config, 5) == {"people": 30, "expected": 0.4} and Sim.next_expectation(config, 30).is_empty(), "the next step up: 40% at 30 people; none after the last")
+	_check(is_equal_approx(Sim._happiness_from(config, 0.3, 0.2), 0.6) and Sim._happiness_from(config, 0.0, 0.8) == 0.0 and Sim._happiness_from(config, 1.0, 0.0) == 1.0, "50% + 30% - 20% = 60%, never below 0 or above 100%")
+	_check(is_equal_approx(Sim._happiness_from({}, 0.3, 0.2), 0.3), "without expectations, happiness is the needs met")
+	var data := _band_data()
+	data.config.happiness.merge(config, true)
+	var state := _band_town(data, 20, 0, 0)  # 20 jobless adults in huts: no needs met
+	var happy := Sim.happiness(state, data, T0)
+	_check(is_equal_approx(float(happy.expected), 0.2) and float(happy.needs_met) == 0.0 and int(happy.percent) == 30, "20 people expect 20%%, have nothing: 30%% (%d%%)" % int(happy.percent))
+	var small := _band_town(data, 8, 0, 0)
+	_check(int(Sim.happiness(small, data, T0).percent) == 50, "8 people expect nothing yet: 50%, though nothing is met")
+
+
+## Expectations change happiness as babies are born and grow up, and time away still equals
+## playing through.
+func test_expectations_away_matches_playing() -> void:
+	var data := _band_data()
+	data.config.life.birth_rate_per_hour = 0.5
+	data.config.life.grow_up_hours = 1
+	data.config.happiness["expectations"] = [{"people": 0, "expected": 0.0}, {"people": 40, "expected": 0.6}]
+	var played := _band_town(data, 20, 10, 10)  # 20 workers with homes for 20 households
+	var away := played.duplicate(true)
+	var t := T0
+	while t < T0 + 6 * 3600:
+		t = minf(t + 30.0, T0 + 6 * 3600)
+		Sim.settle(played, data, t)
+	Sim.settle(away, data, T0 + 6 * 3600)
+	_check(int(Sim.people_stats(away).born) > 0, "(babies were born: %d)" % int(Sim.people_stats(away).born))
+	_check(str(Sim.people_stats(played)) == str(Sim.people_stats(away)) and int(played.population.current) == int(away.population.current), "6 hours away = 6 hours played (%s vs %s)" % [Sim.people_stats(away), Sim.people_stats(played)])
+	_check(float(Sim.happiness(away, data, T0 + 6 * 3600).expected) > 0.3, "the bigger village expects more")
+
+
+# --- Services (plan.md §5.23) -----------------------------------------------------------
+
+## Test data with services: a "clinic" (Health, 2 workers, 10 people; Level 2: 4 workers, 30
+## people) and a "police" station (Safety, 2 workers, 20 people, quality 50%). Housing, Health and
+## Safety count the same; crime is 10% + 50% x the share of adults without a job.
+func _service_data() -> Dictionary:
+	var data := _band_data()
+	data.config.happiness["needs"] = {"health": {"name": "Health"}, "safety": {"name": "Safety", "crime": 0.1, "crime_per_jobless": 0.5}}
+	data.config.happiness["weights"] = {"housing": 1, "health": 1, "safety": 1}
+	data.config["worker_types"] = {"low_skilled": {"name": "Low-skilled", "wage_per_hour": 10}}
+	data.buildings["clinic"] = {"category": "service", "build_cost": 0, "buildable": true, "max_workers": 2, "fixed_workers": true,
+		"fixed_wage": true, "service_need": "health", "service_capacity": 10,
+		"upgrades": [{"cost": 0, "time": 100, "max_workers": 4, "service_capacity": 30}]}
+	data.buildings["police"] = {"category": "service", "build_cost": 0, "buildable": true, "max_workers": 2, "fixed_workers": true,
+		"fixed_wage": true, "service_need": "safety", "service_capacity": 20, "service_quality": 0.5}
+	return data
+
+
+## A service building serves its service_capacity with all its workers (half with half), only
+## while built and not suspended; the need is the share of people it has places for (at most
+## everyone) times its quality. It pays its workers by the hour and stays open while upgraded.
+func test_service_coverage() -> void:
+	var data := _service_data()
+	var state := _band_town(data, 20, 10, 0)  # 20 jobless adults, all with a home
+	var happy := Sim.happiness(state, data, T0)
+	_check(float(happy.needs.health) == 0.0, "no Clinic: Health 0%")
+	var clinic := Sim.find_building(state, _build_anywhere(state, data, "clinic").building_id)
+	Sim.settle(state, data, T0)
+	_check(Sim.hired(clinic) == 2 and is_equal_approx(Sim.service_places(state, data, clinic, T0), 10.0), "the Clinic hires 2 of the jobless and serves 10 people")
+	happy = Sim.happiness(state, data, T0)
+	_check(is_equal_approx(float(happy.needs.health), 0.5) and is_equal_approx(float(happy.coverage.health.places), 10.0), "10 places for 20 people: Health 50%")
+	_check(is_equal_approx(Sim.building_wages(state, data, clinic, T0), 20.0) and is_inf(Sim._stop_time(state, data, clinic, T0)), "it pays its 2 workers $10 an hour and never stops by itself")
+	clinic.hired = 1
+	_check(is_equal_approx(Sim.service_places(state, data, clinic, T0), 5.0), "1 of its 2 workers: 5 places")
+	Sim.settle(state, data, T0)
+	_check(Sim.upgrade(state, data, clinic.id, T0).ok and Sim.is_upgrading(clinic, T0 + 1), "upgrading to Level 2")
+	_check(is_equal_approx(Sim.service_places(state, data, clinic, T0 + 1), 10.0), "it stays open while upgraded")
+	Sim.settle(state, data, T0 + 200)
+	_check(Sim.hired(clinic) == 4 and is_equal_approx(float(Sim.happiness(state, data, T0 + 200).needs.health), 1.0), "Level 2: 4 workers, 30 places for 20 people: Health 100%")
+	Sim.suspend(state, data, clinic.id, T0 + 300)
+	_check(Sim.service_places(state, data, clinic, T0 + 300) == 0.0 and float(Sim.happiness(state, data, T0 + 300).needs.health) == 0.0, "suspended: nobody served")
+	_check(not Sim.dev_lock_happiness(state, data, "fun", 0.5, T0 + 300).ok and Sim.dev_lock_happiness(state, data, "health", 0.7, T0 + 300).ok, "Health counts here, so it can be locked; Fun can't")
+	_check(is_equal_approx(float(Sim.happiness(state, data, T0 + 300).needs.health), 0.7), "Health locked at 70%")
+
+
+## Crime rises with the share of adults without a job (happiness.needs.safety); police bring it
+## down by the share of people they cover, times their quality.
+func test_safety_and_crime() -> void:
+	var data := _service_data()
+	data.config.happiness.weights["jobs"] = 1
+	var state := _band_town(data, 20, 10, 5)  # 10 work, 10 don't
+	var happy := Sim.happiness(state, data, T0)
+	_check(is_equal_approx(float(happy.crime), 0.1 + 0.5 * 0.5) and is_equal_approx(float(happy.needs.safety), 1.0 - 0.35), "crime 10%% + half of 50%% jobless = 35%%: Safety 65%% (%s)" % happy.needs.safety)
+	var gains := Sim.happiness_gains(data, happy)
+	_build_anywhere(state, data, "police")
+	Sim.settle(state, data, T0)
+	happy = Sim.happiness(state, data, T0)
+	# 8 jobless now: crime 10% + 50% x 40% = 30%; police cover everyone at 50%: 30% x 50% = 15%.
+	_check(is_equal_approx(float(happy.crime), 0.3) and is_equal_approx(float(happy.needs.safety), 0.85), "a Police Station hires 2 and covers everyone at 50%%: Safety 85%% (%s)" % happy.needs.safety)
+	_check(float(gains.safety) > 0.0, "the hint promised Safety would rise")
+	var jobs := state.duplicate(true)
+	gains = Sim.happiness_gains(data, happy)
+	for i in 4:
+		_build_anywhere(jobs, data, "crew_farm")
+	Sim.settle(jobs, data, T0)
+	var employed := Sim.happiness(jobs, data, T0)
+	_check(int(employed.jobless) == 0 and is_equal_approx(float(employed.needs.safety), 1.0 - 0.1 * 0.5), "jobs for everyone: crime 10%%, Safety 95%% (%s)" % employed.needs.safety)
+	_check(is_equal_approx(float(gains.jobs), float(employed.score) - float(happy.score)), "the jobs hint counted the crime that goes too (%s vs %s)" % [gains.jobs, float(employed.score) - float(happy.score)])
+
+
+## A Clinic filling up with workers as migrants arrive, while away = playing through it.
+func test_service_away_matches_playing() -> void:
+	var data := _service_data()
+	data.config["population_growth_seconds"] = 60
+	data.config["move_in_only_for_jobs"] = true
+	data.config["move_in_needs_home"] = false
+	data.config.life.birth_rate_per_hour = 0.2
+	data.config.life.death_rate_per_hour = 0.05
+	var played := _band_town(data, 6, 5, 2)
+	_build_anywhere(played, data, "clinic")
+	_build_anywhere(played, data, "police")
+	var away := played.duplicate(true)
+	var t := T0
+	while t < T0 + 5 * 3600:
+		t = minf(t + 45.0, T0 + 5 * 3600)
+		Sim.settle(played, data, t)
+	Sim.settle(away, data, T0 + 5 * 3600)
+	var same: bool = int(played.population.current) == int(away.population.current) and str(Sim.people_stats(played)) == str(Sim.people_stats(away))
+	same = same and played.profile.currency == away.profile.currency
+	_check(same, "5 hours away = 5 hours played (%s vs %s)" % [Sim.people_stats(away), Sim.people_stats(played)])
+	_check(int(Sim.people_stats(away).moved_in) > 0, "(migrants came: %d)" % int(Sim.people_stats(away).moved_in))
 
 
 ## Jobs counts adults only: children don't need a job.
@@ -3318,7 +3483,7 @@ func test_jobs_need_counts_adults() -> void:
 	state.population.current = 14
 	state.population.children = [{"count": 10, "grows_up_at": T0 + 90000}]
 	Sim._hire(state, data, T0)  # 4 adults, 2 of them at the farm
-	_check(is_equal_approx(float(Sim.happiness(state, data, T0).jobs), 0.5), "2 of 4 adults have a job: 50% (children don't count)")
+	_check(is_equal_approx(float(Sim.happiness(state, data, T0).needs.jobs), 0.5), "2 of 4 adults have a job: 50% (children don't count)")
 	_check(int(Sim.employment(state, data, T0).unemployed) == 2, "2 adults unemployed")
 
 
@@ -3337,7 +3502,7 @@ func test_old_save_gets_children() -> void:
 	var s: Dictionary = result.state if result.ok else {}
 	_check(result.ok and int(s.save_version) == Sim.SAVE_VERSION, "a version 5 save loads as the newest version")
 	_check(result.ok and Sim.adults(s) == 7 and Sim.children_count(s) == 0 and s.population.children.is_empty(), "everyone in it is an adult")
-	_check(result.ok and int(Sim.people_stats(s).born) == 0 and not s.has("started_at"), "zeroed counters and no grace period")
+	_check(result.ok and int(Sim.people_stats(s).born) == 0, "zeroed counters")
 
 
 ## The real data: founders, no immigration, births and deaths switched on.
@@ -3359,16 +3524,40 @@ func test_real_life_data() -> void:
 	_check(not data.config.get("life", {}).is_empty(), "real data: births and deaths are switched on")
 
 
-## The real data: the needs are switched on and sensible.
+## The real data: the needs are switched on and sensible, and a new village is content (people
+## expect little yet), not miserable and not overjoyed.
 func test_real_happiness_data() -> void:
 	var data := {"resources": GameDataScript.load_json("res://data/resources.json"),
 		"buildings": GameDataScript.load_json("res://data/buildings.json"),
 		"config": GameDataScript.load_json("res://data/game_config.json")}
 	_check(Sim._has_needs(data), "real data: needs are switched on")
+	var ids := Sim.need_ids(data)
+	for need in ["food", "jobs", "housing", "health", "fun", "faith", "safety"]:
+		_check(ids.has(need), "real data: the %s need counts" % need)
 	var state := Sim.new_game(data, T0)
-	_check(Sim.happiness(state, data, T0).score == 1.0, "real data: a new game starts at 100% (too small to complain)")
-	_check(float(data.config.happiness.get("homeless_penalty", {}).get("per_household", 0.0)) > 0.0, "real data: households in huts lower happiness on top of the Housing need")
-	_check(float(Sim.happiness(state, data, T0 + 4 * 3600.0).homeless_penalty) == 0.0, "real data: a new game has no homeless, so no penalty")
+	Sim.settle(state, data, T0 + 60.0)
+	var happy := Sim.happiness(state, data, T0 + 60.0)
+	_check(float(happy.score) >= 0.5 and float(happy.score) < 0.8, "real data: a new game starts content, 50-79%% (%d%%)" % int(happy.percent))
+	_check(float(happy.leave_per_hour) == 0.0 and float(happy.move_in_speed) > 0.0 and float(happy.growth_speed) >= 1.0, "real data: at the start nobody leaves, babies come at normal speed and migrants may come")
+	_check(float(Sim.expected_happiness(data.config.happiness, 600)) > float(Sim.expected_happiness(data.config.happiness, 100)), "real data: a big village expects more than a small one")
+	var b: Dictionary = data.buildings
+	_check(float(b.makeshift_hut.get("housing_quality", 1.0)) < float(b.public_housing.housing_quality) and float(b.public_housing.housing_quality) < float(b.small_house.housing_quality) and float(b.small_house.housing_quality) <= float(b.villa.housing_quality), "real data: hut < Public Housing < Regular House <= Villa")
+
+
+## The real data: each service need has a building you can build that meets it, with workers, and
+## a new game's cash pays for it.
+func test_real_service_buildings() -> void:
+	var data := {"resources": GameDataScript.load_json("res://data/resources.json"),
+		"buildings": GameDataScript.load_json("res://data/buildings.json"),
+		"config": GameDataScript.load_json("res://data/game_config.json")}
+	for need in ["health", "fun", "faith", "safety"]:
+		var type_id := Sim.service_building_for(data, need)
+		var def: Dictionary = data.buildings.get(type_id, {})
+		_check(type_id != "" and def.get("category", "") == "service" and int(def.get("max_workers", 0)) > 0 and int(def.get("service_capacity", 0)) > 0, "real data: a %s building with workers serves the %s need" % [type_id, need])
+		_check(Sim.construction_value(data, type_id) < Sim.cents(float(data.config.starting_cash)), "real data: a new game can pay for a %s" % type_id)
+	var state := Sim.new_game(data, T0)
+	_check(Sim.stays_open_while_upgrading(data, {"type": "clinic"}), "real data: a Clinic stays open while upgraded")
+	_check(Sim.happiness_gains(data, Sim.happiness(state, data, T0)).has("health"), "real data: there's a hint for Health")
 
 
 ## The real data: the Supermarket and the goods it sells make sense.

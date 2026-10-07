@@ -13,11 +13,15 @@ const SWITCHES := {
 	"sound": ["SoundButton", "On", "Off"],
 	"building_names": ["NamesButton", "On", "Off"],
 	"water_detail": ["WaterButton", "High", "Low"],
+	"glass_blur": ["GlassButton", "On", "Off"],
 	"fullscreen": ["FullscreenButton", "On", "Off"],
 }
 
 
 func _ready() -> void:
+	# The scene carries assets/ui/game_theme.tres so it looks right in the editor; in the game it
+	# uses the live theme like every other window (it follows the "Frosted glass" switch).
+	theme = null
 	super()
 	for key in SWITCHES:
 		var button: Button = get_node("%" + SWITCHES[key][0])

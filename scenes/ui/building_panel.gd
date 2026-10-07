@@ -77,7 +77,7 @@ func show_building(id: String) -> void:
 		choose_defaults()
 	_build_rows(b, def)
 	_shown_level = Economy.building_level(b)
-	open("%s  ·  Level %d" % [def.name, _shown_level])
+	open("%s  ⋅  Level %d" % [def.name, _shown_level])
 	_refresh()
 
 
@@ -103,22 +103,24 @@ func _build_rows(b: Dictionary, def: Dictionary) -> void:
 	_trade_box = null
 	var about := _body(def.get("description", ""))
 	about.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	about.custom_minimum_size.x = WIDTH - 70  # wrapped text needs a width, or it measures one word per line
+	about.custom_minimum_size.x = UITheme.WINDOW_WIDTH - 70  # wrapped text needs a width, or it measures one word per line
 	content.add_child(about)
 	var r := BuildingInfo.recipe_of(b)
 	_recipe_row = null
+	# No road / no power: a red line each (shown only while it's true), not a box with a title, so
+	# the window stays short.
 	_road_box = null
 	if Economy.needs_road(b):
-		_road_box = _section("No road")
 		_road_text = _wrapped("")
 		_road_text.add_theme_color_override("font_color", UITheme.BAD)
-		_road_box.add_child(_road_text)
+		content.add_child(_road_text)
+		_road_box = _road_text
 	_power_box = null
 	if Economy.power_need(b) > 0.0:
-		_power_box = _section("No power")
 		_power_warning = _wrapped("")
 		_power_warning.add_theme_color_override("font_color", UITheme.BAD)
-		_power_box.add_child(_power_warning)
+		content.add_child(_power_warning)
+		_power_box = _power_warning
 
 	if def.category in ["extractor", "processor"]:
 		# What one hour of work makes (plan.md §5.1), then the batch: set one up, or watch it run.
@@ -129,7 +131,7 @@ func _build_rows(b: Dictionary, def: Dictionary) -> void:
 		box.add_child(_recipe_row)
 		_fill_recipe_row(r)
 		_batch_box = BatchBox.new()
-		_batch_box.setup(building_id, WIDTH - 70)
+		_batch_box.setup(building_id, UITheme.WINDOW_WIDTH - 70)
 		_batch_box.start_requested.connect(func(id, recipe_id, hours, bonus): start_batch_requested.emit(id, recipe_id, hours, bonus))
 		_batch_box.switch_requested.connect(func(id, recipe_id): switch_product_requested.emit(id, recipe_id))
 		_batch_box.collect_requested.connect(func(id): collect_requested.emit(id))
@@ -176,7 +178,7 @@ func _build_rows(b: Dictionary, def: Dictionary) -> void:
 		# The Trading Post (plan.md §5.22): sell anything to the trader, or buy anything from it.
 		var trade := _section("Trade")
 		_trade_box = TradeBox.new()
-		_trade_box.setup(WIDTH - 70)
+		_trade_box.setup(UITheme.WINDOW_WIDTH - 70)
 		_trade_box.trade_requested.connect(func(side, res, qty): trade_requested.emit(side, res, qty))
 		trade.add_child(_trade_box)
 
@@ -214,21 +216,17 @@ func _build_rows(b: Dictionary, def: Dictionary) -> void:
 ## Without a road (plan.md §5.20) nobody can get to work here: say so. Hidden once it has a road.
 func _refresh_road(b: Dictionary) -> void:
 	var cut_off := not Economy.on_road(b)
-	var section: Control = _road_box.get_parent()  # the Inset panel around the box
-	if section.visible != cut_off:
-		section.visible = cut_off
-		_layout.call_deferred()
-	_road_text.text = "No road reaches it, so no workers can come. Lay one (Build → Roads)."
+	if _road_box.visible != cut_off:
+		_road_box.visible = cut_off  # the window lays itself out again
+	_road_text.text = "No road: no workers can come. Lay one (Build → Roads)."
 
 
 ## Without power (plan.md §5.5) it doesn't work at all: say why. Hidden while it has power.
 func _refresh_power(b: Dictionary) -> void:
 	var warning := BuildingInfo.power_warning(b)
-	var section: Control = _power_box.get_parent()
-	if section.visible != (warning != ""):
-		section.visible = warning != ""
-		_layout.call_deferred()
-	_power_warning.text = warning.trim_prefix("No power: ") + "."
+	if _power_box.visible != (warning != ""):
+		_power_box.visible = warning != ""  # the window lays itself out again
+	_power_warning.text = warning.trim_suffix(".") + "."
 
 
 ## Upgrade (plan.md §5.15): what the next level brings and the button that starts it (cost and
@@ -251,7 +249,7 @@ func _build_upgrade() -> void:
 func _upgrade_changes(b: Dictionary, next: Dictionary) -> String:
 	var parts: Array[String] = []
 	var names := {"capacity": "room for %s goods", "shelves": "%s shelves", "households": "%s households", "water_supply": "cleans %s m³ of water an hour",
-		"power_supply": "makes %s MW", "power_radius": "reaches %s tiles"}
+		"power_supply": "makes %s MW", "power_radius": "reaches %s tiles", "service_capacity": "serves %s people"}
 	if next.has("max_workers"):
 		parts.append("%d workers" % int(next.max_workers))
 	for key in names:
@@ -281,7 +279,7 @@ func _refresh_upgrade(b: Dictionary) -> void:
 	for line in quote.lines:
 		if line.id != "labor":
 			money -= int(line.cost)
-	_upgrade_button.text = "Upgrade to Level %d · ≈ %s · %s" % [level + 1, UITheme.money(money), UITheme.duration(float(quote.seconds))]
+	_upgrade_button.text = "Upgrade to Level %d ⋅ ≈ %s ⋅ %s" % [level + 1, UITheme.money(money), UITheme.duration(float(quote.seconds))]
 	_upgrade_needs.text = "Needs %s." % BuildingInfo.construction_needs(quote)
 	if not check.ok:
 		_upgrade_needs.text += "\n" + str(check.error)
@@ -307,6 +305,8 @@ func _build_workers(b: Dictionary, def: Dictionary) -> void:
 		rate_title = "Usable Room:"
 	elif def.category == "utility":
 		rate_title = "Water Cleaned:"
+	elif def.category == "service":
+		rate_title = "Serves:"
 	elif def.category == "retail":
 		rate_title = "Serving Speed:"
 	elif def.category == "construction":
@@ -371,11 +371,11 @@ func _refresh_workers(b: Dictionary, def: Dictionary) -> void:
 	if _water_text:
 		# What its water costs: own plants' water at their price, the rest at the public price.
 		var m3 := Economy.water_use(b)
-		_water_text.text = "%s m³/h · %s / hour" % [UITheme.number(roundi(m3)), UITheme.dollars(Economy.water_cost_per_hour(b))]
+		_water_text.text = "%s m³/h ⋅ %s / hour" % [UITheme.number(roundi(m3)), UITheme.dollars(Economy.water_cost_per_hour(b))]
 	if _power_text:
 		# Needs its MW while it runs; what that costs: own plants' power first, then the grid.
 		var on := str(b.get("power", "")) == "on"
-		_power_text.text = "%s · %s / hour" % [BuildingInfo.mw(Economy.power_need(b)), UITheme.dollars(Economy.power_cost_per_hour(b))] if on else "%s while it runs" % BuildingInfo.mw(Economy.power_need(b))
+		_power_text.text = "%s ⋅ %s / hour" % [BuildingInfo.mw(Economy.power_need(b)), UITheme.dollars(Economy.power_cost_per_hour(b))] if on else "%s while it runs" % BuildingInfo.mw(Economy.power_need(b))
 	var speed := Economy.building_speed(b)
 	_rate_text.text = "%d%%" % floori(speed * 100.0 + 0.001)
 	# Rate details for the buildings that show them as "x of y".
@@ -386,6 +386,8 @@ func _refresh_workers(b: Dictionary, def: Dictionary) -> void:
 		_rate_text.text = "%s of %s" % [UITheme.number(Economy.storage_capacity(b)), UITheme.number(int(Economy.level_stat(b, "capacity")))]
 	elif def.category == "utility":
 		_rate_text.text = "%s of %s m³/h" % [UITheme.number(roundi(Economy.water_supply(b))), UITheme.number(int(Economy.level_stat(b, "water_supply")))]
+	elif def.category == "service":
+		_rate_text.text = "%s of %s people" % [UITheme.number(roundi(Economy.service_places(b))), UITheme.number(int(Economy.level_stat(b, "service_capacity")))]
 	# A note only when workers are missing (otherwise nothing needs saying).
 	var note := "Only %d of the %d workers it needs: build houses." % [int(w.hired), int(w.wanted)] if short else ""
 	if _workers_note.visible != (note != ""):
@@ -630,11 +632,11 @@ func _refresh_shelves(b: Dictionary) -> void:
 		row.detail.visible = true
 		row.icon.texture = UITheme.icon(shelf.res)
 		row.icon.modulate.a = 1.0
-		row.title.text = "%s · %s · %s each" % [BuildingInfo.resource_name(shelf.res), tags.get(shelf.tag, {}).get("name", shelf.tag), UITheme.price(int(shelf.price))]
+		row.title.text = "%s ⋅ %s ⋅ %s each" % [BuildingInfo.resource_name(shelf.res), tags.get(shelf.tag, {}).get("name", shelf.tag), UITheme.price(int(shelf.price))]
 		var sold := Economy.shelf_sold_now(b, i)
 		row.bar.value = 100.0 * sold / maxf(float(shelf.qty), 1.0)
 		var left := Economy.shelf_time_left(b, i)
-		row.detail.text = "%s of %s sold · %s" % [UITheme.number(floori(sold)), UITheme.number(int(shelf.qty)),
+		row.detail.text = "%s of %s sold ⋅ %s" % [UITheme.number(floori(sold)), UITheme.number(int(shelf.qty)),
 			"sells out in %s" % UITheme.duration(left) if left < INF else "not selling: no workers"]
 
 
@@ -695,7 +697,7 @@ func _section(title: String) -> VBoxContainer:
 
 
 ## An item icon with its amount, e.g. [wheat] 40.
-## "[wheat] 40 → [flour] 32 · per hour of work": what one hour of this recipe makes.
+## "[wheat] 40 → [flour] 32 ⋅ per hour of work": what one hour of this recipe makes.
 func _fill_recipe_row(r: Dictionary) -> void:
 	for child in _recipe_row.get_children():
 		_recipe_row.remove_child(child)
@@ -736,5 +738,4 @@ func _body(text: String) -> Label:
 
 ## Body text that wraps onto more lines instead of making the window wider.
 func _wrapped(text: String) -> Label:
-	return UITheme.wrapped(text, WIDTH - 70)
-
+	return UITheme.wrapped(text, UITheme.WINDOW_WIDTH - 70)

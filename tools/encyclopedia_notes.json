@@ -39,26 +39,26 @@
 		"happiness": {
 			"name": "Happiness",
 			"plan": "plan.md §5.6 \"Needs & happiness\"",
-			"summary": "One % for the whole village, made from three needs: Food, Jobs and Housing. It doesn't make anyone work slower; it decides how fast babies are born, whether job seekers come, and whether people leave the island.",
+			"summary": "One % for the whole village, Tropico-style: each wealth class (Broke, Poor, Well off...) scores seven needs (Food, Jobs, Housing, Health, Fun, Faith, Safety) with its own priorities, and the village's needs met are compared with what people expect, which rises as the village grows. It doesn't make anyone work slower; it decides how fast babies are born, whether job seekers come, and whether people leave the island.",
 			"features": [
-				{ "status": "trial", "since": "2026-10-03", "text": "One village happiness % on the top bar, with a green / gold / red bar. Tapping it opens the breakdown in Statistics → People." },
-				{ "status": "trial", "since": "2026-10-03", "text": "Food need: how many different foods are selling at a Supermarket with workers. More variety = happier (the scale changed on 2026-10-05 when more foods arrived)." },
-				{ "status": "trial", "since": "2026-10-03", "text": "Jobs need: the share of adults with a job." },
-				{ "status": "trial", "since": "2026-10-03", "text": "Housing need: the share of households living in a real home, not a hut." },
-				{ "status": "trial", "since": "2026-10-04", "text": "Homeless penalty: every household in a Makeshift Hut takes extra points off, up to a limit." },
-				{ "status": "trial", "since": "2026-10-03", "text": "A small village doesn't complain: needs only count from 10 people." },
-				{ "status": "trial", "since": "2026-10-03", "text": "Grace period: needs don't count in a new village's first 3 hours, so you have time to build jobs and a Supermarket." },
+				{ "status": "trial", "since": "2026-10-03", "text": "One village happiness % on the top bar, with a green / gold / red bar. Tapping it opens the breakdown in Statistics → People: needs met vs what people expect, each need with its reason, each wealth class, and \"To raise it\" hints." },
+				{ "status": "trial", "since": "2026-10-03", "text": "Food need: how many different foods are selling at a Supermarket with workers. More variety = happier." },
+				{ "status": "trial", "since": "2026-10-07", "text": "Jobs need: how good each adult's job is, by its wage bonus (no bonus 60%, Big 100%); no job = 0." },
+				{ "status": "trial", "since": "2026-10-07", "text": "Housing need: how good each household's home is (hut 0, Public Housing 50%, Regular House 75%, Villa 100%); a home without power counts less. Replaced the hut penalty." },
+				{ "status": "trial", "since": "2026-10-07", "text": "Health, Fun and Faith needs: met by a Clinic, a Tavern and a Chapel, each serving a number of people anywhere in the village." },
+				{ "status": "trial", "since": "2026-10-07", "text": "Safety need: crime rises with joblessness and huts; a Police Station keeps it down." },
+				{ "status": "trial", "since": "2026-10-07", "text": "Each wealth class weighs the needs its own way (the poor care most about food and jobs, the rich about housing and fun); the village is the classes weighted by their people." },
+				{ "status": "trial", "since": "2026-10-07", "text": "Rising expectations (like Tropico's Caribbean happiness): happiness = 50% + needs met − what people expect; a small village expects nothing, 100 people expect 38%, 600 people 60%. Replaced the 10-person rule and the grace period." },
 				{ "status": "trial", "since": "2026-10-03", "text": "Effects in steps: birth speed, job seekers moving in, and people leaving (see the table above)." },
 				{ "status": "trial", "since": "2026-10-04", "text": "People leave in groups of 5, faster when very unhappy (2% or 5% an hour)." },
 				{ "status": "trial", "since": "2026-10-03", "text": "Worked out fresh from the village each time (never stored, so it can't drift), and exact while you're away." },
 				{ "status": "idea", "text": "Happiness changing how fast people work." },
-				{ "status": "idea", "text": "Wage bonuses making workers happier." },
-				{ "status": "idea", "text": "More needs, e.g. housing quality." },
-				{ "status": "idea", "text": "Tune the numbers by playing (food scale, weights, penalty, the steps)." }
+				{ "status": "idea", "text": "Luxury needs for the rich (a luxury restaurant, a casino), and services reaching only homes nearby (a radius)." },
+				{ "status": "idea", "text": "Tune the numbers by playing (weights, qualities, crime, expectations, the steps)." }
 			],
 			"code": [
-				"Rules: Simulation.happiness, foods_selling, _update_growth_speed (scripts/sim/simulation.gd)",
-				"Numbers: happiness in data/game_config.json",
+				"Rules: Simulation.happiness, happiness_gains, service_places, expected_happiness, foods_selling, _update_growth_speed (scripts/sim/simulation.gd)",
+				"Numbers: happiness in data/game_config.json; housing_quality and the service buildings in data/buildings.json",
 				"Screens: top bar \"% happy\", Statistics → People (scenes/ui/stats_panel.gd)"
 			]
 		}
@@ -95,6 +95,71 @@
 			"Rules: Simulation.can_stock_shelf, stock_shelf, clear_shelf, stock_preview, selling_counts, _settle_retail (scripts/sim/simulation.gd)",
 			"Window: scenes/ui/building_panel.gd (Shelves + \"Put on a shelf\")",
 			"Tests: 13 test_supermarket_* tests plus the whole-chain tests in tests/test_simulation.gd"
+		]
+	},
+	"clinic": {
+		"plan": "plan.md §5.23",
+		"summary": "Doctors and nurses: meets the Health need for up to 100 people anywhere in the village (more with upgrades). Costs only its workers' wages, paid by the hour, and power.",
+		"features": [
+			{ "status": "trial", "since": "2026-10-07", "text": "Built from the Build menu, Services tab." },
+			{ "status": "trial", "since": "2026-10-07", "text": "Serves its people with all its workers working; fewer workers serve fewer (2 of 4 = half). Nobody while suspended, unbuilt or without power." },
+			{ "status": "trial", "since": "2026-10-07", "text": "Upgrades to Level 2, 3 and 4: more workers and more people served. It stays open while being upgraded." },
+			{ "status": "planned", "text": "Doctors as high-skilled workers once schools exist." },
+			{ "status": "planned", "text": "Its own picture: a Blender design in a later art batch. Until then it shows as a plain box." },
+			{ "status": "idea", "text": "Tune by playing: cost, workers, people served, quality." }
+		],
+		"code": [
+			"Rules: Simulation.service_places, happiness (scripts/sim/simulation.gd)",
+			"Window: scenes/ui/building_panel.gd (Workers, Serves)",
+			"Tests: test_service_coverage, test_safety_and_crime, test_service_away_matches_playing in tests/test_simulation.gd"
+		]
+	},
+	"tavern": {
+		"plan": "plan.md §5.23",
+		"summary": "Music and drinks: meets the Fun need for up to 80 people (90% quality: a better place for fun can come later).",
+		"features": [
+			{ "status": "trial", "since": "2026-10-07", "text": "Built from the Build menu, Services tab." },
+			{ "status": "trial", "since": "2026-10-07", "text": "Serves its people with all its workers working; fewer workers serve fewer (2 of 4 = half). Nobody while suspended, unbuilt or without power." },
+			{ "status": "trial", "since": "2026-10-07", "text": "Upgrades to Level 2, 3 and 4: more workers and more people served. It stays open while being upgraded." },
+			{ "status": "planned", "text": "Its own picture: a Blender design in a later art batch. Until then it shows as a plain box." },
+			{ "status": "idea", "text": "Tune by playing: cost, workers, people served, quality." }
+		],
+		"code": [
+			"Rules: Simulation.service_places, happiness (scripts/sim/simulation.gd)",
+			"Window: scenes/ui/building_panel.gd (Workers, Serves)",
+			"Tests: test_service_coverage, test_safety_and_crime, test_service_away_matches_playing in tests/test_simulation.gd"
+		]
+	},
+	"chapel": {
+		"plan": "plan.md §5.23",
+		"summary": "A quiet place of worship: meets the Faith need for up to 120 people. Needs no power, so faith can be met before the first power plant.",
+		"features": [
+			{ "status": "trial", "since": "2026-10-07", "text": "Built from the Build menu, Services tab." },
+			{ "status": "trial", "since": "2026-10-07", "text": "Serves its people with all its workers working; fewer workers serve fewer (2 of 4 = half). Nobody while suspended, unbuilt or without power." },
+			{ "status": "trial", "since": "2026-10-07", "text": "Upgrades to Level 2, 3 and 4: more workers and more people served. It stays open while being upgraded." },
+			{ "status": "planned", "text": "Its own picture: a Blender design in a later art batch. Until then it shows as a plain box." },
+			{ "status": "idea", "text": "Tune by playing: cost, workers, people served, quality." }
+		],
+		"code": [
+			"Rules: Simulation.service_places, happiness (scripts/sim/simulation.gd)",
+			"Window: scenes/ui/building_panel.gd (Workers, Serves)",
+			"Tests: test_service_coverage, test_safety_and_crime, test_service_away_matches_playing in tests/test_simulation.gd"
+		]
+	},
+	"police_station": {
+		"plan": "plan.md §5.23",
+		"summary": "Keeps crime down for up to 150 people. Crime rises with joblessness and huts; the Safety need is 100% minus the crime the police can't reach.",
+		"features": [
+			{ "status": "trial", "since": "2026-10-07", "text": "Built from the Build menu, Services tab." },
+			{ "status": "trial", "since": "2026-10-07", "text": "Serves its people with all its workers working; fewer workers serve fewer (2 of 4 = half). Nobody while suspended, unbuilt or without power." },
+			{ "status": "trial", "since": "2026-10-07", "text": "Upgrades to Level 2, 3 and 4: more workers and more people served. It stays open while being upgraded." },
+			{ "status": "planned", "text": "Its own picture: a Blender design in a later art batch. Until then it shows as a plain box." },
+			{ "status": "idea", "text": "Tune by playing: cost, workers, people served, quality." }
+		],
+		"code": [
+			"Rules: Simulation.service_places, happiness (scripts/sim/simulation.gd)",
+			"Window: scenes/ui/building_panel.gd (Workers, Serves)",
+			"Tests: test_service_coverage, test_safety_and_crime, test_service_away_matches_playing in tests/test_simulation.gd"
 		]
 	}
 }

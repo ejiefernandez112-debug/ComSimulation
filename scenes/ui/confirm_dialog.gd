@@ -18,7 +18,7 @@ func ask(title_text: String, message: String, money: int, goods: Dictionary, yes
 		no_text := "Keep it", yes_variation := "DangerButton") -> void:
 	_on_yes = on_yes
 	clear_content()
-	content.add_child(UITheme.wrapped(message, WIDTH - 70))
+	content.add_child(UITheme.wrapped(message, UITheme.WINDOW_WIDTH - 70))
 
 	if money > 0 or not goods.is_empty():
 		var box := PanelContainer.new()

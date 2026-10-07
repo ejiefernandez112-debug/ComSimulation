@@ -1,14 +1,15 @@
 {
-	"_note": "Build Menu tabs, top to bottom down the right edge of the menu. A building shows under the tab named by \"menu_tab\" in buildings.json (no menu_tab = never in the menu). Buildings with buildable=false show as locked. Tabs with no buildings are hidden. icon = a file in assets/ui/icons/.",
+	"_note": "Build Menu categories: one button each in the bottom toolbar, left to right; picking one opens its buildings in the Build panel above it. A building shows under the category named by \"menu_tab\" in buildings.json (no menu_tab = never in the menu). Buildings with buildable=false show as locked. Categories with no buildings are hidden. icon = a file in assets/ui/icons/; color = the category's square in the panel header (the map's colours); about = the line at the right of the header; divider_before = a thin line before this button in the toolbar.",
 	"tabs": [
-		{ "id": "farming", "name": "Farming", "icon": "tab_farming" },
-		{ "id": "food", "name": "Food", "icon": "tab_food" },
-		{ "id": "industry", "name": "Industry", "icon": "tab_industry" },
-		{ "id": "shops", "name": "Shops", "icon": "market" },
-		{ "id": "storage", "name": "Storage", "icon": "warehouse" },
-		{ "id": "utilities", "name": "Utilities", "icon": "water" },
-		{ "id": "power", "name": "Power", "icon": "power" },
-		{ "id": "roads", "name": "Roads", "icon": "road" },
-		{ "id": "housing", "name": "Housing", "icon": "tab_housing" }
+		{ "id": "farming", "name": "Farming", "icon": "tab_farming", "color": "#c9a93f", "about": "Grow crops and raise animals" },
+		{ "id": "food", "name": "Food", "icon": "tab_food", "color": "#8f74b4", "about": "Turn crops into food to sell" },
+		{ "id": "industry", "name": "Industry", "icon": "tab_industry", "color": "#7f86a0", "about": "Factories that make goods" },
+		{ "id": "shops", "name": "Shops", "icon": "market", "color": "#b9614f", "about": "Sell to the village, or trade with the world" },
+		{ "id": "storage", "name": "Storage", "icon": "warehouse", "color": "#6e93ab", "about": "Room for everything you make" },
+		{ "id": "utilities", "name": "Utilities", "icon": "water", "color": "#4fa5bb", "about": "Clean water for your buildings" },
+		{ "id": "power", "name": "Power", "icon": "power", "color": "#d9b23a", "about": "Make power and carry it to buildings" },
+		{ "id": "services", "name": "Services", "icon": "tab_services", "color": "#7fae8f", "about": "Health, fun, faith and safety for your people" },
+		{ "id": "roads", "name": "Roads", "icon": "road", "color": "#7f86a0", "about": "Roads bring workers from City Hall", "divider_before": true },
+		{ "id": "housing", "name": "Housing", "icon": "tab_housing", "color": "#b9805a", "about": "Homes for your people" }
 	]
 }

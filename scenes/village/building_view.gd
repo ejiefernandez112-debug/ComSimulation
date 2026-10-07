@@ -19,6 +19,7 @@ const CATEGORY_COLORS := {
 	"processor": Color("9c7bb5"),
 	"storage": Color("7aa0b8"),
 	"utility": Color("5fb3c9"),
+	"service": Color("7fae8f"),
 	"construction": Color("e0a43a"),
 	"power": Color("f2c94c"),
 	"retail": Color("6fb07f"),

@@ -193,7 +193,7 @@ func _run_screens() -> void:
 	var windows := [
 		["a home tapped (its bar)", func(): _main._on_building_tapped(home), func(): _main._deselect()],
 		["building window (a farm)", func(): _main.building_panel.show_building(farm), func(): _main.building_panel.close()],
-		["build menu", func(): _main.build_menu.open(), func(): _main.build_menu._close()],
+		["build menu", func(): _main.build_menu.open(), func(): _main.build_menu.close()],
 		["warehouse window", func(): _main._warehouse_panel.show_stock(), func(): _main._warehouse_panel.close()],
 		["statistics: production", func(): _main.stats_panel.show_stats("production"), func(): _main.stats_panel.close()],
 		["statistics: people", func(): _main.stats_panel.show_stats("people"), func(): _main.stats_panel.close()],
@@ -251,7 +251,8 @@ func _big_village(now: float) -> Dictionary:
 	# What stands on the 96 big lots (12 across, 8 down), in order; "" = left empty (huts go there).
 	var lots: Array[String] = ["city_hall"]
 	lots.append_array(["construction_office", "construction_office", "warehouse", "warehouse", "warehouse", "warehouse",
-		"water_treatment_plant", "water_treatment_plant", "trading_post", "supermarket", "supermarket", "supermarket", "supermarket"])
+		"water_treatment_plant", "water_treatment_plant", "trading_post", "supermarket", "supermarket", "supermarket", "supermarket",
+		"clinic", "tavern", "chapel", "police_station"])
 	for i in 16:
 		lots.append("homes")  # four 1x1 homes
 	for i in 8:

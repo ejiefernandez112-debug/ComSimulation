@@ -294,18 +294,24 @@ def population_facts(cfg: dict, buildings: dict) -> dict:
 
 def happiness_facts(cfg: dict, buildings: dict) -> dict:
 	h = cfg.get("happiness", {})
+	needs = h.get("needs", {})
 	weights = h.get("weights", {})
 	total = sum(weights.values()) or 1
-	penalty = h.get("homeless_penalty", {})
-	scores = h.get("food_scores", [])
+	scores = needs.get("food", {}).get("scores", [])
+	name = lambda need: needs.get(need, {}).get("name", need.title())
+	safety = needs.get("safety", {})
 	facts = [
-		["Mix", ", ".join(f"{k.title()} {pct(v / total)}" for k, v in weights.items())],
-		["Homeless penalty", f"−{round(penalty.get('per_household', 0) * 100)} points for each household in a hut, at most −{round(penalty.get('max', 0) * 100)}"],
-		["Counts from", f"{h.get('needs_from_population', 0)} people (fewer = 100% happy)"],
-		["Grace period", f"the first {h.get('grace_hours', 0)} hours of a new village"],
+		["Mix (everyone)", ", ".join(f"{name(k)} {pct(v / total)}" for k, v in weights.items())],
+		["Jobs quality by wage bonus", ", ".join(f"{k} {pct(v)}" for k, v in needs.get("jobs", {}).get("quality", {}).items())],
+		["A home without power", f"counts {pct(needs.get('housing', {}).get('unpowered', 1))} of its quality"],
+		["Crime", f"{pct(safety.get('crime', 0))} + {pct(safety.get('crime_per_jobless', 0))} × the jobless share + {pct(safety.get('crime_per_homeless', 0))} × the share in huts"],
+		["Content when needs met = expected", pct(h.get("content_at", 0.5))],
 		["People leave in groups of", str(h.get("leave_group_size", 1))],
 	]
 	food = [[str(i) + ("+" if i == len(scores) - 1 else ""), pct(v)] for i, v in enumerate(scores)]
+	expect = [[str(p["people"]), pct(p["expected"])] for p in h.get("expectations", [])]
+	homes = [[b.get("name", ""), pct(b["housing_quality"])] for b in buildings.values() if isinstance(b, dict) and "housing_quality" in b]
+	classes = [[c, ", ".join(f"{name(k)} {v:g}" for k, v in w.items())] for c, w in h.get("class_weights", {}).items()]
 	bands = h.get("growth_speeds", [])
 	band_rows = []
 	for i, band in enumerate(bands):
@@ -326,6 +332,9 @@ def happiness_facts(cfg: dict, buildings: dict) -> dict:
 			", ".join(who) if who else "nobody"])
 	return {"facts": facts, "tables": [
 		{"title": "Food need: different foods selling", "head": ["Foods", "Food need"], "rows": food},
+		{"title": "Housing quality", "head": ["Home", "Quality"], "rows": homes},
+		{"title": "Each wealth class's weights", "head": ["Class", "Weights"], "rows": classes},
+		{"title": "What people expect", "head": ["People", "Expected"], "rows": expect},
 		{"title": "What happiness does", "head": ["Happiness", "Births", "Job seekers", "People leaving"], "rows": list(reversed(band_rows))},
 	]}
 

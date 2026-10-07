@@ -95,9 +95,13 @@ func _on_economy_changed() -> void:
 
 
 ## Placement Mode for a new building: show the grid and a see-through ghost of type_id on a free
-## tile near the middle of the screen.
-func start_placement(type_id: String) -> void:
-	_begin_placement(type_id, Economy.free_spot_near(type_id, _spot_under(type_id, camera.position)))
+## tile near the middle of the screen, or near the screen point `at_screen` (the Build panel asks for
+## the middle of the map it leaves in view).
+func start_placement(type_id: String, at_screen := Vector2(-1, -1)) -> void:
+	var world := camera.position
+	if at_screen.x >= 0.0:
+		world = get_viewport().get_canvas_transform().affine_inverse() * at_screen
+	_begin_placement(type_id, Economy.free_spot_near(type_id, _spot_under(type_id, world)))
 
 
 ## Placement Mode for an existing building: it fades where it stands and the ghost starts right on

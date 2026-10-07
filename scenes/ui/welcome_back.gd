@@ -50,7 +50,7 @@ func show_if_away() -> bool:
 
 
 func _text(message: String, warning := false) -> void:
-	var label := UITheme.wrapped(message, WIDTH - 70)
+	var label := UITheme.wrapped(message, UITheme.WINDOW_WIDTH - 70)
 	if warning:
 		label.add_theme_color_override("font_color", UITheme.BAD)
 	content.add_child(label)

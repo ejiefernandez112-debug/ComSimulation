@@ -11,7 +11,6 @@ signal build_requested
 signal move_requested(building_id: String)
 
 const BuildingView = preload("res://scenes/village/building_view.gd")
-const MIN_WIDTH := 380.0
 
 var building_id := ""
 
@@ -31,7 +30,8 @@ func _ready() -> void:
 	set_anchors_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_card = PanelContainer.new()
-	_card.custom_minimum_size.x = MIN_WIDTH
+	UITheme.frost(_card)
+	_card.custom_minimum_size.x = UITheme.BUILDING_CARD_WIDTH
 	add_child(_card)
 	var column := VBoxContainer.new()
 	column.add_theme_constant_override("separation", 10)
@@ -54,7 +54,7 @@ func _ready() -> void:
 	words.add_child(_title)
 	_status = UITheme.label("", "SmallLabel")
 	_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_status.custom_minimum_size.x = MIN_WIDTH - 100.0
+	_status.custom_minimum_size.x = UITheme.BUILDING_CARD_WIDTH - 100.0
 	words.add_child(_status)
 	_progress = ProgressBar.new()
 	_progress.show_percentage = false

@@ -20,18 +20,19 @@ const GameDataScript = preload("res://scripts/autoload/game_data.gd")
 ## Folders that aren't the game's own code: Godot's cache, exports, and the 3D art sources.
 ## Folders with a .gdignore file are skipped too.
 const SKIP_DIRS := [".godot", ".git", ".claude", "build", "art", "Sprites kit"]
-const CATEGORIES := ["civic", "residential", "storage", "utility", "construction", "power", "extractor", "processor", "retail", "trade"]
+const CATEGORIES := ["civic", "residential", "storage", "utility", "construction", "power", "extractor", "processor", "retail", "trade", "service"]
 ## Every setting buildings.json / resources.json / game_config.json may use. Anything else is
 ## reported as a NOTE: usually a typo the game would silently ignore ("storage_capp"), or a new
 ## setting, which then belongs in these lists.
 const BUILDING_KEYS := ["name", "category", "description", "menu_tab", "build_cost", "buildable",
 	"build_time", "max_workers", "worker_type", "fixed_workers", "staffed_first", "fixed_wage",
-	"households", "housing_tier", "hut", "wealth", "rent_per_household", "power_mw",
+	"households", "housing_tier", "housing_quality", "hut", "wealth", "rent_per_household", "power_mw",
+	"service_need", "service_capacity", "service_quality",
 	"capacity", "water_per_hour", "water_supply", "recipes", "shelves", "upgrades", "materials", "crew", "road_hub",
 	"construction_crew", "power_supply", "power_radius", "grid_mw", "coming_soon", "sells", "switch_fee", "max_count", "size", "suspendable"]
 ## What a level in "upgrades" may change (plus an optional fixed "cost" and own "time"), and the
 ## least each may be.
-const UPGRADE_STATS := {"max_workers": 0, "capacity": 1, "shelves": 1, "households": 1, "water_supply": 1, "power_supply": 1, "power_radius": 1}
+const UPGRADE_STATS := {"max_workers": 0, "capacity": 1, "shelves": 1, "households": 1, "water_supply": 1, "power_supply": 1, "power_radius": 1, "service_capacity": 1}
 const RECIPE_KEYS := ["id", "inputs", "outputs", "duration", "cost_share"]
 const RESOURCE_KEYS := ["name", "tier", "appetite", "price", "category", "unit"]
 const CONFIG_KEYS := ["starting_cash", "starting_population", "population_growth_seconds", "move_in_group_size", "move_in_only_for_jobs", "move_in_needs_home", "life", "housing", "happiness", "grid_size", "autosave_seconds",
@@ -121,9 +122,36 @@ func _check_data() -> void:
 			_fail("build_menu.json: tab '%s' is listed twice" % tab.get("id", ""))
 		tabs[tab.get("id", "")] = true
 		_icon_exists(str(tab.get("icon", "")), "build_menu.json tab '%s'" % tab.get("id", ""))
+		_unknown_keys(tab, ["id", "name", "icon", "color", "about", "divider_before"], "build_menu.json tab '%s'" % tab.get("id", ""))
+		if tab.has("color") and not Color.html_is_valid(str(tab.color)):
+			_fail("build_menu.json: tab '%s' color '%s' isn't a colour like \"#d9b23a\"" % [tab.get("id", ""), tab.color])
 	_check_buildings(data, tabs)
 	_check_resources(data)
 	_check_config(data)
+	_check_look()
+
+
+## data/ui_look.json (the look, read by scenes/ui/ui_theme.gd): every setting UITheme.LOOK_KEYS
+## lists is there, colours are colours, sizes are numbers, and swapped icons exist.
+func _check_look() -> void:
+	var look := GameDataScript.load_json("res://data/ui_look.json")
+	var keys: Dictionary = load("res://scenes/ui/ui_theme.gd").LOOK_KEYS
+	_unknown_keys(look, keys.keys() + ["icons"], "ui_look.json")
+	for section in keys:
+		var values: Dictionary = look.get(section, {})
+		_unknown_keys(values, keys[section], "ui_look.json %s" % section)
+		for key in keys[section]:
+			if not values.has(key):
+				_fail("ui_look.json: %s.%s is missing" % [section, key])
+			elif section == "colors" and not Color.html_is_valid(str(values[key])):
+				_fail("ui_look.json: colors.%s '%s' isn't a colour like \"#2f9cf0\"" % [key, values[key]])
+			elif section != "colors" and not (values[key] is float and float(values[key]) >= 0.0):
+				_fail("ui_look.json: %s.%s should be a number of pixels" % [section, key])
+	var icons: Dictionary = look.get("icons", {})
+	for name in icons:
+		_icon_exists(str(name), "ui_look.json icons")
+		if not FileAccess.file_exists("res://assets/ui/icons/%s.svg" % icons[name]):
+			_fail("ui_look.json icons: '%s' is drawn as '%s', but there is no assets/ui/icons/%s.svg" % [name, icons[name], icons[name]])
 
 
 func _check_buildings(data: Dictionary, tabs: Dictionary) -> void:
@@ -167,6 +195,8 @@ func _check_buildings(data: Dictionary, tabs: Dictionary) -> void:
 							_fail("%s sells: '%s' isn't in game_config.json item_categories" % [where, kind])
 			"utility":
 				_whole_at_least(def, "water_supply", 1, where, true)
+			"service":
+				_check_service(config, def, where)
 			"construction":
 				_check_crew_office(data, id, def, where)
 			"power":
@@ -455,7 +485,7 @@ func _check_config(data: Dictionary) -> void:
 	_number_at_least(c.get("pricing", {}), "payback_hours", 0.001, where + " pricing", true)
 	_share(c.get("pricing", {}).get("typical_tax_rate"), where + " pricing typical_tax_rate", true)
 	if c.has("happiness"):
-		_check_happiness(c.happiness, where + " happiness")
+		_check_happiness(data, c.happiness, where + " happiness")
 	if c.has("construction"):
 		_check_construction(c, where + " construction")
 
@@ -545,6 +575,7 @@ func _check_home(config: Dictionary, def: Dictionary, where: String) -> void:
 	_whole_at_least(def, "housing_tier", 0, where, false)
 	_number_at_least(def, "rent_per_household", 0.0, where, false)
 	_number_at_least(def, "power_mw", 0.0, where, false)
+	_share(def.get("housing_quality"), where + " housing_quality", false)
 	var known := {}
 	for wealth in config.get("housing", {}).get("wealth_classes", []):
 		known[str(wealth.get("id", ""))] = true
@@ -555,31 +586,75 @@ func _check_home(config: Dictionary, def: Dictionary, where: String) -> void:
 		_fail("%s: a hut appears by itself: it can't be buildable or charge rent" % where)
 
 
-## Needs & happiness (plan.md §5.6): every score a share 0-1, at least one need weighted, and
-## move-in speed bands starting at 0 and going up.
-func _check_happiness(h: Dictionary, where: String) -> void:
-	_unknown_keys(h, ["needs_from_population", "grace_hours", "food_scores", "weights", "homeless_penalty", "leave_group_size", "growth_speeds"], where)
-	_whole_at_least(h, "needs_from_population", 0, where, true)
+## A service building (plan.md 5.23): it meets a need from game_config.json happiness (not one
+## the game scores by itself, except Safety) for some people, with workers.
+func _check_service(config: Dictionary, def: Dictionary, where: String) -> void:
+	var need := str(def.get("service_need", ""))
+	var needs: Dictionary = config.get("happiness", {}).get("needs", {})
+	if need == "" or not needs.has(need):
+		_fail("%s: service_need '%s' isn't a need in game_config.json happiness needs" % [where, need])
+	elif need in ["food", "jobs", "housing"]:
+		_fail("%s: service_need '%s' is scored by the game itself, not by service buildings" % [where, need])
+	_whole_at_least(def, "service_capacity", 1, where, true)
+	_share(def.get("service_quality"), where + " service_quality", false)
+	_whole_at_least(def, "max_workers", 1, where, true)
+
+
+## Needs & happiness (plan.md §5.6): needs with their settings, weights for known needs and
+## wealth classes, expectations going up, and move-in speed bands starting at 0 and going up.
+func _check_happiness(data: Dictionary, h: Dictionary, where: String) -> void:
+	_unknown_keys(h, ["needs", "weights", "class_weights", "expectations", "content_at", "leave_group_size", "growth_speeds"], where)
 	_whole_at_least(h, "leave_group_size", 1, where, false)  # people leave in groups this big
-	if h.has("homeless_penalty"):
-		var penalty: Dictionary = h.homeless_penalty
-		_unknown_keys(penalty, ["per_household", "max"], where + " homeless_penalty")
-		_share(penalty.get("per_household"), where + " homeless_penalty per_household", true)
-		_share(penalty.get("max"), where + " homeless_penalty max", true)
-	_number_at_least(h, "grace_hours", 0.0, where, false)
-	var scores: Array = h.get("food_scores", [])
-	if scores.is_empty():
-		_fail("%s food_scores: empty (one score for 0 foods, 1 food, ...)" % where)
-	for score in scores:
-		_share(score, where + " food_scores", true)
-	var weights: Dictionary = h.get("weights", {})
-	_unknown_keys(weights, ["food", "jobs", "housing"], where + " weights")
-	var total := 0.0
-	for need in weights:
-		_number_at_least(weights, need, 0.0, where + " weights", true)
-		total += float(weights[need]) if _is_number(weights[need]) else 0.0
+	var needs: Dictionary = h.get("needs", {})
+	var extra := {"food": ["scores"], "jobs": ["quality"], "housing": ["unpowered"], "safety": ["crime", "crime_per_jobless", "crime_per_homeless"]}
+	for need in needs:
+		var at := "%s needs '%s'" % [where, need]
+		var n: Dictionary = needs[need]
+		_unknown_keys(n, ["name"] + extra.get(need, []), at)
+		if str(n.get("name", "")) == "":
+			_fail("%s: has no name" % at)
+		for key in ["unpowered", "crime", "crime_per_jobless", "crime_per_homeless"]:
+			_share(n.get(key), "%s %s" % [at, key], false)
+		if need == "food":
+			var scores: Array = n.get("scores", [])
+			if scores.is_empty():
+				_fail("%s scores: empty (one score for 0 foods, 1 food, ...)" % at)
+			for score in scores:
+				_share(score, at + " scores", true)
+		if need == "jobs":
+			for bonus in n.get("quality", {}):
+				if not data.config.get("wage_bonuses", {}).has(bonus):
+					_fail("%s quality: '%s' isn't one of game_config.json wage_bonuses" % [at, bonus])
+				_share(n.quality[bonus], "%s quality %s" % [at, bonus], true)
+		if not need in ["food", "jobs", "housing"]:
+			var served := false
+			for type_id in data.buildings:
+				var def = data.buildings[type_id]
+				served = served or (def is Dictionary and def.get("buildable", false) and str(def.get("service_need", "")) == need)
+			if not served:
+				_note("%s: no building you can build meets it, so it stays low" % at)
+	var total := _check_weights(h.get("weights", {}), needs, where + " weights")
+	var classes := {}
+	for wealth in data.config.get("housing", {}).get("wealth_classes", []):
+		classes[str(wealth.get("id", ""))] = true
+	for id in h.get("class_weights", {}):
+		if not classes.has(id):
+			_fail("%s class_weights: '%s' isn't in game_config.json housing wealth_classes" % [where, id])
+		total += _check_weights(h.class_weights[id], needs, "%s class_weights '%s'" % [where, id])
 	if total <= 0.0:
 		_fail("%s weights: no need counts (all weights are 0)" % where)
+	var last_people := -1
+	for point in h.get("expectations", []):
+		_unknown_keys(point, ["people", "expected"], where + " expectations")
+		_whole_at_least(point, "people", 0, where + " expectations", true)
+		_share(point.get("expected"), where + " expectations expected", true)
+		if _is_number(point.get("people")):
+			if int(point.people) <= last_people:
+				_fail("%s expectations: 'people' must go up (%s after %s)" % [where, point.people, last_people])
+			last_people = int(point.people)
+	if h.has("expectations") and (h.expectations.is_empty() or int(h.expectations[0].get("people", -1)) != 0):
+		_fail("%s expectations: the first point must be for 0 people" % where)
+	_share(h.get("content_at"), where + " content_at", false)
 	var bands: Array = h.get("growth_speeds", [])
 	if bands.is_empty() or float(bands[0].get("from", -1)) != 0.0:
 		_fail("%s growth_speeds: the first band must start from 0" % where)
@@ -598,6 +673,17 @@ func _check_happiness(h: Dictionary, where: String) -> void:
 		_share(band.get("children_leave_per_hour", 0.0), where + " growth_speeds children_leave_per_hour", false)
 		if band.has("homeless_workers_leave") and typeof(band.homeless_workers_leave) != TYPE_BOOL:
 			_fail("%s growth_speeds homeless_workers_leave: must be true or false" % where)
+
+
+## Need weights: each a number of at least 0, for a need in happiness needs. Returns their total.
+func _check_weights(weights: Dictionary, needs: Dictionary, where: String) -> float:
+	var total := 0.0
+	for need in weights:
+		if not needs.has(need):
+			_fail("%s: '%s' isn't a need in happiness needs" % [where, need])
+		_number_at_least(weights, need, 0.0, where, true)
+		total += float(weights[need]) if _is_number(weights[need]) else 0.0
+	return total
 
 
 ## Brackets / tiers: start at 0, each "from" higher than the last, `value_key` a share 0-1.

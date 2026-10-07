@@ -1,6 +1,30 @@
 class_name BuildingInfo
-## Turns a building's state into words for the UI ("Making Flour · 2m 31s left"). Only reads
+## Turns a building's state into words for the UI ("Making Flour ⋅ 2m 31s left"). Only reads
 ## Economy and GameData; the game rules themselves live in scripts/sim/.
+
+const ROAD := "road"  # the Road card's id in the Roads category (roads aren't buildings)
+
+
+## The Build Menu's categories that have something in them (data/build_menu.json, in its order):
+## the bottom toolbar shows one button for each.
+static func menu_tabs() -> Array[Dictionary]:
+	var tabs: Array[Dictionary] = []
+	for tab: Dictionary in GameData.build_menu.get("tabs", []):
+		if not menu_types(str(tab.id)).is_empty():
+			tabs.append(tab)
+	return tabs
+
+
+## The buildings in one Build Menu category (each building names its category with "menu_tab"
+## in buildings.json), in buildings.json order; the Roads category lists the Road card.
+static func menu_types(tab_id: String) -> Array[String]:
+	var types: Array[String] = []
+	if tab_id == "roads" and GameData.config.has("roads"):
+		types.append(ROAD)
+	for type_id in GameData.buildings:
+		if GameData.buildings[type_id].get("menu_tab", "") == tab_id:
+			types.append(type_id)
+	return types
 
 
 ## The building's (first) recipe, or {} if it has none.
@@ -54,7 +78,7 @@ static func amounts(items: Dictionary) -> String:
 
 
 ## What building or upgrading needs, from a quote (Economy.build_quote / upgrade_quote):
-## "400 Bricks (300 from your warehouse) · 40 Cement · 10 Steel · 20 Construction materials ·
+## "400 Bricks (300 from your warehouse) ⋅ 40 Cement ⋅ 10 Steel ⋅ 20 Construction materials ⋅
 ## 1 construction worker for 10s ($171)". The warehouse's own materials are used first.
 static func construction_needs(quote: Dictionary) -> String:
 	var parts: Array[String] = []
@@ -67,11 +91,11 @@ static func construction_needs(quote: Dictionary) -> String:
 			parts.append("%s %s (%s from your warehouse)" % [UITheme.number(int(line.amount)), line.name, UITheme.number(int(line.from_stock))])
 		else:
 			parts.append("%s %s" % [UITheme.number(int(line.amount)), line.name])
-	return " · ".join(parts)
+	return " ⋅ ".join(parts)
 
 
 ## What a building was built with (plan.md §5.15), all of which comes back to the warehouse when
-## it's demolished: "400 Bricks · 40 Cement · 10 Steel · 20 Construction materials (worth $1,850)".
+## it's demolished: "400 Bricks ⋅ 40 Cement ⋅ 10 Steel ⋅ 20 Construction materials (worth $1,850)".
 ## "" for a building with none.
 static func built_with(b: Dictionary) -> String:
 	var materials: Dictionary = b.get("materials", {})
@@ -83,7 +107,7 @@ static func built_with(b: Dictionary) -> String:
 	var parts: Array[String] = []
 	for res in materials:
 		parts.append("%s %s" % [UITheme.number(int(materials[res])), resource_name(res)])
-	return "%s (worth %s)" % [" · ".join(parts), UITheme.money(roundi(worth))]
+	return "%s (worth %s)" % [" ⋅ ".join(parts), UITheme.money(roundi(worth))]
 
 
 ## "1 construction worker" / "3 construction workers".
@@ -92,7 +116,7 @@ static func crew_count(n: int) -> String:
 
 
 ## The construction workers of all Construction Offices (plan.md §5.15) and what they're on:
-## "3 of 4 construction workers free" plus a line per job ("1 building Wheat Farm · 35m left").
+## "3 of 4 construction workers free" plus a line per job ("1 building Wheat Farm ⋅ 35m left").
 static func crew_status() -> String:
 	var crew := Economy.crew()
 	var lines: Array[String] = ["%d of %s free" % [int(crew.free), crew_count(int(crew.total))]]
@@ -103,7 +127,7 @@ static func crew_status() -> String:
 		var what := "building %s" % GameData.buildings[b.type].name
 		if Economy.is_upgrading(b):
 			what = "upgrading %s to Level %d" % [GameData.buildings[b.type].name, Economy.building_level(b) + 1]
-		lines.append("%d %s · %s left" % [int(job.crew), what, UITheme.duration(float(job.until) - TimeService.now())])
+		lines.append("%d %s ⋅ %s left" % [int(job.crew), what, UITheme.duration(float(job.until) - TimeService.now())])
 	return "\n".join(lines)
 
 
@@ -128,7 +152,7 @@ static func power_line() -> String:
 	var text := "Power: %s of %s used" % [mw(float(p.used)), mw(float(p.own) + float(p.grid))]
 	var short := float(p.wanted) - float(p.used)
 	if short > 0.001:
-		text += " · %s short" % mw(short)
+		text += " ⋅ %s short" % mw(short)
 	return text
 
 
@@ -139,7 +163,7 @@ static func _with_speed(b: Dictionary, text: String, progress: float, speed: flo
 		return {"text": text, "progress": progress, "good": true}
 	var w := Economy.workers(b)
 	if int(w.hired) < int(w.wanted):
-		return {"text": "%s · short of workers" % text, "progress": progress, "good": false}
+		return {"text": "%s ⋅ short of workers" % text, "progress": progress, "good": false}
 	return {"text": text, "progress": progress, "good": true}
 
 
@@ -152,7 +176,7 @@ static func _no_workers(_b: Dictionary, progress: float) -> Dictionary:
 	return {"text": "Stopped: no workers", "progress": progress, "good": false}
 
 
-## A Farm, Mill or Bakery's batch (plan.md §5.1): "Making Flour · 6 of 14 h · done at 6:00 PM",
+## A Farm, Mill or Bakery's batch (plan.md §5.1): "Making Flour ⋅ 6 of 14 h ⋅ done at 6:00 PM",
 ## or what's waiting to be collected, or idle.
 static func _batch_status(b: Dictionary, r: Dictionary) -> Dictionary:
 	var item := resource_name(output_of(r))
@@ -168,9 +192,9 @@ static func _batch_status(b: Dictionary, r: Dictionary) -> Dictionary:
 	var speed := Economy.building_speed(b)
 	if speed <= 0.0:
 		return _no_workers(b, p)
-	var text := "Making %s · %d of %d h · done at %s" % [item, int(batch.made_hours), int(batch.hours), UITheme.clock(Economy.batch_finishes_at(b), TimeService.now())]
+	var text := "Making %s ⋅ %d of %d h ⋅ done at %s" % [item, int(batch.made_hours), int(batch.hours), UITheme.clock(Economy.batch_finishes_at(b), TimeService.now())]
 	if waiting > 0:
-		text += " · %s ready" % UITheme.number(waiting)
+		text += " ⋅ %s ready" % UITheme.number(waiting)
 	return _with_speed(b, text, p, speed)
 
 
@@ -183,9 +207,9 @@ static func _status_now(b: Dictionary) -> Dictionary:
 	var def: Dictionary = GameData.buildings[b.type]
 	var r := recipe_of(b)
 	if Economy.is_upgrading(b) and not Economy.is_built(b):
-		return {"text": "Upgrading to Level %d · %s left" % [Economy.building_level(b) + 1, UITheme.duration(Economy.upgrade_left(b))], "progress": Economy.construction_progress(b), "good": true}
+		return {"text": "Upgrading to Level %d ⋅ %s left" % [Economy.building_level(b) + 1, UITheme.duration(Economy.upgrade_left(b))], "progress": Economy.construction_progress(b), "good": true}
 	if not Economy.is_built(b):
-		return {"text": "Under construction · %s left" % UITheme.duration(Economy.construction_left(b)), "progress": Economy.construction_progress(b), "good": true}
+		return {"text": "Under construction ⋅ %s left" % UITheme.duration(Economy.construction_left(b)), "progress": Economy.construction_progress(b), "good": true}
 	if Economy.is_suspended(b):
 		return {"text": "Suspended", "progress": -1.0, "good": false}
 	if not Economy.on_road(b):
@@ -205,8 +229,17 @@ static func _status_now(b: Dictionary) -> Dictionary:
 			var cleaned := Economy.water_supply(b)
 			var full := float(Economy.level_stat(b, "water_supply"))
 			var water := Economy.water_summary()
-			var text := "Cleaning %s m³/h · your buildings use %s" % [UITheme.number(roundi(cleaned)), UITheme.number(roundi(float(water.used)))]
+			var text := "Cleaning %s m³/h ⋅ your buildings use %s" % [UITheme.number(roundi(cleaned)), UITheme.number(roundi(float(water.used)))]
 			return {"text": text, "progress": -1.0, "good": cleaned >= full - 0.001}
+		"service":
+			# A Clinic, Tavern, Chapel or Police Station (plan.md §5.23): how many it serves, and
+			# how the village stands on the need it meets.
+			var places := Economy.service_places(b)
+			var full := float(Economy.level_stat(b, "service_capacity"))
+			var need := str(def.get("service_need", ""))
+			var met := float(Economy.happiness().needs.get(need, 0.0))
+			var text := "Serves %s people ⋅ %s %d%%" % [UITheme.number(roundi(places)), Economy.need_name(need), roundi(100.0 * met)]
+			return {"text": text, "progress": -1.0, "good": places >= full - 0.001}
 		"extractor", "processor":
 			return _batch_status(b, r)
 		"power":
@@ -227,7 +260,7 @@ static func _status_now(b: Dictionary) -> Dictionary:
 			var speed := Economy.building_speed(b)
 			if speed <= 0.0:
 				return _no_workers(b, -1.0)
-			return _with_speed(b, "Selling %d product%s · next sells out in %s" % [selling, "" if selling == 1 else "s", UITheme.duration(soonest)], -1.0, speed)
+			return _with_speed(b, "Selling %d product%s ⋅ next sells out in %s" % [selling, "" if selling == 1 else "s", UITheme.duration(soonest)], -1.0, speed)
 		"residential":
 			# Who lives here comes from the housing rules (plan.md §5.18): households of 2 adults
 			# + 2 children, by wealth class and what they can afford.
@@ -238,18 +271,18 @@ static func _status_now(b: Dictionary) -> Dictionary:
 			var people := "%d adults, %d children" % [int(home.get("adults", 0)), int(home.get("children", 0))]
 			if def.get("hut", false):
 				return {"text": "A homeless household lives here (%s)" % people, "progress": -1.0, "good": false}
-			var text := "%d of %d households · %s" % [households, room, people]
+			var text := "%d of %d households ⋅ %s" % [households, room, people]
 			if float(home.get("rent", 0.0)) > 0.0:
-				text += " · rent %s/h" % UITheme.price(roundi(float(home.rent) * 100.0))
+				text += " ⋅ rent %s/h" % UITheme.price(roundi(float(home.rent) * 100.0))
 			if households <= 0 and int(Economy.housing().homeless) == 0:
-				return {"text": text + " · empty", "progress": progress, "good": true}
+				return {"text": text + " ⋅ empty", "progress": progress, "good": true}
 			if households <= 0:
-				return {"text": text + " · empty: nobody can afford it", "progress": progress, "good": false}
+				return {"text": text + " ⋅ empty: nobody can afford it", "progress": progress, "good": false}
 			if Economy.power_problem(b) != "":  # nothing happens yet to a home without power; just say so
-				text += " · no power"
+				text += " ⋅ no power"
 			return {"text": text, "progress": progress, "good": true}
 	if Economy.power_on() and float(Economy.level_stat(b, "grid_mw", 0)) > 0.0:
-		return {"text": "Your headquarters · %s" % power_line(), "progress": -1.0, "good": true}
+		return {"text": "Your headquarters ⋅ %s" % power_line(), "progress": -1.0, "good": true}
 	return {"text": "Your headquarters", "progress": -1.0, "good": true}
 
 
@@ -260,7 +293,7 @@ static func _power_status(b: Dictionary) -> Dictionary:
 	var makes := float(Economy.level_stat(b, "power_supply", 0))
 	if not joined:
 		return {"text": "Not connected to your power network. Move it closer, or build a Substation between.", "progress": -1.0, "good": false}
-	var text := "Connected · reaches %s tiles" % str(roundi(Economy.power_radius(b)))
+	var text := "Connected ⋅ reaches %s tiles" % str(roundi(Economy.power_radius(b)))
 	if makes > 0.0:
-		text = "Making %s · connected" % mw(Economy.power_supply(b))
-	return {"text": text + " · " + power_line(), "progress": -1.0, "good": true}
+		text = "Making %s ⋅ connected" % mw(Economy.power_supply(b))
+	return {"text": text + " ⋅ " + power_line(), "progress": -1.0, "good": true}

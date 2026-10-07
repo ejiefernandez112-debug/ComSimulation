@@ -70,12 +70,12 @@ func _update() -> void:
 		_slowest[key] = maxi(int(_slowest[key]), int(tick.get(key, 0)))
 	var cap := Engine.max_fps
 	_text.text = "\n".join([
-		"%d fps (limit %s) · frame %.1f ms" % [Engine.get_frames_per_second(), str(cap) if cap > 0 else "none",
+		"%d fps (limit %s) ⋅ frame %.1f ms" % [Engine.get_frames_per_second(), str(cap) if cap > 0 else "none",
 			Performance.get_monitor(Performance.TIME_PROCESS) * 1000.0],
-		"Draw calls %d · nodes %s" % [Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME),
+		"Draw calls %d ⋅ nodes %s" % [Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME),
 			UITheme.number(int(Performance.get_monitor(Performance.OBJECT_NODE_COUNT)))],
-		"Tick: rules %.1f ms · screens %.1f ms" % [int(tick.get("rules", 0)) / 1000.0, int(tick.get("screens", 0)) / 1000.0],
-		"Slowest tick: rules %.1f ms · screens %.1f ms" % [int(_slowest.rules) / 1000.0, int(_slowest.screens) / 1000.0],
+		"Tick: rules %.1f ms ⋅ screens %.1f ms" % [int(tick.get("rules", 0)) / 1000.0, int(tick.get("screens", 0)) / 1000.0],
+		"Slowest tick: rules %.1f ms ⋅ screens %.1f ms" % [int(_slowest.rules) / 1000.0, int(_slowest.screens) / 1000.0],
 		"Video memory %d MB" % roundi(Performance.get_monitor(Performance.RENDER_VIDEO_MEM_USED) / 1048576.0),
 		"Limit 30 after 10 s untouched = battery saver",
 	])

@@ -1,8 +1,8 @@
 extends Control
-## The always-on HUD: a dark glass strip in the top-right corner with the village's key numbers
-## (cash, people, happiness, warehouse), a small glass chip under it for each item in the warehouse,
-## and short messages ("toasts") at the top. Shows numbers from Economy; decides nothing itself.
-## (The menu buttons live in the bottom toolbar, menu_bar.gd.)
+## The always-on HUD: a frosted glass strip in the top-right corner with the village's key numbers
+## (cash, people, happiness, warehouse), and short messages ("toasts") at the top. Shows numbers
+## from Economy; decides nothing itself. What's in the warehouse is listed in the Warehouse window.
+## (The screen buttons sit in the top-left corner and the build toolbar along the bottom, menu_bar.gd.)
 
 signal happiness_pressed  # the happiness block was tapped: main.gd shows the breakdown
 
@@ -19,7 +19,6 @@ var _happiness: Label
 var _happiness_bar: ProgressBar
 var _warehouse: Label
 var _warehouse_bar: ProgressBar
-var _items := {}  # resource id -> its Label in the item chips
 var _toast_box: VBoxContainer
 
 
@@ -40,6 +39,7 @@ func _ready() -> void:
 func toast(text: String, bad := false) -> void:
 	var pill := PanelContainer.new()
 	pill.theme_type_variation = "HudPill"
+	UITheme.frost(pill)
 	pill.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	pill.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	var row := HBoxContainer.new()
@@ -69,6 +69,7 @@ func _build_resources() -> void:
 	# The strip: [cash] | [people] | [happiness] | [warehouse], with thin lines between them.
 	var strip := PanelContainer.new()
 	strip.theme_type_variation = "HudBar"
+	UITheme.frost(strip)
 	column.add_child(strip)
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 12)
@@ -92,28 +93,6 @@ func _build_resources() -> void:
 	var store := _block(row, "warehouse", "BrownBar", "Goods in the warehouse / room")
 	_warehouse = store.label
 	_warehouse_bar = store.bar
-	# One chip per item (from data/resources.json), so new resources appear automatically. They
-	# wrap onto more rows under the strip, lined up on the right.
-	var chips := HFlowContainer.new()
-	chips.alignment = FlowContainer.ALIGNMENT_END
-	chips.add_theme_constant_override("h_separation", 4)
-	chips.add_theme_constant_override("v_separation", 4)
-	chips.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	column.add_child(chips)
-	for resource_id in GameData.resources:
-		var chip := PanelContainer.new()
-		chip.theme_type_variation = "HudPill"
-		chip.tooltip_text = GameData.resources[resource_id].name
-		var line := HBoxContainer.new()
-		line.add_theme_constant_override("separation", 5)
-		line.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		chip.add_child(line)
-		line.add_child(UITheme.icon_rect(resource_id, 22))
-		var amount := UITheme.label("", "SmallLabel")
-		amount.add_theme_color_override("font_color", UITheme.TEXT)
-		line.add_child(amount)
-		chips.add_child(chip)
-		_items[resource_id] = amount
 	column.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT, Control.PRESET_MODE_MINSIZE, MARGIN)
 	column.grow_horizontal = Control.GROW_DIRECTION_BEGIN
 
@@ -183,11 +162,6 @@ func _refresh() -> void:
 	var cap := Economy.warehouse_cap()
 	_warehouse.text = "%s / %s" % [UITheme.number(stored), UITheme.number(cap)]
 	_warehouse_bar.value = 100.0 * stored / maxf(cap, 1)
-	for resource_id in _items:
-		var qty := int(Economy.state.inventory.get(resource_id, 0))
-		_items[resource_id].text = UITheme.number(qty)
-		# Many kinds of goods: only those in stock get a chip (chip > row > amount label).
-		_items[resource_id].get_parent().get_parent().visible = qty > 0
 
 
 ## Cash counts smoothly towards the new amount, like coins pouring in.

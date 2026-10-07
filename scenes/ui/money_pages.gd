@@ -61,15 +61,15 @@ func refresh_balance() -> void:
 	_hide_when_zero("bs_being_built", int(sheet.being_built))
 	_panel._show("bs_roads", UITheme.money(int(sheet.get("roads", 0))))
 	_hide_when_zero("bs_roads", int(sheet.get("roads", 0)))
-	_panel._show("bs_owned", UITheme.money(int(sheet.total_owned)), _panel.UP)
-	_panel._show("bs_debt", UITheme.money(int(sheet.debt)), _panel.DOWN if int(sheet.debt) > 0 else LineChart.INK)
+	_panel._show("bs_owned", UITheme.money(int(sheet.total_owned)), UITheme.GOOD)
+	_panel._show("bs_debt", UITheme.money(int(sheet.debt)), UITheme.BAD if int(sheet.debt) > 0 else UITheme.TEXT)
 	_hide_when_zero("bs_debt", int(sheet.debt))
 	_panel._show("bs_water", UITheme.money(int(sheet.water_due)))
 	_hide_when_zero("bs_water", int(sheet.water_due))
 	_panel._show("bs_power", UITheme.money(int(sheet.get("power_due", 0))))
 	_hide_when_zero("bs_power", int(sheet.get("power_due", 0)))
-	_panel._show("bs_owed", UITheme.money(int(sheet.total_owed)), _panel.DOWN if int(sheet.total_owed) > 0 else LineChart.INK)
-	_panel._show("bs_value", UITheme.money(int(sheet.company_value)), _panel.DOWN if int(sheet.company_value) < 0 else LineChart.INK)
+	_panel._show("bs_owed", UITheme.money(int(sheet.total_owed)), UITheme.BAD if int(sheet.total_owed) > 0 else UITheme.TEXT)
+	_panel._show("bs_value", UITheme.money(int(sheet.company_value)), UITheme.BAD if int(sheet.company_value) < 0 else UITheme.TEXT)
 	_panel._show("bs_capital", UITheme.money(int(sheet.capital)))
 	_panel._show("bs_profit", _signed(int(sheet.profit_kept)), _panel._signed_color(roundi(int(sheet.profit_kept) / 100.0)))
 
@@ -102,8 +102,8 @@ func refresh_money_log() -> void:
 		finished = rows.slice(1)
 		_panel._values.log_now.get_parent().get_child(0).text = "Last %s (still running)" % LineChart._ago(now - float(row.from))
 		_panel._show("log_now", _signed(int(row.net)), _panel._signed_color(roundi(int(row.net) / 100.0)))
-		_panel._show("log_now_in", "In: " + _list(_money_in(row)), _panel.UP)
-		_panel._show("log_now_out", "Out: " + _list(_money_out(row)), _panel.DOWN)
+		_panel._show("log_now_in", "In: " + _list(_money_in(row)), UITheme.GOOD)
+		_panel._show("log_now_out", "Out: " + _list(_money_out(row)), UITheme.BAD)
 	else:
 		_panel._values.log_now.get_parent().get_child(0).text = "Now"
 		_panel._show("log_now", "$0")
@@ -183,7 +183,7 @@ func _signed(cents: int) -> String:
 func _note(text: String) -> Label:
 	var label: Label = _panel._body(text)
 	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	label.custom_minimum_size.x = _panel.WIDTH - 90
+	label.custom_minimum_size.x = UITheme.WINDOW_WIDTH - 90
 	label.theme_type_variation = "SmallLabel"
 	return label
 

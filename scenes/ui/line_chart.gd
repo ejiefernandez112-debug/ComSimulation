@@ -13,8 +13,6 @@ const COLORS := [Color("4d9cf0"), Color("f07e4a"), Color("2fcf95"), Color("f2b42
 const SURFACE := Color("0e141c")  # the chart's own dark background (and the ring around its dots)
 const BORDER := Color(1, 1, 1, 0.17)  # the zero line and the edge of the box under the pointer
 const GRID := Color(1, 1, 1, 0.07)
-const INK := UITheme.TEXT
-const MUTED := UITheme.TEXT_DIM
 const LEGEND_HEIGHT := 28.0
 const PAD_LEFT := 50.0
 const PAD_RIGHT := 16.0
@@ -78,7 +76,7 @@ func _draw() -> void:
 				top = maxf(top, p.y)
 				bottom = minf(bottom, p.y)
 	if visible_lines.is_empty():
-		draw_string(font, Vector2(0, plot.get_center().y), empty_text, HORIZONTAL_ALIGNMENT_CENTER, size.x, 16, MUTED)
+		draw_string(font, Vector2(0, plot.get_center().y), empty_text, HORIZONTAL_ALIGNMENT_CENTER, size.x, 16, UITheme.TEXT_DIM)
 		return
 
 	# Gridlines at the bottom, half way and the top, on a "nice" round scale. The bottom is 0
@@ -89,7 +87,7 @@ func _draw() -> void:
 		var value := y_min + (y_max - y_min) * i / 2.0
 		var y := plot.end.y - plot.size.y * i / 2.0
 		draw_line(Vector2(plot.position.x, y), Vector2(plot.end.x, y), GRID, 1.0)
-		draw_string(font, Vector2(4, y + 5), _compact(value), HORIZONTAL_ALIGNMENT_RIGHT, PAD_LEFT - 10, 13, MUTED)
+		draw_string(font, Vector2(4, y + 5), _compact(value), HORIZONTAL_ALIGNMENT_RIGHT, PAD_LEFT - 10, 13, UITheme.TEXT_DIM)
 	var zero_y := plot.end.y - (0.0 - y_min) / (y_max - y_min) * plot.size.y
 	draw_line(Vector2(plot.position.x, zero_y), Vector2(plot.end.x, zero_y), BORDER, 1.0)
 	# Time labels: start, middle, now.
@@ -97,7 +95,7 @@ func _draw() -> void:
 	for i in 3:
 		var x := plot.position.x + plot.size.x * i / 2.0
 		var text := "now" if i == 2 else "-" + _ago(span * (2 - i) / 2.0)
-		draw_string(font, Vector2(x - 40, size.y - 8), text, HORIZONTAL_ALIGNMENT_CENTER, 80, 13, MUTED)
+		draw_string(font, Vector2(x - 40, size.y - 8), text, HORIZONTAL_ALIGNMENT_CENTER, 80, 13, UITheme.TEXT_DIM)
 
 	var to_screen := func(p: Vector2) -> Vector2:
 		return Vector2(plot.position.x + (p.x - t_from) / span * plot.size.x, plot.end.y - (p.y - y_min) / (y_max - y_min) * plot.size.y)
@@ -123,7 +121,7 @@ func _draw_legend(font: Font) -> void:
 		if not line.points.is_empty():
 			latest = _format(line.points[-1].y)
 		var text := "%s %s" % [line.name, latest]
-		draw_string(font, Vector2(x, 21), text, HORIZONTAL_ALIGNMENT_LEFT, -1, 14, INK)
+		draw_string(font, Vector2(x, 21), text, HORIZONTAL_ALIGNMENT_LEFT, -1, 14, UITheme.TEXT)
 		x += font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, 14).x + 16.0
 
 
@@ -142,7 +140,7 @@ func _draw_hover(font: Font, plot: Rect2, visible_lines: Array, to_screen: Calla
 			x = at.x
 			t = nearest.x
 		rows.append({"color": line.color, "text": "%s: %s" % [line.name, _format(nearest.y)], "at": at})
-	draw_line(Vector2(x, plot.position.y), Vector2(x, plot.end.y), MUTED, 1.0)
+	draw_line(Vector2(x, plot.position.y), Vector2(x, plot.end.y), UITheme.TEXT_DIM, 1.0)
 	for row in rows:
 		_dot(row.at, row.color)
 	var title := "now" if t_to - t < 30.0 else "%s ago" % _ago(t_to - t)
@@ -153,11 +151,11 @@ func _draw_hover(font: Font, plot: Rect2, visible_lines: Array, to_screen: Calla
 	box.position.x = x + 12 if x + 12 + box.size.x < size.x - 4 else x - 12 - box.size.x
 	draw_rect(box, Color(SURFACE, 0.96))
 	draw_rect(box, BORDER, false, 1.0)
-	draw_string(font, box.position + Vector2(8, 18), title, HORIZONTAL_ALIGNMENT_LEFT, -1, 14, MUTED)
+	draw_string(font, box.position + Vector2(8, 18), title, HORIZONTAL_ALIGNMENT_LEFT, -1, 14, UITheme.TEXT_DIM)
 	for i in rows.size():
 		var y := box.position.y + 24 + i * 20
 		draw_rect(Rect2(box.position.x + 8, y + 3, 10, 10), rows[i].color)
-		draw_string(font, Vector2(box.position.x + 26, y + 13), rows[i].text, HORIZONTAL_ALIGNMENT_LEFT, -1, 14, INK)
+		draw_string(font, Vector2(box.position.x + 26, y + 13), rows[i].text, HORIZONTAL_ALIGNMENT_LEFT, -1, 14, UITheme.TEXT)
 
 
 ## An 8px marker with a ring of the background colour, so it stands clear of the line.

@@ -14,19 +14,27 @@ extends Node
 @onready var stats_panel: ModalWindow = $UI/Root/StatsPanel
 @onready var confirm_dialog: ModalWindow = $UI/Root/ConfirmDialog
 var _warehouse_panel: ModalWindow  # made in code (_ready)
+var _glass_blur = null  # the "glass_blur" setting the look was last built for (null = not yet)
+## The Developer window's Look page made every window again (rebuild_windows): skip the start-up
+## messages and open that page again.
+static var _look_rebuild := false
 
 
 func _ready() -> void:
-	ui_root.theme = UITheme.build()
+	_apply_glass()
+	Settings.changed.connect(_apply_glass)
 	village.ghost_moved.connect(build_menu.show_ghost_state)
 	village.building_tapped.connect(_on_building_tapped)
 	village.bubble_tapped.connect(_collect)
-	village.empty_tapped.connect(_deselect)
+	village.empty_tapped.connect(func():
+		_deselect()
+		build_menu.close())  # tapping the map outside the Build panel closes it
 	build_menu.placement_requested.connect(_start_placement)
 	build_menu.placement_cancelled.connect(village.stop_placement)
 	build_menu.placement_confirmed.connect(_place)
 	build_menu.road_requested.connect(_start_roads)
 	build_menu.road_remove_toggled.connect(village.set_road_removing)
+	build_menu.tab_changed.connect(menu_bar.set_open)
 	building_bar.info_requested.connect(building_panel.show_building)
 	building_bar.collect_requested.connect(_collect)
 	building_bar.build_requested.connect(build_menu.open)
@@ -48,8 +56,9 @@ func _ready() -> void:
 	Economy.shelves_sold.connect(_on_shelves_sold)
 	Economy.people_changed.connect(_on_people_changed)
 	menu_bar.tile_pressed.connect(_on_menu_tile)
+	menu_bar.category_pressed.connect(_on_category)
 	menu_bar.coming_soon.connect(func(title): hud.toast("%s is coming soon" % title))
-	hud.happiness_pressed.connect(func(): stats_panel.show_stats("people"))
+	hud.happiness_pressed.connect(func(): stats_panel.show_stats("happiness"))
 	settings_panel.new_game_requested.connect(_ask_new_game)
 	Economy.water_bill_paid.connect(func(cost: int, m3: float):
 		hud.toast("Water bill paid: %s for %s m³" % [UITheme.money(cost), UITheme.number(roundi(m3))], Economy.currency() < 0))
@@ -60,9 +69,10 @@ func _ready() -> void:
 	ui_root.add_child(_warehouse_panel)
 	ui_root.move_child(_warehouse_panel, confirm_dialog.get_index())  # under the "Are you sure?" window
 	_warehouse_panel.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	# The bottom toolbar steps aside for anything else that uses the bottom of the screen, and for
-	# windows (on a computer a docked window can reach down to the bottom edge).
-	menu_bar.hide_while_visible([building_bar, build_menu.placing_bar, build_menu.window(),
+	# The build toolbar steps aside for anything else that uses the bottom of the screen, and for
+	# windows (on a computer a docked window can reach down to the bottom edge). It stays under the
+	# Build panel, which sits just above it.
+	menu_bar.hide_while_visible([building_bar, build_menu.placing_bar,
 		building_panel, settings_panel, stats_panel, _warehouse_panel])
 	# Developer tools exist only in test builds (plan.md §10): never loaded for real players.
 	if OS.is_debug_build():
@@ -74,7 +84,12 @@ func _ready() -> void:
 		overlay.name = "PerfOverlay"  # the Developer window finds it by this name
 		overlay.village = village
 		ui_root.add_child(overlay)
-	_welcome_back.call_deferred()  # once the screen has its real size
+		if _look_rebuild:
+			dev_panel.show_dev.call_deferred("look")
+	if _look_rebuild:
+		_look_rebuild = false
+	else:
+		_welcome_back.call_deferred()  # once the screen has its real size
 
 
 ## Start-up: what happened while the game was closed, and any problem reading the save.
@@ -103,12 +118,40 @@ func _new_game() -> void:
 	hud.toast("New game started. Good luck!")
 
 
-## A card in the bottom menu bar was tapped.
+## The frosted glass setting (Settings → Frosted glass): rebuild the look when it changes.
+func _apply_glass() -> void:
+	var blur: bool = Settings.get_value("glass_blur")
+	if blur == _glass_blur:
+		return
+	_glass_blur = blur
+	ui_root.theme = UITheme.build(blur)
+	UITheme.set_frosted(get_tree(), blur)
+
+
+## The Developer window's Look page changed a colour or size: build the look again.
+func restyle() -> void:
+	_glass_blur = null
+	_apply_glass()
+
+
+## The Look page's "Rebuild windows": load the whole screen again, so every window is made with
+## the new sizes and icons (the game itself lives in Economy and carries on).
+func rebuild_windows() -> void:
+	_look_rebuild = true
+	get_tree().reload_current_scene()
+
+
+## A category in the bottom build toolbar was tapped: open (or close) the Build panel on it.
+func _on_category(tab_id: String) -> void:
+	_deselect()
+	building_panel.close()
+	build_menu.toggle(tab_id)
+
+
+## A screen button in the top-left corner was tapped.
 func _on_menu_tile(id: String) -> void:
+	build_menu.close()
 	match id:
-		"build":
-			_deselect()
-			build_menu.open()
 		"settings":
 			settings_panel.show_settings()
 		"stats":
@@ -136,11 +179,12 @@ func _unhandled_input(event: InputEvent) -> void:
 ## open their info window (docked on the left on a computer); the others (City Hall, houses) show the
 ## building card at the bottom.
 func _on_building_tapped(building_id: String) -> void:
+	build_menu.close()
 	var b := Economy.building(building_id)
 	if not Economy.waiting_goods(b).is_empty():
 		_collect(building_id)
 	village.select(building_id)
-	if GameData.buildings[b.type].category in ["extractor", "processor", "storage", "utility", "construction", "power", "retail", "trade"]:
+	if GameData.buildings[b.type].category in ["extractor", "processor", "storage", "utility", "construction", "power", "retail", "trade", "service"]:
 		building_bar.close()
 		building_panel.show_building(building_id)
 	else:
@@ -185,8 +229,8 @@ func _ask_start_batch(building_id: String, recipe_id: String, hours: int, bonus:
 	var hours_text := str(roundi(work)) if is_equal_approx(work, roundf(work)) else "%.1f" % work
 	lines.append("Makes %s in %s h (done %s)." % [BuildingInfo.amounts(check.units), hours_text, finish])
 	for line in check.ingredients:
-		lines.append("Ingredients: %s %s · %s" % [UITheme.number(int(line.qty)), BuildingInfo.resource_name(line.res), UITheme.money(roundi(float(line.cost)))])
-	lines.append("Labor: %d workers · %s" % [int(check.workers), UITheme.money(int(check.wages))])
+		lines.append("Ingredients: %s %s ⋅ %s" % [UITheme.number(int(line.qty)), BuildingInfo.resource_name(line.res), UITheme.money(roundi(float(line.cost)))])
+	lines.append("Labor: %d workers ⋅ %s" % [int(check.workers), UITheme.money(int(check.wages))])
 	if Economy.power_problem(Economy.building(building_id)) == "no_grid":
 		lines.append("No power: it won't work until a Substation reaches it.")
 	lines.append("Total: %s" % UITheme.money(roundi(float(check.total))))  # includes water and power
@@ -277,7 +321,7 @@ func _demolish(building_id: String) -> void:
 
 func _start_placement(type_id: String) -> void:
 	_deselect()
-	village.start_placement(type_id)
+	village.start_placement(type_id, build_menu.free_map_centre())  # in view, above the Build panel
 
 
 ## Move: the same Placement Mode as building, but for a building that already exists.
@@ -454,7 +498,7 @@ func _on_people_changed(report: Dictionary) -> void:
 	if grew > 0:
 		parts.append("%d %s grew up and can work" % [grew, "child" if grew == 1 else "children"])
 	if not parts.is_empty():
-		hud.toast(" · ".join(parts))
+		hud.toast(" ⋅ ".join(parts))
 	var left := int(report.get("moved_away", 0))
 	if left > 0:
 		hud.toast("%d %s left the island: the village is unhappy" % [left, "person" if left == 1 else "people"], true)

@@ -220,15 +220,15 @@ func _refresh_setup(b: Dictionary) -> void:
 	if q.is_empty():
 		return
 	var real_hours := float(q.seconds) / 3600.0
-	_finish_text.text = "%s h · %s" % [_amount(real_hours), "waits for workers" if is_inf(float(q.finishes_at)) else "done %s" % UITheme.clock(float(q.finishes_at), TimeService.now())]
+	_finish_text.text = "%s h ⋅ %s" % [_amount(real_hours), "waits for workers" if is_inf(float(q.finishes_at)) else "done %s" % UITheme.clock(float(q.finishes_at), TimeService.now())]
 	_lines.units.text = _amounts(q.units)
 	var parts: Array[String] = []
 	var ingredients := 0.0
 	for line in q.ingredients:
 		parts.append("%s %s" % [UITheme.number(int(line.qty)), BuildingInfo.resource_name(line.res)])
 		ingredients += float(line.cost)
-	_lines.ingredients.text = "%s · %s" % [", ".join(parts), UITheme.money(roundi(ingredients))] if not parts.is_empty() else "none"
-	_lines.labor.text = "%d workers · %s" % [int(q.workers), UITheme.money(int(q.wages))]
+	_lines.ingredients.text = "%s ⋅ %s" % [", ".join(parts), UITheme.money(roundi(ingredients))] if not parts.is_empty() else "none"
+	_lines.labor.text = "%d workers ⋅ %s" % [int(q.workers), UITheme.money(int(q.wages))]
 	_lines.total.text = UITheme.money(roundi(float(q.total)))  # includes the water and power estimates
 	if q.units.size() > 1:  # by-products: each its own cost and price (plan.md §5.14)
 		_lines.price.text = _per_item(q.prices)
@@ -318,14 +318,14 @@ func _amounts(items: Dictionary) -> String:
 	return " + ".join(parts)
 
 
-## Cents per item: "$1.83" for one product, "Beef $42.48 · Hide $4.72" when it makes several.
+## Cents per item: "$1.83" for one product, "Beef $42.48 ⋅ Hide $4.72" when it makes several.
 func _per_item(cents_each: Dictionary) -> String:
 	if cents_each.size() == 1:
 		return UITheme.price(roundi(float(cents_each.values()[0])))
 	var parts: Array[String] = []
 	for res in cents_each:
 		parts.append("%s %s" % [BuildingInfo.resource_name(res), UITheme.price(roundi(float(cents_each[res])))])
-	return " · ".join(parts)
+	return " ⋅ ".join(parts)
 
 
 ## 14.0 -> "14", 1.5 -> "1.5".

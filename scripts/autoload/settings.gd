@@ -13,12 +13,16 @@ const DEFAULTS := {
 	"building_names": false,
 	"water_detail": true,
 	"fullscreen": false,
+	"glass_blur": true,  # frosted glass windows (blur the map behind them); off on phones, see _ready
 }
 
 var _values := DEFAULTS.duplicate()
 
 
 func _ready() -> void:
+	# Blurring what's behind every panel costs some speed and battery, so phones start without it.
+	if OS.has_feature("mobile"):
+		_values["glass_blur"] = false
 	# Sound buses that music and effects will play through once the game has audio.
 	for bus in ["Music", "SFX"]:
 		if AudioServer.get_bus_index(bus) == -1:

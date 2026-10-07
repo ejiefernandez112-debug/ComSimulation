@@ -357,6 +357,9 @@ func _invariants(state: Dictionary, now: float, before: Dictionary, baseline: in
 	if float(state.settled_at) < float(before.settled_at):
 		return "settled_at went backwards in time"
 	var settled := float(state.settled_at)
+	broken = _happiness_ok(Sim.happiness(state, _data, settled))
+	if broken != "":
+		return broken
 	broken = _goods_ok("the warehouse", state.inventory, state.get("inventory_cost", {}))
 	if broken != "":
 		return broken
@@ -490,6 +493,25 @@ func _invariants(state: Dictionary, now: float, before: Dictionary, baseline: in
 				given += Sim.power_need(_data, b)
 		if given > float(power.own) + float(power.grid) + 0.001:
 			return "buildings marked powered need %s MW but the network only has %s" % [given, float(power.own) + float(power.grid)]
+	return ""
+
+
+## Happiness and every part of it (needs met, what people expect, each need, each wealth class's
+## needs and score) are shares from 0 to 1 (plan.md §5.6).
+func _happiness_ok(happy: Dictionary) -> String:
+	for key in ["score", "needs_met", "expected", "crime", "police"]:
+		if float(happy[key]) < 0.0 or float(happy[key]) > 1.0:
+			return "happiness %s is %s, not between 0 and 1" % [key, happy[key]]
+	for need in happy.needs:
+		if float(happy.needs[need]) < 0.0 or float(happy.needs[need]) > 1.0:
+			return "the %s need is %s, not between 0 and 1" % [need, happy.needs[need]]
+	for id in happy.classes:
+		var c: Dictionary = happy.classes[id]
+		if float(c.score) < 0.0 or float(c.score) > 1.0 or float(c.people) < 0.0:
+			return "the %s class's happiness is %s (%s people)" % [id, c.score, c.people]
+		for need in c.needs:
+			if float(c.needs[need]) < -0.000001 or float(c.needs[need]) > 1.000001:
+				return "the %s class's %s need is %s, not between 0 and 1" % [id, need, c.needs[need]]
 	return ""
 
 

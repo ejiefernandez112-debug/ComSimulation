@@ -46,7 +46,7 @@ func _refresh() -> void:
 	for b in Economy.state.buildings:
 		if GameData.buildings[b.type].category == "storage":
 			warehouses += 1
-	_room_text.text = "%s / %s goods · %d warehouse%s" % [UITheme.number(stored), UITheme.number(cap), warehouses, "" if warehouses == 1 else "s"]
+	_room_text.text = "%s / %s goods ⋅ %d warehouse%s" % [UITheme.number(stored), UITheme.number(cap), warehouses, "" if warehouses == 1 else "s"]
 	_room_bar.value = 100.0 * stored / maxf(cap, 1.0)
 	var inventory: Dictionary = Economy.state.inventory
 	var items: Array[String] = []

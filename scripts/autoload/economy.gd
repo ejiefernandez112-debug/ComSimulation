@@ -379,7 +379,7 @@ func rent_changed(type_id: String) -> bool:
 	return state.get("dev_rent", {}).has(type_id)
 
 
-## Developer: locks a part of happiness ("score", "food", "jobs", "housing", "penalty") at
+## Developer: locks a part of happiness ("score", "expected" or a need, see dev_lock_keys) at
 ## `value` (0-1); a negative value unlocks it.
 func dev_lock_happiness(key: String, value: float) -> Dictionary:
 	return _after(Simulation.dev_lock_happiness(state, data(), key, value, TimeService.now()))
@@ -388,6 +388,11 @@ func dev_lock_happiness(key: String, value: float) -> Dictionary:
 ## Developer locks on happiness: {key: 0-1}. Read it; don't change it.
 func dev_locks() -> Dictionary:
 	return Simulation.dev_locks(state)
+
+
+## What a developer can lock: "score", "expected" and each need that counts.
+func dev_lock_keys() -> Array:
+	return Simulation.dev_lock_keys(data())
 
 
 ## Developer: changes a game_config.json number (or true/false) from now on, e.g.
@@ -415,10 +420,6 @@ func dev_add_children(n: int) -> Dictionary:
 
 func dev_children_grow_up() -> Dictionary:
 	return _after(Simulation.dev_children_grow_up(state, data(), TimeService.now()))
-
-
-func dev_end_grace() -> Dictionary:
-	return _after(Simulation.dev_end_grace(state, data(), TimeService.now()))
 
 
 func dev_finish_construction() -> Dictionary:
@@ -912,11 +913,9 @@ func people_stats() -> Dictionary:
 	return Simulation.people_stats(state)
 
 
-## Village happiness: {"score", "percent" (as shown: rounded down), "food", "jobs", "foods",
-## "needs_count", "growth_speed" (births),
-## "move_in_speed" (migrant workers), "homeless_penalty" (taken off for households in huts),
-## "leave_per_hour", ...}
-## (see Simulation.happiness).
+## Village happiness: {"score", "percent" (as shown: rounded down), "needs_met", "expected",
+## "needs" {need: 0-1}, "classes" {wealth class: its people, needs and score}, "growth_speed"
+## (births), "move_in_speed" (migrant workers), "leave_per_hour", ...} (see Simulation.happiness).
 func happiness() -> Dictionary:
 	return _remember("happiness", func(): return Simulation.happiness(state, data(), TimeService.now(), housing(), employment()))
 
@@ -927,9 +926,29 @@ func happiness_percent(score: float) -> int:
 
 
 ## What each fix would add to happiness right now (0-1): {"food" (one more food selling),
-## "housing" (homes for every household in a hut), "jobs" (jobs for every jobless adult)}.
+## "jobs", "housing", "power", and each service need (see Simulation.happiness_gains)}.
 func happiness_gains() -> Dictionary:
 	return Simulation.happiness_gains(data(), happiness())
+
+
+## The needs that count, in the order to show them (see Simulation.need_ids).
+func need_ids() -> Array:
+	return Simulation.need_ids(data())
+
+
+## A need's name on screen ("Health").
+func need_name(need: String) -> String:
+	return Simulation.need_name(data(), need)
+
+
+## People this service building serves right now (Clinic, Police Station...; 0 for anything else).
+func service_places(b: Dictionary) -> float:
+	return Simulation.service_places(state, data(), b, TimeService.now())
+
+
+## The building type that meets a need ("clinic" for "health"), or "".
+func service_building_for(need: String) -> String:
+	return Simulation.service_building_for(data(), need)
 
 
 func warehouse_total() -> int:
