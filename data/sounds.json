@@ -1,0 +1,32 @@
+{
+	"_note": "Sound effects (plan.md 5.24). Each sound: file = a WAV in assets/audio/sfx/ (made by tools/sfx/sound_studio.html), bus = UI (taps, windows, confirmations) or Alerts (important events and warnings); both feed the SFX bus, so the Sound switch in Settings silences them. volume_db = louder (+) or quieter (-) than the file. pitch_jitter = random pitch change each time (0.02 = up to 2% up or down), so repeated sounds don't sound identical. min_gap = seconds before the same sound may play again (a burst of sales is one sound). when = what plays it (for humans). Sounds whose 'when' says 'not used yet' are ready for systems the game doesn't have yet.",
+	"sounds": {
+		"tap": { "file": "tap.wav", "bus": "UI", "volume_db": 0, "pitch_jitter": 0.01, "min_gap": 0.05, "when": "Any button press." },
+		"toggle": { "file": "toggle.wav", "bus": "UI", "volume_db": 0, "pitch_jitter": 0.01, "min_gap": 0.05, "when": "Choice buttons (chips), check boxes and switches." },
+		"panel_open": { "file": "panel_open.wav", "bus": "UI", "volume_db": 0, "pitch_jitter": 0.01, "min_gap": 0.1, "when": "A window or the Build menu opens." },
+		"panel_close": { "file": "panel_close.wav", "bus": "UI", "volume_db": 0, "pitch_jitter": 0.01, "min_gap": 0.1, "when": "A window or the Build menu closes." },
+		"select": { "file": "select.wav", "bus": "UI", "volume_db": 0, "pitch_jitter": 0.02, "min_gap": 0.1, "when": "A building is tapped and its action bar appears." },
+		"road": { "file": "road.wav", "bus": "UI", "volume_db": 0, "pitch_jitter": 0.04, "min_gap": 0.08, "when": "A road is built or removed." },
+		"place": { "file": "place.wav", "bus": "UI", "volume_db": 0, "pitch_jitter": 0.03, "min_gap": 0.2, "when": "A building is placed or moved, or an upgrade starts." },
+		"start_batch": { "file": "start_batch.wav", "bus": "UI", "volume_db": 0, "pitch_jitter": 0.03, "min_gap": 0.2, "when": "A production batch starts." },
+		"collect": { "file": "collect.wav", "bus": "UI", "volume_db": 0, "pitch_jitter": 0.03, "min_gap": 0.25, "when": "Goods are collected, put on a shelf or taken off one." },
+		"sale": { "file": "sale.wav", "bus": "UI", "volume_db": 0, "pitch_jitter": 0.02, "min_gap": 0.5, "when": "Goods sell: to the Trading Post, or shelves selling out." },
+		"purchase": { "file": "purchase.wav", "bus": "UI", "volume_db": 0, "pitch_jitter": 0.02, "min_gap": 0.2, "when": "Goods are bought at the Trading Post." },
+		"complete": { "file": "complete.wav", "bus": "UI", "volume_db": 0, "pitch_jitter": 0, "min_gap": 1, "when": "A building finishes construction." },
+		"upgrade_done": { "file": "upgrade_done.wav", "bus": "Alerts", "volume_db": 0, "pitch_jitter": 0, "min_gap": 1, "when": "A building finishes an upgrade." },
+		"milestone": { "file": "milestone.wav", "bus": "Alerts", "volume_db": 0, "pitch_jitter": 0, "min_gap": 2, "when": "Not used yet: village milestones." },
+		"error": { "file": "error.wav", "bus": "Alerts", "volume_db": 0, "pitch_jitter": 0, "min_gap": 0.3, "when": "An action isn't possible (red message)." },
+		"warning": { "file": "warning.wav", "bus": "Alerts", "volume_db": 0, "pitch_jitter": 0, "min_gap": 1, "when": "A warning: warehouse full, no road, not enough workers, people leaving." },
+		"critical": { "file": "critical.wav", "bus": "Alerts", "volume_db": 0, "pitch_jitter": 0, "min_gap": 3, "when": "Buildings lose power for lack of electricity, or cash drops below zero." },
+		"tax_change": { "file": "tax_change.wav", "bus": "Alerts", "volume_db": 0, "pitch_jitter": 0, "min_gap": 2, "when": "The sales tax rate changes (another bracket)." },
+		"large_profit": { "file": "large_profit.wav", "bus": "Alerts", "volume_db": 0, "pitch_jitter": 0, "min_gap": 2, "when": "Not used yet: an unusually strong day of earnings." },
+		"major_investment": { "file": "major_investment.wav", "bus": "Alerts", "volume_db": 0, "pitch_jitter": 0, "min_gap": 2, "when": "Not used yet: a big project is funded." },
+		"trade_agreement": { "file": "trade_agreement.wav", "bus": "Alerts", "volume_db": 0, "pitch_jitter": 0, "min_gap": 2, "when": "Not used yet: a trade deal is signed." },
+		"growth": { "file": "growth.wav", "bus": "Alerts", "volume_db": 0, "pitch_jitter": 0, "min_gap": 2, "when": "Not used yet: the economy starts growing." },
+		"surplus": { "file": "surplus.wav", "bus": "Alerts", "volume_db": 0, "pitch_jitter": 0, "min_gap": 2, "when": "Not used yet: a product piling up beyond demand." },
+		"shortage": { "file": "shortage.wav", "bus": "Alerts", "volume_db": 0, "pitch_jitter": 0, "min_gap": 2, "when": "Not used yet: shops run out of something people want." },
+		"recession": { "file": "recession.wav", "bus": "Alerts", "volume_db": 0, "pitch_jitter": 0, "min_gap": 2, "when": "Not used yet: earnings falling for days." },
+		"market_crash": { "file": "market_crash.wav", "bus": "Alerts", "volume_db": 0, "pitch_jitter": 0, "min_gap": 2, "when": "Not used yet: prices collapse." },
+		"bankruptcy": { "file": "bankruptcy.wav", "bus": "Alerts", "volume_db": 0, "pitch_jitter": 0, "min_gap": 2, "when": "Not used yet: the village can't pay its bills." }
+	}
+}

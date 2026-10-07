@@ -10,6 +10,7 @@ var resources: Dictionary = {}
 var buildings: Dictionary = {}
 var config: Dictionary = {}
 var build_menu: Dictionary = {}  # {"tabs": [{id, name, icon}]}
+var sounds: Dictionary = {}  # {"sounds": {id: {file, bus, volume_db, pitch_jitter, min_gap, when}}}
 var _file_config: Dictionary = {}  # game_config.json as in the file, to undo developer tuning
 
 
@@ -19,6 +20,7 @@ func _ready() -> void:
 	config = load_json("res://data/game_config.json")
 	_file_config = config.duplicate(true)
 	build_menu = load_json("res://data/build_menu.json")
+	sounds = load_json("res://data/sounds.json")
 	print("GameData loaded: %d resources, %d buildings" % [resources.size(), buildings.size()])
 
 

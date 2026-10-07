@@ -3,6 +3,8 @@ extends Node
 ## Connects the pieces: taps on the map -> selecting buildings or Placement Mode, and requests
 ## from the UI (collect, produce, build) -> Economy, with feedback on the map and in the HUD.
 
+const SoundCues = preload("res://scenes/main/sound_cues.gd")
+
 @onready var village: Node2D = $Village
 @onready var ui_root: Control = $UI/Root
 @onready var hud: Control = $UI/Root/HUD
@@ -14,6 +16,7 @@ extends Node
 @onready var stats_panel: ModalWindow = $UI/Root/StatsPanel
 @onready var confirm_dialog: ModalWindow = $UI/Root/ConfirmDialog
 var _warehouse_panel: ModalWindow  # made in code (_ready)
+var _sound_cues: SoundCues  # sounds for things that happen by themselves (made in _ready)
 var _glass_blur = null  # the "glass_blur" setting the look was last built for (null = not yet)
 ## The Developer window's Look page made every window again (rebuild_windows): skip the start-up
 ## messages and open that page again.
@@ -23,6 +26,9 @@ static var _look_rebuild := false
 func _ready() -> void:
 	_apply_glass()
 	Settings.changed.connect(_apply_glass)
+	_sound_cues = SoundCues.new()
+	_sound_cues.name = "SoundCues"
+	add_child(_sound_cues)
 	village.ghost_moved.connect(build_menu.show_ghost_state)
 	village.building_tapped.connect(_on_building_tapped)
 	village.bubble_tapped.connect(_collect)
@@ -114,6 +120,7 @@ func _ask_new_game() -> void:
 func _new_game() -> void:
 	_deselect()
 	building_panel.close()
+	_sound_cues.forget()
 	Economy.start_new_game()
 	hud.toast("New game started. Good luck!")
 
@@ -188,6 +195,7 @@ func _on_building_tapped(building_id: String) -> void:
 		building_bar.close()
 		building_panel.show_building(building_id)
 	else:
+		Sfx.play("select")  # the info window has its own opening sound
 		building_bar.show_for(building_id)
 
 
@@ -202,16 +210,35 @@ func _deselect() -> void:
 	building_bar.close()
 
 
+## A red "can't do that" message, with the error sound.
+func _refuse(text: String) -> void:
+	Sfx.play("error")
+	hud.toast(text, true)
+
+
+## The same in Placement, Move or Road Mode, where the hint bar says why.
+func _refuse_placement(text: String) -> void:
+	Sfx.play("error")
+	build_menu.show_hint(text)
+
+
+## A red heads-up about something that is going wrong (not a refused action), with the warning sound.
+func _warn(text: String) -> void:
+	Sfx.play("warning")
+	hud.toast(text, true)
+
+
 ## One tap collects every building of the same type (all Bakeries, all Mills…) at once.
 func _collect(building_id: String) -> void:
 	var result := Economy.collect_group(building_id)
 	if result.ok:
+		Sfx.play("collect")
 		for id in result.by_building:
 			village.show_gain(id, result.by_building[id])  # "+16 [bread]" over each one emptied
 		if result.left_over:
-			hud.toast("The warehouse is full: the rest waits inside the buildings.", true)
+			_warn("The warehouse is full: the rest waits inside the buildings.")
 	else:
-		hud.toast(result.error, true)
+		_refuse(result.error)
 
 
 ## Starting a batch pays its ingredients and wages at once and locks in its bonus (plan.md §5.1),
@@ -220,7 +247,7 @@ func _ask_start_batch(building_id: String, recipe_id: String, hours: int, bonus:
 	var b := Economy.building(building_id)
 	var check := Economy.can_start_batch(building_id, recipe_id, hours, bonus)
 	if not check.ok:
-		hud.toast(check.error, true)
+		_refuse(check.error)
 		return
 	var item := BuildingInfo.resource_name(check.output)
 	var lines: Array[String] = []
@@ -248,7 +275,7 @@ func _ask_start_batch(building_id: String, recipe_id: String, hours: int, bonus:
 func _ask_switch_product(building_id: String, recipe_id: String) -> void:
 	var check := Economy.can_switch_product(building_id, recipe_id)
 	if not check.ok:
-		hud.toast(check.error, true)
+		_refuse(check.error)
 		return
 	var b := Economy.building(building_id)
 	var item := BuildingInfo.resource_name(BuildingInfo.output_of(BuildingInfo.recipe_of({"type": b.type, "product": recipe_id})))
@@ -260,15 +287,16 @@ func _ask_switch_product(building_id: String, recipe_id: String) -> void:
 func _switch_product(building_id: String, recipe_id: String) -> void:
 	var result := Economy.switch_product(building_id, recipe_id)
 	if not result.ok:
-		hud.toast(result.error, true)
+		_refuse(result.error)
 		return
 
 
 func _start_batch(building_id: String, recipe_id: String, hours: int, bonus: String) -> void:
 	var result := Economy.start_batch(building_id, recipe_id, hours, bonus)
 	if not result.ok:
-		hud.toast(result.error, true)
+		_refuse(result.error)
 		return
+	Sfx.play("start_batch")
 	var used := {}
 	for line in result.ingredients:
 		used[line.res] = -int(line.qty)
@@ -280,7 +308,7 @@ func _start_batch(building_id: String, recipe_id: String, hours: int, bonus: Str
 func _ask_cancel_batch(building_id: String) -> void:
 	var check := Economy.can_cancel_batch(building_id)
 	if not check.ok:
-		hud.toast(check.error, true)
+		_refuse(check.error)
 		return
 	confirm_dialog.ask("Cancel this batch?",
 		"What it made so far stays. You get back %d%% of the ingredients and wages of the %d hours not made yet." % [roundi(100.0 * float(GameData.config.get("cancel_refund_in_progress", 0.0))), int(check.hours_left)],
@@ -292,13 +320,13 @@ func _cancel_batch(building_id: String) -> void:
 	if result.ok:
 		village.show_gain(building_id, result.refund)
 	else:
-		hud.toast(result.error, true)
+		_refuse(result.error)
 
 
 func _ask_demolish(building_id: String) -> void:
 	var check := Economy.can_demolish(building_id)
 	if not check.ok:
-		hud.toast(check.error, true)
+		_refuse(check.error)
 		return
 	var building_name: String = GameData.buildings[Economy.building(building_id).type].name
 	# No money back: every unit of material it was built with, and the goods inside, go to the
@@ -316,7 +344,7 @@ func _demolish(building_id: String) -> void:
 	if result.ok:
 		building_panel.close()
 	else:
-		hud.toast(result.error, true)
+		_refuse(result.error)
 
 
 func _start_placement(type_id: String) -> void:
@@ -346,25 +374,29 @@ func _place() -> void:
 	if village.road_mode:
 		var done: Dictionary = village.confirm_road()
 		if not done.ok:
-			build_menu.show_hint(done.error)
+			_refuse_placement(done.error)
+		else:
+			Sfx.play("road")
 		return
 	var cell: Vector2i = village.ghost_cell
 	if village.moving_id != "":
 		var result := Economy.move(village.moving_id, cell)
 		if result.ok:
+			Sfx.play("place")
 			village.stop_placement()
 			build_menu.end_placement()
 		else:
-			build_menu.show_hint(result.error)  # stay in Move mode so the player can try another tile
+			_refuse_placement(result.error)  # stay in Move mode so the player can try another tile
 		return
 	var type_id: String = village.placing_type
 	var result := Economy.build(type_id, cell)
 	if result.ok:
+		Sfx.play("place")
 		village.stop_placement()
 		build_menu.end_placement()
 		var built := Economy.building(str(result.get("building_id", "")))
 		if not built.is_empty() and not Economy.on_road(built):
-			hud.toast("No road reaches it yet, so it gets no workers.", true)
+			_warn("No road reaches it yet, so it gets no workers.")
 		# Heads-up: once finished, its jobs won't all be filled: there aren't enough adults.
 		var levels: Dictionary = GameData.config.get("staffing_levels", {})
 		var share := float(levels.get(GameData.config.get("default_staffing", "high"), 1.0))
@@ -374,20 +406,20 @@ func _place() -> void:
 			var homes_full: bool = Economy.employment().jobs + workers > Economy.adult_room()
 			var needs_home := bool(GameData.config.get("move_in_needs_home", true))
 			if seconds > 0.0 and homes_full and needs_home:
-				hud.toast("Not enough people for its jobs: build homes.", true)
+				_warn("Not enough people for its jobs: build homes.")
 			elif seconds > 0.0 and homes_full:
-				hud.toast("No free homes for new workers: they'll live in huts. Build homes.", true)
+				_warn("No free homes for new workers: they'll live in huts. Build homes.")
 			elif seconds <= 0.0:
-				hud.toast("Not enough adults for all the jobs.", true)
+				_warn("Not enough adults for all the jobs.")
 	else:
-		build_menu.show_hint(result.error)  # stay in Placement Mode so the player can try another tile
+		_refuse_placement(result.error)  # stay in Placement Mode so the player can try another tile
 
 
 ## Suspending loses the work in progress, so ask first and show what goes to the warehouse.
 func _ask_suspend(building_id: String) -> void:
 	var check := Economy.can_suspend(building_id)
 	if not check.ok:
-		hud.toast(check.error, true)
+		_refuse(check.error)
 		return
 	var building_name: String = GameData.buildings[Economy.building(building_id).type].name
 	confirm_dialog.ask("Suspend %s?" % building_name,
@@ -398,11 +430,11 @@ func _ask_suspend(building_id: String) -> void:
 func _suspend(building_id: String) -> void:
 	var result := Economy.suspend(building_id)
 	if not result.ok:
-		hud.toast(result.error, true)
+		_refuse(result.error)
 		return
 	village.show_gain(building_id, result.moved)
 	if not result.kept.is_empty():
-		hud.toast("The warehouse is full: the rest waits inside the building. Collect it later.", true)
+		_warn("The warehouse is full: the rest waits inside the building. Collect it later.")
 
 
 ## Upgrading costs materials and a crew and may close the building for a while, so ask first
@@ -410,7 +442,7 @@ func _suspend(building_id: String) -> void:
 func _ask_upgrade(building_id: String) -> void:
 	var check := Economy.can_upgrade(building_id)
 	if not check.ok:
-		hud.toast(check.error, true)
+		_refuse(check.error)
 		return
 	var building_name: String = GameData.buildings[Economy.building(building_id).type].name
 	confirm_dialog.ask("Upgrade %s to Level %d?" % [building_name, int(check.level)],
@@ -420,14 +452,16 @@ func _ask_upgrade(building_id: String) -> void:
 
 func _upgrade(building_id: String) -> void:
 	var result := Economy.upgrade(building_id)
-	if not result.ok:
-		hud.toast(result.error, true)
+	if result.ok:
+		Sfx.play("place")  # construction work begins
+	else:
+		_refuse(result.error)
 
 
 func _resume(building_id: String) -> void:
 	var result := Economy.resume(building_id)
 	if not result.ok:
-		hud.toast(result.error, true)
+		_refuse(result.error)
 
 
 ## Supermarket: put food on a shelf at a price tag. It leaves the warehouse now and is paid for
@@ -435,10 +469,11 @@ func _resume(building_id: String) -> void:
 func _stock(building_id: String, resource_id: String, qty: int, tag: String) -> void:
 	var result := Economy.stock_shelf(building_id, resource_id, qty, tag)
 	if result.ok:
+		Sfx.play("collect")
 		village.show_gain(building_id, {resource_id: -qty})
 		building_panel.choose_defaults()  # the form moves on to the next food not on a shelf yet
 	else:
-		hud.toast(result.error, true)
+		_refuse(result.error)
 
 
 ## Selling to or buying from the Trading Post's trader (plan.md §5.22): instant.
@@ -447,14 +482,16 @@ func _trade(side: String, resource_id: String, qty: int) -> void:
 	if side == "sell":
 		var sold := Economy.trade_sell(resource_id, qty)
 		if not sold.ok:
-			hud.toast(sold.error, true)
+			_refuse(sold.error)
 			return
+		Sfx.play("sale")
 		village.show_gain(post, {resource_id: -qty})
 	else:
 		var bought := Economy.trade_buy(resource_id, qty)
 		if not bought.ok:
-			hud.toast(bought.error, true)
+			_refuse(bought.error)
 			return
+		Sfx.play("purchase")
 		village.show_gain(post, {resource_id: qty})
 
 
@@ -462,7 +499,7 @@ func _trade(side: String, resource_id: String, qty: int) -> void:
 func _ask_clear_shelf(building_id: String, index: int) -> void:
 	var check := Economy.can_clear_shelf(building_id, index)
 	if not check.ok:
-		hud.toast(check.error, true)
+		_refuse(check.error)
 		return
 	confirm_dialog.ask("Take it off the shelf?",
 		"The %s sold are paid now (minus sales tax). The rest goes back to your warehouse." % UITheme.number(check.sold),
@@ -472,13 +509,15 @@ func _ask_clear_shelf(building_id: String, index: int) -> void:
 func _clear_shelf(building_id: String, index: int) -> void:
 	var result := Economy.clear_shelf(building_id, index)
 	if result.ok:
+		Sfx.play("collect")
 		village.show_gain(building_id, result.back)
 	else:
-		hud.toast(result.error, true)
+		_refuse(result.error)
 
 
 ## A shelf sold out while playing: say what sold and what it earned.
 func _on_shelves_sold(earned: int, sold: Dictionary) -> void:
+	Sfx.play("sale")
 	var parts: Array[String] = []
 	for res in sold:
 		parts.append("%s %s" % [UITheme.number(int(sold[res])), GameData.resources.get(res, {}).get("name", res)])
@@ -501,11 +540,11 @@ func _on_people_changed(report: Dictionary) -> void:
 		hud.toast(" ⋅ ".join(parts))
 	var left := int(report.get("moved_away", 0))
 	if left > 0:
-		hud.toast("%d %s left the island: the village is unhappy" % [left, "person" if left == 1 else "people"], true)
+		_warn("%d %s left the island: the village is unhappy" % [left, "person" if left == 1 else "people"])
 
 
 ## Low / Medium / High staffing in the building window: fewer workers = slower but cheaper.
 func _set_staffing(building_id: String, level: String) -> void:
 	var result := Economy.set_staffing(building_id, level)
 	if not result.ok:
-		hud.toast(result.error, true)
+		_refuse(result.error)

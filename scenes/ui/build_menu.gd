@@ -105,6 +105,8 @@ func open(tab_id := "") -> void:
 	if tab_id == "":
 		tab_id = _tab if _tab != "" else str(tabs[0].id)
 	var was_open := _window.visible
+	if not was_open:
+		Sfx.play("panel_open")
 	_window.show()
 	_about.custom_minimum_size.y = _about.get_line_height() * 2  # short and long texts take the same room
 	_show_tab(tab_id)
@@ -129,6 +131,7 @@ func close() -> void:
 		end_placement()
 		placement_cancelled.emit()
 	if _window.visible:
+		Sfx.play("panel_close")
 		_window.hide()
 		tab_changed.emit("")
 

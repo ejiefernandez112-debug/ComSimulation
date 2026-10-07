@@ -41,6 +41,9 @@ const CONFIG_KEYS := ["starting_cash", "starting_population", "population_growth
 	"sales_tax_brackets", "market_fee", "retail", "staffing_levels", "default_staffing", "wage_bonuses",
 	"bonus_output", "default_bonus", "worker_types", "island", "starting_buildings", "construction", "roads", "power",
 	"item_categories", "trade"]
+## Every setting a sound in data/sounds.json may use, and the buses it may play on (plan.md §5.24).
+const SOUND_KEYS := ["file", "bus", "volume_db", "pitch_jitter", "min_gap", "when"]
+const SOUND_BUSES := ["UI", "Alerts"]
 ## A production recipe is one hour of work: the batch length the player picks is counted in them.
 const BATCH_HOUR := 3600.0
 
@@ -129,6 +132,7 @@ func _check_data() -> void:
 	_check_resources(data)
 	_check_config(data)
 	_check_look()
+	_check_sounds(GameDataScript.load_json("res://data/sounds.json"))
 
 
 ## data/ui_look.json (the look, read by scenes/ui/ui_theme.gd): every setting UITheme.LOOK_KEYS
@@ -211,6 +215,34 @@ func _check_buildings(data: Dictionary, tabs: Dictionary) -> void:
 		_check_upgrades(def, where)
 		if not FileAccess.file_exists("res://assets/buildings/%s.png" % id):
 			_note("%s: no sprite in assets/buildings/ yet (it shows as a placeholder)" % where)
+
+
+## data/sounds.json: each sound's file exists and its settings make sense, and every
+## Sfx.play("...") in the scripts names a sound that exists (an unknown one would just stay silent).
+func _check_sounds(data: Dictionary) -> void:
+	var sounds: Dictionary = data.get("sounds", {})
+	if sounds.is_empty():
+		_fail("sounds.json: no sounds")
+		return
+	for id in sounds:
+		var def: Dictionary = sounds[id]
+		var where := "sounds.json '%s'" % id
+		_unknown_keys(def, SOUND_KEYS, where)
+		if not FileAccess.file_exists("res://assets/audio/sfx/%s" % def.get("file", "")):
+			_fail("%s: no file assets/audio/sfx/%s" % [where, def.get("file", "")])
+		if str(def.get("bus", "")) not in SOUND_BUSES:
+			_fail("%s: bus '%s' isn't one of %s" % [where, def.get("bus", ""), SOUND_BUSES])
+		_number_at_least(def, "min_gap", 0.0, where, true)
+		_number_at_least(def, "pitch_jitter", 0.0, where, true)
+		if _is_number(def.get("pitch_jitter")) and def.pitch_jitter > 0.5:
+			_fail("%s: pitch_jitter %s is too much (0.5 = half or one and a half times the pitch)" % [where, def.pitch_jitter])
+		if not _is_number(def.get("volume_db")):
+			_fail("%s: 'volume_db' is missing or not a number" % where)
+	var played := RegEx.create_from_string("Sfx\\.play\\(\"(\\w+)\"\\)")
+	for path in _find_files("res://", ".gd"):
+		for found in played.search_all(FileAccess.get_file_as_string(path)):
+			if not sounds.has(found.get_string(1)):
+				_fail("%s plays sound '%s', which isn't in sounds.json" % [path.trim_prefix("res://"), found.get_string(1)])
 
 
 ## What building it needs (plan.md §5.15): building materials (resources.json items of category

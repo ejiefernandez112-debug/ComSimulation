@@ -20,6 +20,7 @@ TimeService="*res://scripts/autoload/time_service.gd"
 GameData="*res://scripts/autoload/game_data.gd"
 Economy="*res://scripts/autoload/economy.gd"
 Settings="*res://scripts/autoload/settings.gd"
+Sfx="*res://scripts/autoload/sfx.gd"
 
 [display]
 
