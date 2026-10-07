@@ -6,6 +6,7 @@ var resources: Dictionary = {}
 var buildings: Dictionary = {}
 var config: Dictionary = {}
 var build_menu: Dictionary = {}  # {"tabs": [{id, name, icon}]}
+var sounds: Dictionary = {}  # {"sounds": {id: {file, bus, volume_db, pitch_jitter, min_gap, when}}}
 
 
 func _ready() -> void:
@@ -13,6 +14,7 @@ func _ready() -> void:
 	buildings = load_json("res://data/buildings.json")
 	config = load_json("res://data/game_config.json")
 	build_menu = load_json("res://data/build_menu.json")
+	sounds = load_json("res://data/sounds.json")
 	print("GameData loaded: %d resources, %d buildings" % [resources.size(), buildings.size()])
 
 

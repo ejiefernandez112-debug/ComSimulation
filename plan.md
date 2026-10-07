@@ -93,7 +93,7 @@ These are cheap now and very expensive to retrofit later. Include them in instru
 	 - Still to do: trees and rocks as sprites
   3. **The island itself** — 3D terrain built in the studio from the same coastline seed (flat plot in the middle, cliffs and beaches around it, mountain and forest at the back), baked once into a background picture cut into chunks for phones
   4. **Life** — spinning mill sails, bakery smoke, swaying trees, drifting cloud shadows, birds, boats. ✅ People walking and cars driving on the roads (2026-10-05, §5.20; simple shapes drawn in code for now)
-- **Audio** — not yet planned (see Open Questions); placeholder SFX for collect/sell/build go a long way for game feel even in Phase 1.
+- **Audio** — ✅ interface and event sounds built 2026-10-07 (§5.23). Direction: realistic, modern, restrained. Ambience, building sounds and adaptive music are designed but not built (§5.23).
 
 ## 5. Game Mechanics
 
@@ -929,6 +929,16 @@ Before it, nothing could be bought and only finished food could be sold, so a ha
 - Rules: `has_trading_post`, `trade_price`, `can_trade_sell` / `trade_sell`, `can_trade_buy` / `trade_buy`, `at_build_limit`; window `scenes/ui/trade_box.gd`
 - **Later:** prices that move with what's been sold or bought (a sell glut lowers the price), daily limits, contracts with in-game buyers at the Dock (§5.11)
 
+### 5.23 Sound (interface and event sounds built 2026-10-07; ambience and music designed, not built)
+The user asked for a modern, realistic sound identity: things that could exist in the real world, restrained, nothing cartoonish or arcade-like, original (nothing borrowed from other games). Designed and reviewed on the Island Sound Board (a design canvas): 1 city soundscape, 2 interface and economic events, 3 adaptive music, 4 the audio system spec. Two review rounds; the user rejected anything tune-like, long or loud, so the rules are: one tone at most, real-world feedback first (latches, stamps, paper, relays), about half a second for confirmations and one second for events, quiet.
+- **27 sounds**, all made by us (synthesised, nothing recorded or downloaded): `tools/sfx/sound_studio.html` holds the approved recipes; open it in Chrome or Edge to listen, and "Save all as WAV files" renders them into `assets/audio/sfx/` (44.1 kHz stereo, one shared loudness boost so their balance stays as approved). Open Godot afterwards so it imports them
+- `data/sounds.json`: per sound its file, bus, `volume_db`, `pitch_jitter` (repeats don't sound identical), `min_gap` (a burst of sales is one sound) and what plays it. Loaded by `GameData.sounds`
+- **Buses:** `UI` (taps, windows, confirmations) and `Alerts` (important events, warnings) both feed `SFX`, so the Sound switch in Settings silences them; made in code by the `Settings` autoload
+- **`Sfx` autoload** (`scripts/autoload/sfx.gd`): `Sfx.play("collect")`. 8 voices; when all are busy the oldest is cut. Every button clicks by itself (tap, or toggle for chips, check boxes and switches). No per-frame work
+- **What plays what:** windows and the Build menu open and close; a building selected; road built or removed; building placed or moved, upgrade started; batch started; goods collected, shelf stocked or cleared; Trading Post sale and purchase, shelves selling; refused actions (error); warnings (warehouse full, no road, not enough workers, people leaving). `scenes/main/sound_cues.gd` watches for things that happen by themselves: construction finished, upgrade finished, buildings short of power or cash below zero (critical), the sales tax rate changing. What happened while the game was closed stays quiet
+- **Ready but not used yet** (their systems don't exist): milestone, large profit, major investment, trade agreement, growth, surplus, shortage, recession, market crash, bankruptcy. Demolish and Welcome back have no sound of their own yet
+- **Designed, not built** (Sound Board boards 1, 3, 4): district ambience beds mixed by camera zoom (detail, not volume, rises as you zoom in), building sound families with "stopped" states, vehicles, construction stages, adaptive music that follows the village's state, day/night and weather layers, a 24-voice priority budget for phones. Engines, people, animals and machines will need real recordings from sources that allow commercial use (CC0), each logged with its licence
+
 ## 6. UI/UX Screens
 
 **Phase 1 screens:**
@@ -952,7 +962,7 @@ Before it, nothing could be bought and only finished food could be sold, so a ha
   - ✅ Built 2026-10-02 as **Welcome back!** (`scenes/ui/welcome_back.gd`): shows at start-up after at least `welcome_back_after_seconds` (120) away. Time away, goods made, people who moved in, wages paid, cash now, plus warnings for full (halted) buildings and debt
 - **Settings** — sound/music volume, save reset, language (if localized)
 - **Statistics** (✅ built 2026-10-01, "Stats" card in the bottom menu) — four tabs: **Production** (made / used / net per minute right now from working buildings, how many buildings are working / idle / full / being built, all-time made / sold / earned per item), **People** (population, employed, unemployed, open jobs, jobs per building type), **Cash flow** (last hour and all-time money in by source and out by category), **Graphs** (cash, cash flow, people, production over 15 min / 1 h / 6 h; rates are 10-minute averages; point at or drag across a graph for values). Counters and the graph history live in the save (`state.stats`, updated by the game rules); a graph point is added every `stats_sample_seconds` (60) and time away becomes one point, never a minute-by-minute replay. Keeps `stats_history_size` (360) points
-  - ✅ Built 2026-10-01 (the "Menu" card in the bottom menu bar): Music, Sound effects, Building names, Water detail (High/Low, for slow phones), Full screen (PC), About, Quit (PC). Saved in `user://settings.json` by the `Settings` autoload, separate from the game save. **Start over** (2026-10-02, asks "Are you sure?" first) starts a new game. Still to add: language (if localized). Music/Sound switches mute the "Music"/"SFX" audio buses, ready for when the game has sound
+  - ✅ Built 2026-10-01 (the "Menu" card in the bottom menu bar): Music, Sound effects, Building names, Water detail (High/Low, for slow phones), Full screen (PC), About, Quit (PC). Saved in `user://settings.json` by the `Settings` autoload, separate from the game save. **Start over** (2026-10-02, asks "Are you sure?" first) starts a new game. Still to add: language (if localized). Music/Sound switches mute the "Music"/"SFX" audio buses (Sound also silences the UI and Alerts buses that feed SFX, §5.23)
 - **Quest Log** (Phase 1b) — active tutorial + daily/weekly quests, progress, claim-reward button
 - **Profile** (Phase 1b) — XP/level, badges earned (Phase 4 adds rating)
 - **Persistent HUD** — currency balance, XP bar, active quest progress (compact), Population (current/capacity) with village happiness % (planned, §5.6), notification icons
@@ -1099,7 +1109,7 @@ A hidden dev menu (key combo on PC, secret tap sequence on mobile) for testing t
 **Later phases:**
 - [ ] Target platforms — is iOS in scope?
 - [x] Art pipeline → **3D models rendered into 2D sprites by a Godot "photo studio" tool; free CC0 low-poly models first, upgrade later** (decided 2026-10-01, see Section 4)
-- [ ] Audio/music plan (sources, licensing, or commissioned)
+- [x] Audio/music plan (sources, licensing, or commissioned): decided 2026-10-07, §5.23. Synthesised by us where it holds up (interface, alerts, wind, hum, music sketch); CC0 recordings for engines, people, animals and machines
 - [ ] Localization — which languages, and from which phase
 - [ ] Firebase vs. Nakama — not needed until Phase 4
 - [ ] Whether Market/Exchange stock-style companies get flavored to match in-game industries, or stay generic
@@ -1196,6 +1206,11 @@ A hidden dev menu (key combo on PC, secret tap sequence on mobile) for testing t
 Both are functional, self-contained HTML/JS artifacts used to validate the trading-mechanic math and UX before porting logic into Godot.
 
 ## 15. Revision Log
+
+**2026-10-07 (Sound: interface and event sounds):**
+- The user asked for game sounds. First round (cozy marimba vs arcade blips) was replaced by their directive: realistic, modern, restrained. Designed on the Island Sound Board (soundscape, interface and events, adaptive music, system spec); two review rounds picked 27 interface and event sounds. Details: §5.23
+- Built: `tools/sfx/sound_studio.html` (recipes, renders the WAVs), `assets/audio/sfx/`, `data/sounds.json`, the `Sfx` autoload, UI and Alerts buses, sounds on actions, windows, warnings and errors, and `scenes/main/sound_cues.gd` for construction and upgrades finishing, power shortage, cash below zero and tax changes
+- Not built yet: ambience, building and vehicle sounds, adaptive music (designed on the board)
 
 **2026-10-06 (faster building, smaller Supermarkets, migrants by jobs, materials back on demolish):**
 - The user asked for four changes: new buildings take **10 seconds** (upgrades unchanged); the Supermarket starts with **1 shelf**, +1 per upgrade; **no migrants at 20% happiness or less**, otherwise only open jobs decide; **demolishing gives back every unit of material**, into the warehouse, and no money

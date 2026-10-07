@@ -19,11 +19,14 @@ var _values := DEFAULTS.duplicate()
 
 
 func _ready() -> void:
-	# Sound buses that music and effects will play through once the game has audio.
-	for bus in ["Music", "SFX"]:
+	# Sound buses (plan.md §5.23). Interface sounds (UI) and alerts feed into SFX, so the Sound
+	# switch silences both. A bus can only feed one made before it, hence this order.
+	for bus in ["Music", "SFX", "UI", "Alerts"]:
 		if AudioServer.get_bus_index(bus) == -1:
 			AudioServer.add_bus()
 			AudioServer.set_bus_name(AudioServer.bus_count - 1, bus)
+	for bus in ["UI", "Alerts"]:
+		AudioServer.set_bus_send(AudioServer.get_bus_index(bus), "SFX")
 	_load()
 	_apply()
 

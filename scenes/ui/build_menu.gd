@@ -74,6 +74,8 @@ func _ready() -> void:
 func open() -> void:
 	if _tab_buttons.is_empty():
 		return
+	if not _window.visible:
+		Sfx.play("panel_open")
 	_window.show()
 	_show_tab(_tab if _tab_buttons.has(_tab) else _tab_buttons.keys()[0])
 	_apply_layout()
@@ -143,6 +145,8 @@ func _make_placing_buttons() -> void:
 
 
 func _close() -> void:
+	if _window.visible:
+		Sfx.play("panel_close")
 	_window.hide()
 
 
