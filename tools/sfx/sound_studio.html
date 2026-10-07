@@ -1,0 +1,454 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sound Studio</title>
+<!--
+  Sound Studio: makes the game's sound effects (assets/audio/sfx/*.wav). An offline tool, never
+  loaded by the game. Every sound is a small recipe of tones, filtered noise and thuds, built
+  with the browser's Web Audio, the same recipes that were approved on the Island Sound Board
+  (design canvas). Nothing is recorded or downloaded, so the sounds are entirely our own.
+
+  To change a sound: edit its recipe in sound() below, open this file in Chrome or Edge, press
+  Play to listen, then "Save all as WAV files" and pick the assets/audio/sfx folder (or move the
+  downloaded files there). Open Godot once afterwards so it imports them.
+  Which file plays for which game event, and how loud, is in data/sounds.json.
+-->
+<style>
+:root { color-scheme: light; }
+body { margin: 0; background: #f3f2ee; color: #1d2125; font: 16px/1.5 system-ui, sans-serif; }
+main { max-width: 860px; margin: 0 auto; padding: 32px 16px 64px; }
+h1 { margin: 0 0 8px; font-size: 32px; }
+p { margin: 0 0 16px; color: #3a3f45; }
+.row { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid #e2e0da; }
+.row span { flex: 1; }
+.row code { color: #5b6168; font-size: 13px; }
+button { min-height: 44px; padding: 0 18px; border-radius: 10px; border: 1px solid #134744; background: #1f6f6b; color: #fff; font: inherit; font-weight: 600; cursor: pointer; }
+button.save { background: #1d2125; border-color: #1d2125; }
+#status { margin: 12px 0 24px; font-family: ui-monospace, monospace; font-size: 14px; color: #3a3f45; min-height: 1.5em; }
+</style>
+</head>
+<body>
+<main>
+<h1>Sound Studio</h1>
+<p>The game's 27 interface and event sounds. Press Play to hear one. "Save all" renders every sound to a WAV file (44.1 kHz, 16-bit stereo). All sounds share one loudness boost, so their balance stays as approved.</p>
+<button class="save" id="save">Save all as WAV files</button>
+<div id="status"></div>
+<div id="list"></div>
+</main>
+<script>
+// File name (without .wav) -> name shown here. Keep in step with data/sounds.json.
+const SOUNDS = {
+  tap: 'Button press', toggle: 'Switch or tab', panel_open: 'Window opens', panel_close: 'Window closes',
+  select: 'Building selected', road: 'Road laid', place: 'Building placed', start_batch: 'Production started',
+  collect: 'Goods collected', sale: 'Sale completed', purchase: 'Purchase', complete: 'Construction complete',
+  upgrade_done: 'Upgrade finished', milestone: 'Village milestone', error: 'Not possible', warning: 'Warning',
+  critical: 'Critical warning', large_profit: 'Large profit', major_investment: 'Major investment',
+  trade_agreement: 'Trade agreement', growth: 'Economic growth', surplus: 'Surplus', tax_change: 'Tax change',
+  shortage: 'Shortage', recession: 'Recession', market_crash: 'Market crash', bankruptcy: 'Bankruptcy'
+};
+const RATE = 44100;
+const VOLUME = 0.7;  // the board's default volume, so the compressor behaves as it did there
+const TAIL = 2.5;    // seconds of room echo rendered after each sound (trimmed when silent)
+// The compressor starts out squashing everything and relaxes over the first moments, so each
+// sound starts after this much silence (cut off again) to sound as it does when playing live.
+const LEAD = 0.6;
+
+class Synth {
+  // Builds the same chain as the board: master -> gentle compressor -> out, plus a small room.
+  constructor(ctx) {
+    this._ctx = ctx;
+    const comp = ctx.createDynamicsCompressor();
+    comp.threshold.value = -16;
+    comp.ratio.value = 3;
+    comp.connect(ctx.destination);
+    this._master = ctx.createGain();
+    this._master.gain.value = VOLUME;
+    this._master.connect(comp);
+    // A small synthetic room so tones have air around them.
+    const len = Math.floor(ctx.sampleRate * 2.2);
+    const ir = ctx.createBuffer(2, len, ctx.sampleRate);
+    for (let ch = 0; ch < 2; ch++) {
+      const d = ir.getChannelData(ch);
+      let lp = 0;
+      for (let i = 0; i < len; i++) {
+        lp = lp * 0.6 + (Math.random() * 2 - 1) * 0.4;
+        d[i] = lp * Math.pow(1 - i / len, 3.2);
+      }
+    }
+    this._verb = ctx.createConvolver();
+    this._verb.buffer = ir;
+    const wet = ctx.createGain();
+    wet.gain.value = 0.5;
+    this._verb.connect(wet);
+    wet.connect(this._master);
+    const nb = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);
+    const nd = nb.getChannelData(0);
+    for (let i = 0; i < nd.length; i++) nd[i] = (Math.random() * 2 - 1) * 0.5;
+    this._white = nb;
+    const bb = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);
+    const bd = bb.getChannelData(0);
+    let last = 0;
+    for (let i = 0; i < bd.length; i++) { last = (last + 0.02 * (Math.random() * 2 - 1)) / 1.02; bd[i] = last * 3.5; }
+    this._brown = bb;
+  }
+
+  hz(n) {
+    const semi = { C: -9, D: -7, E: -5, F: -4, G: -2, A: 0, B: 2 };
+    let i = semi[n[0]];
+    let k = 1;
+    if (n[1] === '#') { i += 1; k = 2; }
+    return 440 * Math.pow(2, (i + (Number(n.slice(k)) - 4) * 12) / 12);
+  }
+
+  route(node, o) {
+    let n = node;
+    if (o.pan) {
+      const p = this._ctx.createStereoPanner();
+      p.pan.value = o.pan;
+      n.connect(p);
+      n = p;
+    }
+    n.connect(this._master);
+    if (o.send) {
+      const s = this._ctx.createGain();
+      s.gain.value = o.send;
+      n.connect(s);
+      s.connect(this._verb);
+    }
+  }
+
+  env(t, atk, dur, vol) {
+    const g = this._ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(vol, t + atk);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    return g;
+  }
+
+  tone(f, t, dur, o) {
+    o = o || {};
+    const osc = this._ctx.createOscillator();
+    osc.type = o.type || 'sine';
+    osc.frequency.setValueAtTime(f, t);
+    if (o.to) osc.frequency.exponentialRampToValueAtTime(o.to, t + (o.glide || dur));
+    const e = this.env(t, o.atk || 0.004, dur, o.vol || 0.05);
+    let n = osc;
+    if (o.lp) { const f2 = this._ctx.createBiquadFilter(); f2.type = 'lowpass'; f2.frequency.value = o.lp; osc.connect(f2); n = f2; }
+    n.connect(e);
+    this.route(e, o);
+    osc.start(t);
+    osc.stop(t + dur + 0.05);
+  }
+
+  // Two-operator FM: glassy bells and a soft electric-piano "market" voice.
+  fm(f, t, dur, o) {
+    o = o || {};
+    const ctx = this._ctx;
+    const car = ctx.createOscillator();
+    const mod = ctx.createOscillator();
+    car.frequency.value = f;
+    mod.frequency.value = f * (o.ratio || 1);
+    const depth = ctx.createGain();
+    const idx = (o.index == null ? 1 : o.index) * f;
+    depth.gain.setValueAtTime(idx, t);
+    depth.gain.exponentialRampToValueAtTime(Math.max(0.01, idx * 0.08), t + dur * 0.5);
+    mod.connect(depth);
+    depth.connect(car.frequency);
+    const e = this.env(t, o.atk || 0.006, dur, o.vol || 0.05);
+    car.connect(e);
+    this.route(e, o);
+    car.start(t); mod.start(t);
+    car.stop(t + dur + 0.05); mod.stop(t + dur + 0.05);
+  }
+
+  noise(t, dur, o) {
+    const ctx = this._ctx;
+    const s = ctx.createBufferSource();
+    s.buffer = o.brown ? this._brown : this._white;
+    s.loop = true;
+    const f = ctx.createBiquadFilter();
+    f.type = o.type || 'bandpass';
+    f.frequency.setValueAtTime(o.f || 2000, t);
+    if (o.to) f.frequency.exponentialRampToValueAtTime(o.to, t + dur);
+    f.Q.value = o.q || 1;
+    const e = this.env(t, o.atk || 0.002, dur, o.vol || 0.1);
+    s.connect(f); f.connect(e);
+    this.route(e, o);
+    s.start(t, Math.random()); s.stop(t + dur + 0.05);
+  }
+
+  click(t, f, vol, pan) {
+    this.noise(t, 0.014, { f: f || 3200, q: 1.2, vol: vol || 0.12, pan });
+  }
+
+  // ---- Round 2 building blocks: physical sounds rather than notes ----
+  // A weighty set-down: a falling low sine plus a puff of low noise.
+  thud(t, f0, f1, dur, vol, o) {
+    o = o || {};
+    this.tone(f0, t, dur, { to: f1, vol, pan: o.pan });
+    this.noise(t, Math.min(0.12, dur), { brown: true, type: 'lowpass', f: o.lp || 500, vol: vol * 0.8, pan: o.pan });
+  }
+
+  // A short wooden knock: a damped resonance plus a little filtered noise.
+  knock(t, f, vol, o) {
+    o = o || {};
+    this.tone(f, t, 0.08, { vol, atk: 0.002, pan: o.pan, lp: o.lp });
+    this.noise(t, 0.03, { type: 'bandpass', f: f * 2.5, q: 2, vol: vol * 0.8, pan: o.pan });
+  }
+
+  // Many tiny noise grains: gravel, paper, banknotes, a pen. offsets = when each grain falls.
+  grains(t, offsets, o) {
+    offsets.forEach((d) => {
+      const k = 0.85 + Math.random() * 0.3;
+      this.noise(t + d, o.len || 0.02, { type: 'bandpass', f: o.f * k, q: o.q || 1.5, vol: o.vol * (0.6 + Math.random() * 0.4), brown: o.brown, pan: o.pan });
+    });
+  }
+
+  spread(n, dur) {
+    const out = [];
+    for (let i = 0; i < n; i++) out.push(Math.random() * dur);
+    return out.sort((a, b) => a - b);
+  }
+
+  crunch(t, dur, vol, f, o) {
+    this.grains(t, this.spread(7, dur), Object.assign({ f: f || 1500, q: 1.3, vol, len: 0.025 }, o || {}));
+  }
+
+  stamp(t, vol, pan) {
+    this.thud(t, 92, 56, 0.16, vol, { pan, lp: 400 });
+    this.crunch(t, 0.07, vol * 0.18, 2400, { pan });
+    this.click(t, 1800, vol * 0.3, pan);
+  }
+
+  pen(t, dur, vol) {
+    this.grains(t, this.spread(Math.round(dur * 26), dur), { f: 4200, q: 3, vol, len: 0.03 });
+    this.noise(t, dur, { type: 'bandpass', f: 3500, q: 1, vol: vol * 0.3, atk: 0.03 });
+  }
+
+  // The approved recipes. Each schedules its sound at time t and returns how long it lasts (s).
+  // H('D5') = the note's pitch in Hz. send = how much goes to the room echo.
+  sound(id, t) {
+    const H = (n) => this.hz(n);
+    const ep = (n, at, dur, vol) => this.fm(H(n), t + at, dur, { ratio: 1, index: 0.9, vol, send: 0.25 });
+    const bell = (n, at, dur, vol, o) => this.fm(H(n), t + at, dur, Object.assign({ ratio: 1, index: 0.5, vol, send: 0.12 }, o || {}));
+    switch (id) {
+      // Routine: felt more than heard.
+      case 'tap': this.click(t, 3200, 0.11); this.tone(1900, t, 0.02, { vol: 0.025 }); return 0.1;
+      case 'toggle': this.click(t, 2600, 0.1); this.click(t + 0.035, 3600, 0.07); this.tone(1200, t + 0.035, 0.03, { vol: 0.02 }); return 0.15;
+      case 'panel_open': this.noise(t, 0.22, { type: 'bandpass', f: 500, to: 2200, q: 0.8, vol: 0.05, atk: 0.08 }); this.tone(H('A5'), t + 0.04, 0.28, { vol: 0.022, atk: 0.03, send: 0.3 }); return 0.4;
+      case 'panel_close': this.noise(t, 0.2, { type: 'bandpass', f: 2200, to: 500, q: 0.8, vol: 0.045, atk: 0.04 }); this.tone(H('E5'), t + 0.03, 0.22, { vol: 0.018, atk: 0.02, send: 0.2 }); return 0.35;
+      case 'select': this.click(t, 2400, 0.06); this.tone(H('E6'), t, 0.07, { vol: 0.03 }); return 0.15;
+      case 'road': this.noise(t, 0.08, { brown: true, type: 'lowpass', f: 900, vol: 0.35 }); this.click(t, 1800, 0.06); return 0.15;
+      // Confirmation: something happened in the world.
+      case 'place': // a weighty set-down, gravel crunch and a latch click
+        this.thud(t, 105, 68, 0.2, 0.28); this.crunch(t + 0.01, 0.12, 0.05, 1500); this.click(t, 2200, 0.07);
+        return 0.3;
+      case 'start_batch': // a relay clunk and a short release of air
+        this.thud(t, 140, 90, 0.08, 0.15); this.click(t, 1800, 0.1);
+        this.noise(t + 0.08, 0.3, { type: 'highpass', f: 3000, vol: 0.03, atk: 0.02 });
+        return 0.4;
+      case 'collect': // a cardboard box sliding, with a faint tick
+        this.noise(t, 0.16, { type: 'bandpass', f: 2500, to: 1500, q: 1.5, vol: 0.04, atk: 0.03 });
+        this.tone(H('E6'), t + 0.15, 0.08, { vol: 0.012 });
+        return 0.25;
+      case 'sale':
+        this.fm(H('E6'), t, 0.9, { ratio: 3.5, index: 1.6, vol: 0.04, send: 0.3 });
+        this.fm(H('A6'), t + 0.05, 0.7, { ratio: 3.5, index: 1.2, vol: 0.022, send: 0.3 });
+        this.noise(t, 0.15, { type: 'highpass', f: 6000, vol: 0.015, atk: 0.01 });
+        return 1;
+      case 'purchase': ep('D6', 0, 0.35, 0.04); ep('A5', 0.08, 0.45, 0.04); return 0.55;
+      case 'complete': // a thud, a breath of air, one quiet high chime
+        this.thud(t, 120, 80, 0.15, 0.16);
+        this.noise(t + 0.05, 0.45, { type: 'bandpass', f: 800, to: 1600, q: 0.8, vol: 0.02, atk: 0.3 });
+        this.tone(H('A5'), t + 0.25, 0.5, { vol: 0.015, atk: 0.005, send: 0.12 });
+        return 0.8;
+      // Important.
+      case 'upgrade_done': // a thud with two notes struck together once
+        this.thud(t, 110, 75, 0.18, 0.2);
+        bell('D4', 0.01, 0.9, 0.025, { index: 0.4 }); bell('A4', 0.01, 0.9, 0.025, { index: 0.4 });
+        return 0.9;
+      case 'milestone': // one deep resonant tone with a soft swell of air
+        bell('D3', 0, 1, 0.06, { index: 0.6, send: 0.15 });
+        this.noise(t, 0.9, { type: 'bandpass', f: 600, to: 1200, q: 0.8, vol: 0.015, atk: 0.4 });
+        return 1;
+      // Warnings.
+      case 'error': this.tone(330, t, 0.06, { type: 'triangle', vol: 0.07 }); this.tone(247, t + 0.09, 0.09, { type: 'triangle', vol: 0.07 }); this.click(t, 1200, 0.05); return 0.25;
+      case 'warning': this.tone(H('A4'), t, 0.16, { type: 'triangle', vol: 0.08, send: 0.25 }); this.tone(H('F4'), t + 0.2, 0.22, { type: 'triangle', vol: 0.08, send: 0.25 }); return 0.5;
+      case 'critical': // two pairs of short, gritty pulses
+        [0, 0.14, 0.5, 0.64].forEach((d) => this.tone(H('E4'), t + d, 0.1, { type: 'square', lp: 900, vol: 0.045, atk: 0.005 }));
+        return 0.75;
+      // Economic events.
+      case 'large_profit': // banknotes riffled, then one soft tone
+        this.grains(t, this.spread(12, 0.35), { f: 3200, q: 1.5, vol: 0.035, len: 0.015 });
+        this.tone(H('A5'), t + 0.38, 0.45, { vol: 0.015, send: 0.1 });
+        return 0.85;
+      case 'major_investment': // a pen signing, then one low tone
+        this.pen(t, 0.4, 0.025); bell('D3', 0.42, 0.7, 0.04);
+        return 1.12;
+      case 'trade_agreement': // a pen signing, then a stamp
+        this.pen(t, 0.35, 0.025); this.stamp(t + 0.4, 0.26);
+        return 0.65;
+      case 'growth': // a ticker speeding up, one tone at the end
+        [0, 0.16, 0.29, 0.39, 0.47, 0.53, 0.58].forEach((d) => this.click(t + d, 2800, 0.06));
+        this.tone(H('A5'), t + 0.62, 0.45, { vol: 0.02, send: 0.1 });
+        return 1.07;
+      case 'surplus': // two muted crate knocks
+        this.knock(t, 420, 0.06, { lp: 1200 }); this.knock(t + 0.14, 380, 0.05, { lp: 1200 });
+        return 0.25;
+      case 'tax_change':
+        this.tone(95, t, 0.18, { to: 65, vol: 0.3 }); this.click(t, 1800, 0.09);
+        ep('D5', 0.12, 0.7, 0.04); ep('A5', 0.12, 0.7, 0.03);
+        return 0.9;
+      case 'shortage': // two muted ticks and a low tone sagging
+        this.click(t, 1200, 0.05); this.click(t + 0.09, 1000, 0.05);
+        this.tone(330, t + 0.12, 0.45, { type: 'triangle', to: 290, vol: 0.035 });
+        return 0.57;
+      case 'recession': // a muffled thud with a low minor pair of notes
+        this.thud(t, 90, 60, 0.25, 0.22, { lp: 300 });
+        bell('D3', 0.01, 0.9, 0.03, { index: 0.4 }); bell('F3', 0.01, 0.9, 0.03, { index: 0.4 });
+        return 0.9;
+      case 'market_crash': // a ticker slowing down while a low tone drops
+        [0, 0.05, 0.11, 0.18, 0.27, 0.38, 0.52].forEach((d, i) => this.click(t + d, 2400, 0.06 - i * 0.005));
+        this.tone(H('D3'), t + 0.1, 0.9, { to: 110, vol: 0.05 });
+        return 1;
+      case 'bankruptcy': // one deep, quiet toll
+        bell('D2', 0, 1.2, 0.05, { ratio: 1.4, index: 2, send: 0.15 });
+        return 1.2;
+    }
+    return 0;
+  }
+}
+
+// ---- Rendering to files ----
+
+// Renders one sound offline into a stereo AudioBuffer.
+async function render(id) {
+  const probe = new OfflineAudioContext(2, RATE, RATE);
+  const length = new Synth(probe).sound(id, LEAD);
+  const ctx = new OfflineAudioContext(2, Math.ceil((LEAD + length + TAIL) * RATE), RATE);
+  new Synth(ctx).sound(id, LEAD);
+  const full = await ctx.startRendering();
+  const start = Math.round(LEAD * RATE);
+  const out = new AudioBuffer({ numberOfChannels: 2, length: full.length - start, sampleRate: RATE });
+  for (let ch = 0; ch < 2; ch++) out.copyToChannel(full.getChannelData(ch).subarray(start), ch);
+  return out;
+}
+
+function peak(buffer) {
+  let p = 0;
+  for (let ch = 0; ch < buffer.numberOfChannels; ch++) {
+    const d = buffer.getChannelData(ch);
+    for (let i = 0; i < d.length; i++) p = Math.max(p, Math.abs(d[i]));
+  }
+  return p;
+}
+
+// 16-bit WAV bytes from a buffer: scaled by `gain`, silent tail cut off, short fade at the end.
+function wav(buffer, gain) {
+  const chans = [buffer.getChannelData(0), buffer.getChannelData(1)];
+  const quiet = Math.pow(10, -66 / 20);
+  let end = 0;
+  for (let i = chans[0].length - 1; i >= 0 && end === 0; i--) {
+    if (Math.abs(chans[0][i] * gain) > quiet || Math.abs(chans[1][i] * gain) > quiet) end = i;
+  }
+  const frames = Math.min(chans[0].length, end + Math.round(0.05 * RATE));
+  const fade = Math.round(0.03 * RATE);
+  const bytes = new DataView(new ArrayBuffer(44 + frames * 4));
+  const text = (at, s) => { for (let i = 0; i < s.length; i++) bytes.setUint8(at + i, s.charCodeAt(i)); };
+  text(0, 'RIFF'); bytes.setUint32(4, 36 + frames * 4, true); text(8, 'WAVE');
+  text(12, 'fmt '); bytes.setUint32(16, 16, true); bytes.setUint16(20, 1, true); bytes.setUint16(22, 2, true);
+  bytes.setUint32(24, RATE, true); bytes.setUint32(28, RATE * 4, true); bytes.setUint16(32, 4, true); bytes.setUint16(34, 16, true);
+  text(36, 'data'); bytes.setUint32(40, frames * 4, true);
+  for (let i = 0; i < frames; i++) {
+    const f = i > frames - fade ? (frames - i) / fade : 1;
+    for (let ch = 0; ch < 2; ch++) {
+      const v = Math.max(-1, Math.min(1, chans[ch][i] * gain * f));
+      bytes.setInt16(44 + i * 4 + ch * 2, Math.round(v * 32767), true);
+    }
+  }
+  return new Uint8Array(bytes.buffer);
+}
+
+// Every sound as WAV bytes, all boosted by the same amount so the loudest peaks at -1 dBFS.
+async function renderAll(report) {
+  const buffers = {};
+  for (const id of Object.keys(SOUNDS)) {
+    if (report) report('Rendering ' + id + '…');
+    buffers[id] = await render(id);
+  }
+  const loudest = Math.max(...Object.values(buffers).map(peak));
+  const gain = Math.pow(10, -1 / 20) / loudest;
+  const files = {};
+  for (const id of Object.keys(buffers)) files[id] = wav(buffers[id], gain);
+  return files;
+}
+
+// For a headless browser: the same files as base64 text.
+window.renderAllBase64 = async function () {
+  const files = await renderAll();
+  const out = {};
+  for (const id of Object.keys(files)) {
+    let s = '';
+    files[id].forEach((b) => { s += String.fromCharCode(b); });
+    out[id] = btoa(s);
+  }
+  return out;
+};
+
+// ---- The page ----
+
+const status = document.getElementById('status');
+const say = (s) => { status.textContent = s; };
+let live = null;
+
+for (const id of Object.keys(SOUNDS)) {
+  const row = document.createElement('div');
+  row.className = 'row';
+  const name = document.createElement('span');
+  name.textContent = SOUNDS[id] + ' ';
+  const file = document.createElement('code');
+  file.textContent = id + '.wav';
+  name.appendChild(file);
+  const play = document.createElement('button');
+  play.textContent = 'Play';
+  play.setAttribute('aria-label', 'Play ' + SOUNDS[id]);
+  play.onclick = () => {
+    if (!live) live = new Synth(new AudioContext());
+    if (live._ctx.state === 'suspended') live._ctx.resume();
+    live.sound(id, live._ctx.currentTime + 0.02);
+  };
+  row.append(name, play);
+  document.getElementById('list').appendChild(row);
+}
+
+document.getElementById('save').onclick = async () => {
+  const files = await renderAll(say);
+  if (window.showDirectoryPicker) {
+    try {
+      const dir = await window.showDirectoryPicker({ mode: 'readwrite' });
+      for (const id of Object.keys(files)) {
+        const handle = await dir.getFileHandle(id + '.wav', { create: true });
+        const w = await handle.createWritable();
+        await w.write(files[id]);
+        await w.close();
+      }
+      say('Saved ' + Object.keys(files).length + ' files. Open Godot so it imports them.');
+      return;
+    } catch (e) {
+      say('Folder not chosen, downloading the files instead.');
+    }
+  }
+  for (const id of Object.keys(files)) {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([files[id]], { type: 'audio/wav' }));
+    a.download = id + '.wav';
+    a.click();
+    await new Promise((r) => setTimeout(r, 150));
+  }
+  say('Downloaded ' + Object.keys(files).length + ' files: move them into assets/audio/sfx/.');
+};
+</script>
+</body>
+</html>

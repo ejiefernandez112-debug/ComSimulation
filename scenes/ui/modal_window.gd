@@ -105,6 +105,8 @@ func _make_frame() -> void:
 func open(title_text: String) -> void:
 	_title.text = title_text
 	_opened_at_ms = Time.get_ticks_msec()
+	if not visible:  # opening again while open (another building) just refreshes it
+		Sfx.play("panel_open")
 	show()
 	_layout()
 	_layout.call_deferred()  # again once new text has been measured
@@ -114,6 +116,7 @@ func open(title_text: String) -> void:
 func close() -> void:
 	if visible:
 		hide()
+		Sfx.play("panel_close")
 		closed.emit()
 
 
