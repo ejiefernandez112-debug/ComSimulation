@@ -2653,6 +2653,57 @@ func test_births_and_growing_up() -> void:
 	_check(int(Sim.people_stats(state).born) == 2 and int(Sim.people_stats(state).grew_up) == 1, "lifetime counters")
 
 
+## With life.grown_ups_leave_without_job, a child growing up stays only if a job is waiting (open,
+## and no jobless adult here to take it); the rest leave the island to find work. Children who
+## grow up don't pile up jobless and drag happiness down (the 2026-10-08 "stuck at 20%" loop).
+func test_grown_ups_leave_without_job() -> void:
+	var data := _life_data(0.0, 0.0)
+	data.config.life["grown_ups_leave_without_job"] = true
+	var state := Sim.new_game(data, T0)  # 10 adults
+	Sim.build(state, data, "crew_farm", Vector2i(5, 5), T0)  # 2 jobs: 8 adults jobless
+	state.population.current = 13
+	state.population.children = [{"count": 3, "grows_up_at": T0 + 3600}]
+	Sim.settle(state, data, T0)
+	_check(Sim.jobs_waiting(Sim.employment(state, data, T0)) == 0, "no job waiting: 8 jobless adults would take any opening first")
+	var report := Sim.settle(state, data, T0 + 3600)
+	_check(Sim.adults(state) == 10 and Sim.children_count(state) == 0, "all 3 grew up and left: still 10 adults")
+	_check(int(report.get("grew_up", 0)) == 3 and int(report.get("left_for_work", 0)) == 3 and int(report.get("moved_away", 0)) == 3, "the report: 3 grew up, 3 left to find work (counted as left the island)")
+	_check(int(Sim.people_stats(state).grew_up) == 3 and int(Sim.people_stats(state).moved_away) == 3 and not Sim.people_stats(state).has("left_for_work"), "lifetime counters: grew up 3, left 3")
+
+	# 2 adults, 5 jobs: 3 waiting. Of 5 children growing up, 3 stay (and are hired), 2 leave.
+	var jobs := Sim.new_game(data, T0)
+	Sim.build(jobs, data, "crew_farm", Vector2i(5, 5), T0)
+	var mill := Sim.find_building(jobs, Sim.build(jobs, data, "crew_mill", Vector2i(6, 6), T0).building_id)
+	jobs.population.current = 7
+	jobs.population.children = [{"count": 5, "grows_up_at": T0 + 3600}]
+	Sim._hire(jobs, data, T0)
+	_check(Sim.jobs_waiting(Sim.employment(jobs, data, T0)) == 3, "2 adults, 5 jobs: 3 waiting")
+	report = Sim.settle(jobs, data, T0 + 3600)
+	_check(Sim.adults(jobs) == 5 and int(report.get("left_for_work", 0)) == 2, "3 grew up and stayed, 2 left")
+	_check(Sim.hired(mill) == 3 and Sim.employment(jobs, data, T0 + 3600).unemployed == 0, "...and the 3 who stayed got the jobs")
+
+	# Time away ends exactly like playing through it (a settle every minute).
+	var away := Sim.new_game(data, T0)
+	var played := Sim.new_game(data, T0)
+	for town in [away, played]:
+		Sim.build(town, data, "crew_farm", Vector2i(5, 5), T0)
+		Sim.build(town, data, "crew_mill", Vector2i(6, 6), T0)
+		town.population.current = 9
+		town.population.children = [{"count": 4, "grows_up_at": T0 + 1800}, {"count": 3, "grows_up_at": T0 + 5400}]
+		Sim._hire(town, data, T0)
+	Sim.settle(away, data, T0 + 7200)
+	for minute in range(1, 121):
+		Sim.settle(played, data, T0 + minute * 60.0)
+	_check(int(away.population.current) == int(played.population.current) and int(Sim.people_stats(away).moved_away) == int(Sim.people_stats(played).moved_away), "away = playing through: %d people, %d left" % [int(away.population.current), int(Sim.people_stats(away).moved_away)])
+
+	# The Developer window's "Grow up now" follows the same rule.
+	var dev := Sim.new_game(data, T0)  # 10 adults, no jobs at all
+	dev.population.current = 14
+	dev.population.children = [{"count": 4, "grows_up_at": T0 + 90000}]
+	var grown := Sim.dev_children_grow_up(dev, data, T0)
+	_check(grown.ok and int(grown.left_for_work) == 4 and Sim.adults(dev) == 10 and int(Sim.people_stats(dev).moved_away) == 4, "Grow up now: with no jobs, all 4 leave")
+
+
 func test_deaths_in_proportion() -> void:
 	var data := _life_data(0.0, 0.1)  # 10% of each group an hour
 	var state := Sim.new_game(data, T0)
@@ -2743,8 +2794,8 @@ func _housing_data() -> Dictionary:
 	return data
 
 
-## 10 adults: 2 Rich (farm with the big bonus), 2 Poor (farm at $15), 6 Broke; a Public, a
-## Regular and a Villa. Returns [state, data].
+## 10 adults: 2 Rich (farm making a batch with the big bonus), 2 Poor (idle farm, $15), 6 Broke;
+## a Public, a Regular and a Villa. Returns [state, data].
 func _housing_town() -> Array:
 	var data := _housing_data()
 	var state := Sim.new_game(data, T0)
@@ -2752,10 +2803,10 @@ func _housing_town() -> Array:
 	Sim.build(state, data, "regular", Vector2i(6, 5), T0)
 	Sim.build(state, data, "villa", Vector2i(7, 5), T0)
 	Sim.build(state, data, "crew_farm", Vector2i(5, 7), T0)
-	var rich_farm: String = Sim.build(state, data, "crew_farm", Vector2i(6, 7), T0).building_id
-	Sim.set_bonus(state, data, rich_farm, "big", T0)
+	var rich_farm := Sim.find_building(state, Sim.build(state, data, "crew_farm", Vector2i(6, 7), T0).building_id)
 	state.population.current = 10
 	Sim.settle(state, data, T0)  # hires, then houses everyone
+	_batch(state, data, rich_farm, 100, "big")  # 100 x 60 s: still being made in the tests' hour
 	return [state, data]
 
 
@@ -2767,6 +2818,33 @@ func test_wealth_classes() -> void:
 	var classes := Sim.adults_by_class(state, data, T0)
 	_check(int(classes.rich.adults) == 2 and int(classes.poor.adults) == 2 and int(classes.broke.adults) == 6, "2 Rich, 2 Poor and 6 Broke adults")
 	_check(is_equal_approx(float(classes.rich.wages), 60.0), "the Rich earn $30 an hour each")
+
+
+## An idle farm pays no bonus, so its workers' wealth class comes from the minimum wage, even with
+## "big" chosen for the next batch. Only a batch being made with that bonus makes them Rich, and
+## once its last hour is done they are Poor again (and leave the Villa).
+func test_idle_bonus_wealth_class() -> void:
+	var data := _housing_data()
+	var state := Sim.new_game(data, T0)
+	var villa: String = Sim.build(state, data, "villa", Vector2i(7, 5), T0).building_id
+	var farm := Sim.find_building(state, Sim.build(state, data, "crew_farm", Vector2i(6, 7), T0).building_id)
+	Sim.set_bonus(state, data, farm.id, "big", T0)
+	state.population.current = 2  # one household, both working at the farm
+	Sim.settle(state, data, T0)
+	var classes := Sim.adults_by_class(state, data, T0)
+	_check(Sim.hired(farm) == 2 and int(classes.poor.adults) == 2 and int(classes.rich.adults) == 0, "idle farm with Big chosen: its 2 workers count at the $15 minimum wage (Poor)")
+	_check(Sim.bonus_level(data, farm) == "big" and is_equal_approx(Sim.wage_per_worker(data, farm), 30.0), "...while Big ($30) is still the choice for the next batch")
+	_check(int(Sim.housing(state, data, T0).homes.get(villa, {}).get("households", 0)) == 0, "a Poor household can't live in the Villa")
+	_check(_batch(state, data, farm, 10, "big").ok, "a 10-hour batch with the Big bonus starts (10 x 60 s)")
+	classes = Sim.adults_by_class(state, data, T0)
+	_check(int(classes.rich.adults) == 2 and int(classes.poor.adults) == 0, "while it's being made, they earn $30: Rich")
+	_check(int(Sim.housing(state, data, T0).homes.get(villa, {}).get("households", 0)) == 1, "...so they move into the Villa ($15 rent)")
+	Sim.settle(state, data, T0 + 3600)
+	_check(not Sim.batch_running(farm) and Sim.has_batch(farm), "an hour later the batch is done, its wheat not yet collected")
+	classes = Sim.adults_by_class(state, data, T0 + 3600)
+	_check(int(classes.poor.adults) == 2 and int(classes.rich.adults) == 0, "idle again: back to Poor")
+	_check(int(Sim.housing(state, data, T0 + 3600).homes.get(villa, {}).get("households", 0)) == 0, "...and out of the Villa")
+	_check(int(Sim.stats(state).income.get("rent", 0)) == 250, "Villa rent only while the batch was made: $15 an hour x 10 minutes = $2.50")
 
 
 func test_who_lives_where() -> void:
@@ -2987,7 +3065,10 @@ func test_job_quality_from_bonus() -> void:
 	Sim.set_bonus(state, data, farm.id, "big", T0)
 	Sim.settle(state, data, T0)
 	happy = Sim.happiness(state, data, T0)
-	_check(is_equal_approx(float(happy.classes.rich.needs.jobs), 1.0) and is_equal_approx(float(happy.needs.jobs), (2 * 1.0 + 2 * 0.6) / 6.0), "the farm pays the big bonus: its 2 workers are Rich, with 100% jobs")
+	_check(not happy.classes.has("rich") and is_equal_approx(float(happy.needs.jobs), 0.4), "Big chosen for an idle farm's next batch: nobody is paid it yet, still 60% jobs")
+	_batch(state, data, farm, 100, "big")
+	happy = Sim.happiness(state, data, T0)
+	_check(is_equal_approx(float(happy.classes.rich.needs.jobs), 1.0) and is_equal_approx(float(happy.needs.jobs), (2 * 1.0 + 2 * 0.6) / 6.0), "the farm makes a batch with the big bonus: its 2 workers are Rich, with 100% jobs")
 	var gains := Sim.happiness_gains(data, happy)
 	_check(is_equal_approx(float(gains.jobs), 2 * 0.6 / 6.0), "jobs for the 2 jobless (no bonus) would add 20 points (%s)" % gains.jobs)
 
@@ -3110,6 +3191,26 @@ func _band_town(data: Dictionary, adults: int, homes: int, farms: int) -> Dictio
 	state.population.current = adults
 	Sim.settle(state, data, T0)  # hires, then houses everyone (huts for the rest)
 	return state
+
+
+## happiness.needs.food.max_happiness_when_unmet (2026-10-08): with no food selling, happiness is at
+## most that, however well the other needs are met; one food lifts it, and "To raise it" says so.
+func test_no_food_limit() -> void:
+	var data := _all_needs_data()  # Food, Jobs, Housing mixed 1 / 1 / 1, no expectations
+	data.config.happiness.needs.food["max_happiness_when_unmet"] = 0.3
+	var state := _band_town(data, 4, 1, 2)  # 4 adults, all working, all with a home
+	var happy := Sim.happiness(state, data, T0)
+	_check(is_equal_approx(float(happy.needs_met), 2.0 / 3.0), "no food, jobs and homes for all: needs met 67%")
+	_check(is_equal_approx(float(happy.score), 0.3) and str(happy.cap.get("need", "")) == "food", "...but with no food selling, happiness is held at 30%% (%d%%)" % happy.percent)
+	_check(is_equal_approx(float(happy.growth_speed), 0.5) and float(happy.leave_per_hour) > 0.0, "the limit counts for births and leaving too (30% = half-speed babies)")
+	var gains := Sim.happiness_gains(data, happy)
+	_check(is_equal_approx(float(gains.food), 0.5), "To raise it: 1 more food lifts the limit, 30%% -> 80%% (+%d)" % roundi(100 * float(gains.food)))
+	Sim.dev_lock_happiness(state, data, "food", 0.4, T0)  # as if 1 food were selling
+	happy = Sim.happiness(state, data, T0)
+	_check(is_equal_approx(float(happy.score), 0.8) and happy.cap.is_empty(), "with a food selling there is no limit: 80%")
+	data.config.happiness.needs.food.erase("max_happiness_when_unmet")
+	Sim.dev_lock_happiness(state, data, "food", -1.0, T0)
+	_check(is_equal_approx(float(Sim.happiness(state, data, T0).score), 2.0 / 3.0), "without the setting, no food just counts as a need at 0: 67%")
 
 
 ## The % on screen is rounded down, so it always falls in the band that counts: 19.6% shows
@@ -3537,8 +3638,13 @@ func test_real_happiness_data() -> void:
 	var state := Sim.new_game(data, T0)
 	Sim.settle(state, data, T0 + 60.0)
 	var happy := Sim.happiness(state, data, T0 + 60.0)
-	_check(float(happy.score) >= 0.5 and float(happy.score) < 0.8, "real data: a new game starts content, 50-79%% (%d%%)" % int(happy.percent))
-	_check(float(happy.leave_per_hour) == 0.0 and float(happy.move_in_speed) > 0.0 and float(happy.growth_speed) >= 1.0, "real data: at the start nobody leaves, babies come at normal speed and migrants may come")
+	# No food sells yet: the no-food limit (2026-10-08) holds a new game at 40%.
+	_check(happy.percent == 40 and str(happy.get("cap", {}).get("need", "")) == "food", "real data: a new game with no food selling is held at 40%% (%d%%)" % int(happy.percent))
+	_check(float(happy.move_in_speed) > 0.0 and float(happy.growth_speed) > 0.0, "real data: at the start babies come and migrants may come")
+	Sim.dev_lock_happiness(state, data, "food", 0.4, T0 + 60.0)  # as if 1 food were selling
+	happy = Sim.happiness(state, data, T0 + 60.0)
+	_check(float(happy.score) >= 0.5 and float(happy.score) < 0.8, "real data: with 1 food selling a new game is content, 50-79%% (%d%%)" % int(happy.percent))
+	_check(float(happy.leave_per_hour) == 0.0 and float(happy.growth_speed) >= 1.0, "real data: then nobody leaves and babies come at normal speed")
 	_check(float(Sim.expected_happiness(data.config.happiness, 600)) > float(Sim.expected_happiness(data.config.happiness, 100)), "real data: a big village expects more than a small one")
 	var b: Dictionary = data.buildings
 	_check(float(b.makeshift_hut.get("housing_quality", 1.0)) < float(b.public_housing.housing_quality) and float(b.public_housing.housing_quality) < float(b.small_house.housing_quality) and float(b.small_house.housing_quality) <= float(b.villa.housing_quality), "real data: hut < Public Housing < Regular House <= Villa")

@@ -13,7 +13,8 @@ signal power_bill_paid(cost: int, mwh: float)
 ## Sales while the game was closed are in offline_report instead.
 signal shelves_sold(earned: int, sold: Dictionary)
 ## People came or went while playing: `report` is the settle report, with "population" (moved
-## in), "born", "grew_up", "moved_away" (counts; missing = 0). While closed: offline_report instead.
+## in), "born", "grew_up", "moved_away", "left_for_work" (the part of moved_away who grew up with no
+## job waiting) (counts; missing = 0). While closed: offline_report instead.
 signal people_changed(report: Dictionary)
 
 const Simulation = preload("res://scripts/sim/simulation.gd")
@@ -1154,6 +1155,11 @@ func production_rates() -> Dictionary:
 ## without a job), "open_jobs"}
 func employment() -> Dictionary:
 	return _remember("employment", func(): return Simulation.employment(state, data(), TimeService.now()))
+
+
+## Open jobs no jobless adult here could take: what a migrant or a child growing up could get.
+func jobs_waiting() -> int:
+	return Simulation.jobs_waiting(employment())
 
 
 ## Money in and out over (up to) the last `window` seconds: {"income", "spending", "seconds"}.

@@ -533,12 +533,15 @@ func _on_people_changed(report: Dictionary) -> void:
 	var born := int(report.get("born", 0))
 	if born > 0:
 		parts.append("%s born" % ("A baby was" if born == 1 else "%d babies were" % born))
-	var grew := int(report.get("grew_up", 0))
+	var for_work := int(report.get("left_for_work", 0))  # grew up with no job waiting
+	var grew := int(report.get("grew_up", 0)) - for_work
 	if grew > 0:
 		parts.append("%d %s grew up and can work" % [grew, "child" if grew == 1 else "children"])
 	if not parts.is_empty():
 		hud.toast(" ⋅ ".join(parts))
-	var left := int(report.get("moved_away", 0))
+	if for_work > 0:
+		_warn("%d grown-up %s left the island to find work: build more jobs to keep them" % [for_work, "child" if for_work == 1 else "children"])
+	var left := int(report.get("moved_away", 0)) - for_work
 	if left > 0:
 		_warn("%d %s left the island: the village is unhappy" % [left, "person" if left == 1 else "people"])
 

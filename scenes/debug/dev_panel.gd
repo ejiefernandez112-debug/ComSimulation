@@ -251,6 +251,7 @@ func _tuning_page() -> VBoxContainer:
 	_tuning_row(life, {"path": "life.birth_rate_per_hour", "name": "Babies per adult / h", "step": 0.01})
 	_tuning_row(life, {"path": "life.death_rate_per_hour", "name": "Deaths per person / h", "step": 0.001})
 	_tuning_row(life, {"path": "life.grow_up_hours", "name": "Children grow up after (h)", "step": 1, "whole": true, "min": 1})
+	_tuning_row(life, {"path": "life.grown_ups_leave_without_job", "name": "Grown-ups with no job leave", "kind": "bool"})
 	var migrants := _section(page, "Migrant workers")
 	_tuning_row(migrants, {"path": "population_growth_seconds", "name": "A group every (seconds)", "step": 10, "whole": true})
 	_tuning_row(migrants, {"path": "move_in_group_size", "name": "Up to (adults a group)", "step": 1, "whole": true, "min": 1})
@@ -271,7 +272,7 @@ func _people_page() -> VBoxContainer:
 	children.add_child(_text("Children"))
 	for step in CHILD_STEPS:
 		children.add_child(_button("+%d" % step, "ChipOnButton", func(): _apply(Economy.dev_add_children(step), "+%d children" % step)))
-	children.add_child(_button("Grow up now", "", func(): _apply(Economy.dev_children_grow_up(), "Every child grew up")))
+	children.add_child(_button("Grow up now", "", func(): _apply(Economy.dev_children_grow_up(), "Every child grew up; any with no job waiting left the island")))
 	return page
 
 
@@ -657,6 +658,8 @@ func _happiness_tuning(page: VBoxContainer, happiness: Dictionary) -> void:
 	var scores: Array = needs.get("food", {}).get("scores", [])
 	for i in scores.size():
 		_tuning_row(food, {"path": "happiness.needs.food.scores.%d" % i, "name": "%d%s food%s" % [i, "+" if i == scores.size() - 1 else "", "" if i == 1 else "s"], "step": 0.05, "kind": "%"})
+	if needs.get("food", {}).has("max_happiness_when_unmet"):
+		_tuning_row(food, {"path": "happiness.needs.food.max_happiness_when_unmet", "name": "No food: happiness at most", "step": 0.05, "kind": "%"})
 	var other := _section(page, "Jobs, homes and crime")
 	for bonus in needs.get("jobs", {}).get("quality", {}):
 		_tuning_row(other, {"path": "happiness.needs.jobs.quality." + bonus, "name": "Job quality, %s bonus" % bonus.capitalize(), "step": 0.05, "kind": "%"})

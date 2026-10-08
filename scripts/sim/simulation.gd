@@ -81,7 +81,8 @@ static func new_game(data: Dictionary, now: float) -> Dictionary:
 ## Returns everything produced, e.g. {"wheat": 30, "population": 2, "wages": 12000, "water": 71800}
 ## (money in cents; "water" / "power" = water and power bills charged; "rent" = rent collected; "population" = people
 ## who moved in; "born", "grew_up", "died", "moved_away" = births, children who became adults,
-## deaths, people who left the island; for the offline summary).
+## deaths, people who left the island; "left_for_work" = the part of moved_away who grew up with
+## no job waiting; for the offline summary).
 ##
 ## A building's speed depends on how many workers are actually working in it (see
 ## building_speed), and wages are paid for each of them. That only changes at a few moments
@@ -104,7 +105,7 @@ static func settle(state: Dictionary, data: Dictionary, now: float, moment := {}
 	var water := 0
 	var power := 0
 	var rent := 0
-	var life := {"born": 0, "grew_up": 0, "died": 0, "moved_away": 0}
+	var life := {"born": 0, "grew_up": 0, "died": 0, "moved_away": 0, "left_for_work": 0}
 	var t := float(state.get("settled_at", state.get("last_saved_at", now)))
 	if now <= t:
 		# No time to add (or the clock moved backwards): only settle what can happen instantly,
@@ -152,7 +153,7 @@ static func settle(state: Dictionary, data: Dictionary, now: float, moment := {}
 			_meter_use(state, data, "water", water_m3_per_hour * (next - t) / 3600.0, t)
 			_meter_use(state, data, "power", grid_mw * (next - t) / 3600.0, t)
 			grown += _grow_population(state, data, next, job_cap)
-			_add_to(life, _settle_life(state, data, t, next, life_rates, homes, homes_adults, _leave_pool(happy)))
+			_add_to(life, _settle_life(state, data, t, next, life_rates, homes, homes_adults, _leave_pool(happy), e))
 			t = next
 			water += _bill_if_due(state, data, "water", t)
 			if power_on(data):
@@ -165,7 +166,8 @@ static func settle(state: Dictionary, data: Dictionary, now: float, moment := {}
 	var counters := people_stats(state)
 	counters.moved_in = int(counters.moved_in) + grown
 	for key in life:
-		counters[key] = int(counters[key]) + int(life[key])
+		if counters.has(key):  # left_for_work is only for the report: they're in moved_away too
+			counters[key] = int(counters[key]) + int(life[key])
 		if int(life[key]) > 0:
 			report[key] = int(life[key])
 	if grown > 0:
@@ -276,7 +278,13 @@ static func _job_cap(state: Dictionary, data: Dictionary, t: float, e := {}) -> 
 		return NO_LIMIT
 	if e.is_empty():
 		e = employment(state, data, t)
-	return adults(state) + maxi(int(e.open_jobs) - int(e.unemployed), 0)
+	return adults(state) + jobs_waiting(e)
+
+
+## Open jobs that no jobless adult already here could take: the jobs a migrant worker, or a child
+## growing up, could get. `e` = employment().
+static func jobs_waiting(e: Dictionary) -> int:
+	return maxi(int(e.open_jobs) - int(e.unemployed), 0)
 
 
 ## The most adults the homes let move in: the room in real homes (see _adult_room for
@@ -375,7 +383,8 @@ const BUILT_IN_NEEDS := ["food", "jobs", "housing", "safety"]
 ## How the village feels and what that does to births, the move-in speed and people leaving:
 ## {"score" (0-1, what counts), "percent" (the score as shown: whole percent rounded DOWN, so
 ##  "19%" always means the band below 20%), "needs_met" (0-1, the classes' needs mixed),
-##  "expected" (0-1, what people expect at this size), "next_expected" ({"people", "expected"}: the
+##  "expected" (0-1, what people expect at this size), "cap" (happiness_cap: {"need", "max"} while
+##  an unmet need limits it, e.g. no food: at most 40%; else {}), "next_expected" ({"people", "expected"}: the
 ##  next step up; {} after the last), "needs" ({need: 0-1} for the whole village),
 ##  "classes" ({class: {"people" (adults + their share of the children), "adults", "households",
 ##  "score", "needs" {need: 0-1}, "weights", ...the parts happiness_gains needs}}),
@@ -445,7 +454,8 @@ static func happiness(state: Dictionary, data: Dictionary, now: float, homes := 
 			village[need] = float(locks.get(need, shared.get(need, 1.0)))
 		needs_met = _class_score(config.get("weights", {}), village)
 	var expected := float(locks.get("expected", expected_happiness(config, people)))
-	var score := float(locks.get("score", _happiness_from(config, needs_met, expected)))
+	var cap := happiness_cap(config, village)
+	var score := float(locks.get("score", _happiness_from(config, needs_met, expected, cap)))
 	var jobless_class := wealth_class_of(data, 0.0)
 	var homeless_workers := 0
 	for id in homes.classes:
@@ -454,6 +464,7 @@ static func happiness(state: Dictionary, data: Dictionary, now: float, homes := 
 	var band := _band_for(config, score)
 	var leave := float(band.get("leave_per_hour", 0.0))
 	return {"score": score, "percent": happiness_percent(score), "needs_met": needs_met, "expected": expected,
+		"cap": {} if locks.has("score") else cap,
 		"next_expected": next_expectation(config, people), "needs": village, "classes": classes,
 		"foods": foods, "households": int(homes.households), "homeless": int(homes.homeless),
 		"unpowered": int(parts.unpowered), "crime": crime, "police": police, "coverage": coverage,
@@ -532,10 +543,11 @@ static func _hut_quality(data: Dictionary) -> float:
 	return float(data.buildings.get(hut, {}).get("housing_quality", 0.0)) if hut != "" else 0.0
 
 
-## How good a job at this building is, 0-1: happiness.needs.jobs.quality for its wage bonus (None,
-## Small, Good, Big; a bonus not listed, or no list at all: 1).
+## How good a job at this building is right now, 0-1: happiness.needs.jobs.quality for the wage
+## bonus its workers are paid now (bonus_earned_now: None, Small, Good, Big; a bonus not listed,
+## or no list at all: 1).
 static func job_quality(data: Dictionary, b: Dictionary) -> float:
-	return _job_quality_for(data.config.get("happiness", {}), bonus_level(data, b))
+	return _job_quality_for(data.config.get("happiness", {}), bonus_earned_now(data, b))
 
 
 static func _job_quality_for(config: Dictionary, bonus: String) -> float:
@@ -661,10 +673,27 @@ static func next_expectation(config: Dictionary, people: int) -> Dictionary:
 
 ## Happiness from needs met and expectations: content_at (0.5) when needs met equals what people
 ## expect, higher or lower by the difference (0-1). Without expectations: needs met itself.
-static func _happiness_from(config: Dictionary, needs_met: float, expected: float) -> float:
-	if not config.has("expectations"):
-		return clampf(needs_met, 0.0, 1.0)
-	return clampf(float(config.get("content_at", 0.5)) + needs_met - expected, 0.0, 1.0)
+## `cap` (happiness_cap) holds it down while a need it can't do without is unmet.
+static func _happiness_from(config: Dictionary, needs_met: float, expected: float, cap := {}) -> float:
+	var score := clampf(needs_met, 0.0, 1.0)
+	if config.has("expectations"):
+		score = clampf(float(config.get("content_at", 0.5)) + needs_met - expected, 0.0, 1.0)
+	return minf(score, float(cap.max)) if not cap.is_empty() else score
+
+
+## The lowest limit an unmet need puts on happiness: happiness.needs[need].max_happiness_when_unmet
+## while that need is at 0 for the whole village (no food selling: at most 40%, whatever the other
+## needs). {"need", "max"}, or {} while no such need is unmet. `village` = needs for the village.
+static func happiness_cap(config: Dictionary, village: Dictionary) -> Dictionary:
+	var cap := {}
+	var needs: Dictionary = config.get("needs", {})
+	for need in needs:
+		if not needs[need].has("max_happiness_when_unmet") or float(village.get(need, 1.0)) > 0.000001:
+			continue
+		var most := float(needs[need].max_happiness_when_unmet)
+		if cap.is_empty() or most < float(cap.max):
+			cap = {"need": need, "max": most}
+	return cap
 
 
 ## A happiness score as the whole percent shown on screen, rounded DOWN (0.196 -> 19), with the
@@ -702,8 +731,9 @@ static func happiness_gains(data: Dictionary, happy: Dictionary) -> Dictionary:
 			for need in after:
 				if needs.has(need) and not locks.has(need):
 					needs[need] = maxf(float(needs[need]), float(after[need]))
-			changed[id] = {"people": classes[id].people, "score": _class_score(classes[id].weights, needs)}
-		var score := _happiness_from(config, _needs_met(changed), float(happy.expected))
+			changed[id] = {"people": classes[id].people, "score": _class_score(classes[id].weights, needs), "needs": needs}
+		var cap := happiness_cap(config, _village_needs(changed, ids))  # e.g. one food lifts the no-food limit
+		var score := _happiness_from(config, _needs_met(changed), float(happy.expected), cap)
 		gains[fix] = maxf(score - float(happy.score), 0.0)
 	return gains
 
@@ -964,21 +994,32 @@ static func _next_life_event(state: Dictionary, data: Dictionary, t: float, rate
 ## change midway): children whose time has come grow up, then deaths, then people leaving (a whole
 ## group at once), then births. Adults who die or leave are simply gone (hiring then frees a post, the unemployed
 ## first, so the homeless are the first to go); a child is taken from the youngest group; a baby
-## joins the age group of its hour. Returns {"born", "grew_up", "died", "moved_away"}.
+## joins the age group of its hour. With life.grown_ups_leave_without_job, a child growing up
+## with no job waiting (jobs_waiting) leaves the island to find work instead of staying jobless.
+## Returns {"born", "grew_up", "died", "moved_away", "left_for_work" (the part of moved_away that
+## left on growing up)}.
 ## `homes` = housing at t0 (after hiring) and `homes_adults` = the adults then: births need the
 ## child places of t1, which are still those of t0 as long as the number of adults is the same
 ## (nobody is hired or let go in between; only households, made of adults, decide them).
 ## `leave_cap` = _leave_pool at t0: never more adults leave than that, less those who just died
-## (deaths take the jobless first too).
-static func _settle_life(state: Dictionary, data: Dictionary, t0: float, t1: float, rates: Dictionary, homes := {}, homes_adults := -1, leave_cap := NO_LIMIT) -> Dictionary:
-	var out := {"born": 0, "grew_up": 0, "died": 0, "moved_away": 0}
+## (deaths take the jobless first too). `e` = employment at t0 (after hiring), if worked out.
+static func _settle_life(state: Dictionary, data: Dictionary, t0: float, t1: float, rates: Dictionary, homes := {}, homes_adults := -1, leave_cap := NO_LIMIT, e := {}) -> Dictionary:
+	var out := {"born": 0, "grew_up": 0, "died": 0, "moved_away": 0, "left_for_work": 0}
 	var pop: Dictionary = state.population
 	if not pop.has("children"):
 		pop["children"] = []
 	var groups: Array = pop.children
+	var waiting := _jobs_for_grown_ups(state, data, t0, t1, e)
 	while not groups.is_empty() and float(groups[0].grows_up_at) <= t1:
-		out.grew_up += int(groups[0].count)  # they're adults now: still counted in current
+		var grown := int(groups[0].count)  # they're adults now: still counted in current
+		out.grew_up += grown
 		groups.pop_front()
+		if waiting >= 0:  # only the ones a job is waiting for stay
+			var gone := maxi(grown - waiting, 0)
+			waiting -= grown - gone
+			pop.current = int(pop.current) - gone
+			out.moved_away += gone
+			out.left_for_work += gone
 	var carry := _life_carry(state)
 	var events := {}
 	for key in rates:
@@ -992,7 +1033,7 @@ static func _settle_life(state: Dictionary, data: Dictionary, t0: float, t1: flo
 	out.died = adult_deaths + _remove_children(state, int(events.child_deaths))
 	var adults_leaving := mini(int(events.get("adult_leaves", 0)), mini(adults(state), maxi(leave_cap - adult_deaths, 0)))
 	pop.current = int(pop.current) - adults_leaving
-	out.moved_away = adults_leaving + _remove_children(state, int(events.get("child_leaves", 0)))
+	out.moved_away += adults_leaving + _remove_children(state, int(events.get("child_leaves", 0)))
 	var life: Dictionary = data.config.get("life", {})
 	if homes.is_empty() or adults(state) != homes_adults:
 		homes = housing(state, data, t1)
@@ -1007,6 +1048,22 @@ static func _settle_life(state: Dictionary, data: Dictionary, t0: float, t1: flo
 		pop.current = int(pop.current) + born
 		out.born = born
 	return out
+
+
+## How many children growing up over [t0, t1] may stay (life.grown_ups_leave_without_job): the
+## jobs waiting at t0 for them, less any migrant worker who arrived during the piece (not hired
+## until the next one). -1 = everyone stays (the rule is off, or nobody grows up then).
+## `e` = employment at t0 (after hiring), if worked out.
+static func _jobs_for_grown_ups(state: Dictionary, data: Dictionary, t0: float, t1: float, e := {}) -> int:
+	var groups: Array = state.population.children
+	if groups.is_empty() or float(groups[0].grows_up_at) > t1:
+		return -1
+	if not bool(data.config.get("life", {}).get("grown_ups_leave_without_job", false)):
+		return -1
+	if e.is_empty():
+		e = employment(state, data, t0)
+	var jobless_now := adults(state) - int(e.employed)  # the jobless at t0 plus migrants since
+	return maxi(int(e.open_jobs) - jobless_now, 0)
 
 
 ## Takes up to n children away, youngest group first (they died). Returns how many were taken.
@@ -1099,7 +1156,8 @@ static func wealth_class_of(data: Dictionary, wage: float) -> String:
 
 ## Adults by wealth class, poorest first: {class: {"adults", "wages" (dollars an hour, all of
 ## them together), "workers" (adults with a job), "job_quality" (their jobs' quality added up,
-## see job_quality)}}. A worker's class comes from their wage (with the bonus); no job = Broke.
+## see job_quality)}}. A worker's class comes from the wage they earn now (wage_earned_now: an
+## idle farm's next-batch bonus doesn't count); no job = Broke.
 static func adults_by_class(state: Dictionary, data: Dictionary, now: float) -> Dictionary:
 	var out := {}
 	for c in wealth_classes(data):
@@ -1114,7 +1172,7 @@ static func adults_by_class(state: Dictionary, data: Dictionary, now: float) -> 
 		var n := mini(hired(b), posts(data, b, now))
 		if n <= 0:
 			continue
-		var wage := wage_per_worker(data, b)
+		var wage := wage_earned_now(data, b)
 		var group: Dictionary = out.get(wealth_class_of(data, wage), out[jobless])
 		group.adults = int(group.adults) + n
 		group.wages = float(group.wages) + n * wage
@@ -3796,16 +3854,22 @@ static func dev_add_children(state: Dictionary, data: Dictionary, n: int, now: f
 	return _ok()
 
 
-## Every child grows up into an adult now (counted as growing up).
+## Every child grows up into an adult now (counted as growing up). Like growing up by itself,
+## with life.grown_ups_leave_without_job the ones no job is waiting for leave the island.
+## Returns {"grew_up", "left_for_work"}.
 static func dev_children_grow_up(state: Dictionary, data: Dictionary, now: float) -> Dictionary:
 	settle(state, data, now)
 	var grown := children_count(state)
 	if grown <= 0:
 		return _fail("There are no children.")
+	var waiting := _jobs_for_grown_ups(state, data, now, INF)
+	var gone := maxi(grown - waiting, 0) if waiting >= 0 else 0
 	state.population.children = []  # still counted in population.current: adults now
+	state.population.current = int(state.population.current) - gone
 	people_stats(state).grew_up = int(people_stats(state).grew_up) + grown
+	people_stats(state).moved_away = int(people_stats(state).moved_away) + gone
 	_hire(state, data, now)
-	return _ok({"grew_up": grown})
+	return _ok({"grew_up": grown, "left_for_work": gone})
 
 
 ## Every building going up and every upgrade under way is finished now. Their construction
@@ -4186,6 +4250,21 @@ static func _stop_time(state: Dictionary, data: Dictionary, b: Dictionary, t: fl
 ## worker_types, set by the game) plus the building's bonus (None 0% / Small 20% / ...).
 static func wage_per_worker(data: Dictionary, b: Dictionary) -> float:
 	return minimum_wage(data, b) * (1.0 + bonus_rate(data, b))
+
+
+## What one worker here earns per hour right now (dollars), which decides their wealth class:
+## the minimum wage plus the bonus they are paid now (bonus_earned_now).
+static func wage_earned_now(data: Dictionary, b: Dictionary) -> float:
+	return minimum_wage(data, b) * (1.0 + float(data.config.get("wage_bonuses", {}).get(bonus_earned_now(data, b), 0.0)))
+
+
+## The wage bonus the workers here are paid right now: bonus_level, except at a Farm, Mill or
+## Bakery with no batch being made: "none", because nobody is paid a bonus while it's idle. The
+## bonus chosen for the next batch only counts once that batch starts.
+static func bonus_earned_now(data: Dictionary, b: Dictionary) -> String:
+	if makes_batches(data, b) and not batch_running(b):
+		return "none"
+	return bonus_level(data, b)
 
 
 ## The minimum wage per hour (dollars) for this building's worker type, before any bonus.

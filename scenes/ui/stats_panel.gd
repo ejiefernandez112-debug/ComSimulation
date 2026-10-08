@@ -416,15 +416,19 @@ func _need_reason(happy: Dictionary, e: Dictionary, need: String) -> String:
 
 
 ## "Needs met 42% ⋅ people expect 15% at 120 people ⋅ 20% at 150": happiness is the needs met
-## compared with what people expect, which rises as the village grows.
+## compared with what people expect, which rises as the village grows. While an unmet need limits
+## it: "⋅ no Food selling: at most 40%".
 func _expectation_text(happy: Dictionary, people: int) -> String:
 	var text := "Needs met %d%%" % roundi(100.0 * float(happy.needs_met))
-	if not GameData.config.get("happiness", {}).has("expectations"):
-		return text
-	text += " ⋅ %d people expect %d%%" % [people, roundi(100.0 * float(happy.expected))]
-	var next: Dictionary = happy.get("next_expected", {})
-	if not next.is_empty():
-		text += " (%d%% at %d people)" % [roundi(100.0 * float(next.expected)), int(next.people)]
+	if GameData.config.get("happiness", {}).has("expectations"):
+		text += " ⋅ %d people expect %d%%" % [people, roundi(100.0 * float(happy.expected))]
+		var next: Dictionary = happy.get("next_expected", {})
+		if not next.is_empty():
+			text += " (%d%% at %d people)" % [roundi(100.0 * float(next.expected)), int(next.people)]
+	var cap: Dictionary = happy.get("cap", {})
+	if not cap.is_empty():
+		var lacking := "no food selling" if str(cap.need) == "food" else "no " + Economy.need_name(str(cap.need)).to_lower()
+		text += " ⋅ %s: at most %d%%" % [lacking, roundi(100.0 * float(cap.max))]
 	return text
 
 
@@ -445,6 +449,8 @@ func _refresh_groups(e: Dictionary) -> void:
 		for i in range(CHILD_ROWS, groups.size()):
 			rest += int(groups[i].count)
 		lines.append("…and %d younger" % rest)
+	if not groups.is_empty() and bool(GameData.config.get("life", {}).get("grown_ups_leave_without_job", false)):
+		lines.append("Jobs waiting for them now: %d. The rest leave to find work." % Economy.jobs_waiting())
 	_show("children_by_age", "No children yet." if lines.is_empty() else "Children by age:\n" + "\n".join(lines), UITheme.TEXT_DIM)
 	var hour := Economy.people_flow(3600.0)
 	var ever := Economy.people_stats()

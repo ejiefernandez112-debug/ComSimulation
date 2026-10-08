@@ -414,7 +414,7 @@ func _check_config(data: Dictionary) -> void:
 	if c.has("life"):
 		var life: Dictionary = c.life
 		var at := where + " life"
-		_unknown_keys(life, ["birth_rate_per_hour", "death_rate_per_hour", "grow_up_hours", "child_group_hours"], at)
+		_unknown_keys(life, ["birth_rate_per_hour", "death_rate_per_hour", "grow_up_hours", "child_group_hours", "grown_ups_leave_without_job"], at)
 		_number_at_least(life, "birth_rate_per_hour", 0.0, at, true)
 		_number_at_least(life, "death_rate_per_hour", 0.0, at, true)
 		_number_at_least(life, "child_group_hours", 0.001, at, true)
@@ -642,10 +642,10 @@ func _check_happiness(data: Dictionary, h: Dictionary, where: String) -> void:
 	for need in needs:
 		var at := "%s needs '%s'" % [where, need]
 		var n: Dictionary = needs[need]
-		_unknown_keys(n, ["name"] + extra.get(need, []), at)
+		_unknown_keys(n, ["name", "max_happiness_when_unmet"] + extra.get(need, []), at)
 		if str(n.get("name", "")) == "":
 			_fail("%s: has no name" % at)
-		for key in ["unpowered", "crime", "crime_per_jobless", "crime_per_homeless"]:
+		for key in ["unpowered", "crime", "crime_per_jobless", "crime_per_homeless", "max_happiness_when_unmet"]:
 			_share(n.get(key), "%s %s" % [at, key], false)
 		if need == "food":
 			var scores: Array = n.get("scores", [])
