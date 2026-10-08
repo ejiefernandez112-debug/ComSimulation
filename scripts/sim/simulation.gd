@@ -364,38 +364,34 @@ static func _move_in_group(data: Dictionary) -> int:
 
 
 # --- Happiness (plan.md §5.6 "Needs & happiness") ------------------------------------
-# Tropico-style, kept to group counts: each wealth class (Broke, Poor, Well off...) scores every
-# need from 0 to 1 and mixes them with its own weights (happiness.class_weights; rich people care
-# more about housing, poor people about food). The village's "needs met" is the classes' scores,
-# weighted by how many people are in each. Happiness is needs met compared with what people
-# expect, which rises as the village grows (happiness.expectations), and picks the band that sets
-# births, migrants and people leaving (happiness.growth_speeds).
+# Kept simple on purpose (2026-10-08): every need is scored 0-1 for the whole village, and
+# happiness is their plain average. Food, Jobs and Housing count from the start; the others
+# (Health, Fun, Faith, Safety) start counting once the village reaches their from_people, so a
+# growing village wants more. No food selling holds happiness down (max_happiness_when_unmet).
+# The mood band it falls in (happiness.moods) sets births, migrants and people leaving.
 # Happiness is never stored: it's worked out from the state. Every input only changes at moments
 # settling already splits on (people arriving, born, dying or leaving; a building finished,
 # upgraded, staffed or switched off, and the power that goes with it; a shelf selling out; a player
 # action), so time away stays one calculation.
 
-## Needs the game scores by its own rules. Any other need (Health, Fun, Faith...) is met by
-## service buildings ("service_need" in buildings.json); Safety is too, against crime.
-const BUILT_IN_NEEDS := ["food", "jobs", "housing", "safety"]
+## Needs the game scores by its own rules. Any other need (Health, Fun, Faith, Safety) is met by
+## service buildings ("service_need" in buildings.json).
+const BUILT_IN_NEEDS := ["food", "jobs", "housing"]
 
 
 ## How the village feels and what that does to births, the move-in speed and people leaving:
 ## {"score" (0-1, what counts), "percent" (the score as shown: whole percent rounded DOWN, so
-##  "19%" always means the band below 20%), "needs_met" (0-1, the classes' needs mixed),
-##  "expected" (0-1, what people expect at this size), "cap" (happiness_cap: {"need", "max"} while
-##  an unmet need limits it, e.g. no food: at most 40%; else {}), "next_expected" ({"people", "expected"}: the
-##  next step up; {} after the last), "needs" ({need: 0-1} for the whole village),
-##  "classes" ({class: {"people" (adults + their share of the children), "adults", "households",
-##  "score", "needs" {need: 0-1}, "weights", ...the parts happiness_gains needs}}),
-##  "foods" (different foods selling), "households", "homeless" (households in huts),
-##  "unpowered" (households in homes without power), "crime" (0-1), "police" (0-1, how much of
-##  it police keep down), "coverage" ({need: {"places",
-##  "people", "quality"}} for needs met by service buildings), "jobless" (adults without a job),
-##  "homeless_workers" (adults with a job living in huts), "growth_speed" (1.5 = babies come 1.5x
+##  "14%" always means the mood below 15%), "mood" (its name: "Angry", "Content"...),
+##  "needs_met" (0-1, the average of the needs that count, before any cap), "cap"
+##  (happiness_cap: {"need", "max"} while an unmet need limits it, e.g. no food; else {}),
+##  "needs" ({need: 0-1} for the needs that count now), "later" ({need: people} for the needs
+##  that start counting at a bigger size), "people", "foods" (different foods selling),
+##  "households", "homeless" (households in huts), "unpowered" (households in homes without
+##  power), "home_quality" and "unpowered_loss" (households x home quality, and what power would
+##  add; for happiness_gains), "coverage" ({need: {"places", "people", "quality"}} for needs met by
+##  service buildings), "jobless" (adults without a job), "growth_speed" (1.5 = babies come 1.5x
 ##  as fast, 0 = none), "move_in_speed" (migrant workers), "leave_per_hour" (share of ADULTS who
-##  leave the island each hour, only the jobless; 0 when happy enough), "children_leave_per_hour",
-##  "homeless_workers_leave" (true: adults in huts leave too, even with a job), "dev_locks"}.
+##  leave the island each hour, only the jobless; 0 when happy enough), "dev_locks"}.
 ## Without a "happiness" block in game_config.json there are no needs: score 1, speed 1.
 ## `homes` (housing) and `e` (employment) at `now` can be handed in when already worked out.
 static func happiness(state: Dictionary, data: Dictionary, now: float, homes := {}, e := {}) -> Dictionary:
@@ -406,89 +402,49 @@ static func happiness(state: Dictionary, data: Dictionary, now: float, homes := 
 		homes = housing(state, data, now)
 	var locks := dev_locks(state)
 	var people := int(e.population)
-	var ids := need_ids(data)
 	var parts := _happiness_walk(state, data, homes, now)
-	# Needs that are the same for everyone: food on the shelves, service buildings, safety.
 	var foods := foods_selling(state, data, now)
-	var shared := {"food": _food_score(config, foods)}
+	var households := int(homes.households)
 	var coverage := {}
 	for need in parts.places:
 		coverage[need] = {"places": float(parts.places[need]), "people": people,
 			"quality": float(parts.quality[need]) / float(parts.places[need]) if float(parts.places[need]) > 0.0 else 0.0}
-	for need in ids:
-		if not BUILT_IN_NEEDS.has(need):
-			shared[need] = _covered(coverage, need, people)
-	var crime := _crime(config, int(e.unemployed), int(e.adults), int(homes.homeless), int(homes.households))
-	var police := _covered(coverage, "safety", people)
-	shared["safety"] = 1.0 - crime * (1.0 - police)
-	# Each class's own needs, and its score.
-	var classes := {}
-	var hut_quality := _hut_quality(data)
-	for id in homes.classes:
-		var c: Dictionary = homes.classes[id]
-		var adults_here := int(c.adults)
-		if adults_here <= 0:
+	var needs := {}
+	var later := {}
+	for need in need_ids(data):
+		var from := need_from_people(data, need)
+		if people < from:
+			later[need] = from
 			continue
-		var households := int(c.households)
-		var needs := {}
-		for need in ids:
-			if need == "jobs":
-				needs[need] = float(c.get("job_quality", 0.0)) / adults_here
-			elif need == "housing":
-				needs[need] = (float(parts.home_quality.get(id, 0.0)) + int(c.homeless) * hut_quality) / households if households > 0 else 1.0
-			else:
-				needs[need] = float(shared.get(need, 1.0))
-			needs[need] = float(locks.get(need, needs[need]))  # a developer lock replaces it for everyone
-		var weights := _weights_for(config, id)
-		classes[id] = {"people": adults_here + _children_share(int(e.children), households, int(homes.households)),
-			"adults": adults_here, "households": households, "score": _class_score(weights, needs),
-			"needs": needs, "weights": weights, "homeless": int(c.homeless), "workers": int(c.get("workers", 0)),
-			"job_quality": float(c.get("job_quality", 0.0)), "home_quality": float(parts.home_quality.get(id, 0.0)),
-			"unpowered_loss": float(parts.unpowered_loss.get(id, 0.0))}
-	var village := _village_needs(classes, ids)
-	var needs_met := _needs_met(classes)
-	if classes.is_empty():
-		# Nobody lives here: newcomers judge the village by what it offers (food, services), with
-		# no jobs or homes lacking yet.
-		for need in ids:
-			village[need] = float(locks.get(need, shared.get(need, 1.0)))
-		needs_met = _class_score(config.get("weights", {}), village)
-	var expected := float(locks.get("expected", expected_happiness(config, people)))
-	var cap := happiness_cap(config, village)
-	var score := float(locks.get("score", _happiness_from(config, needs_met, expected, cap)))
-	var jobless_class := wealth_class_of(data, 0.0)
-	var homeless_workers := 0
-	for id in homes.classes:
-		if id != jobless_class:
-			homeless_workers += int(homes.classes[id].get("homeless_adults", 0))
+		var value := 1.0
+		match need:
+			"food":
+				value = _food_score(config, foods)
+			"jobs":  # the share of adults with a job (nobody here: nobody lacks one)
+				value = 1.0 - float(e.unemployed) / int(e.adults) if int(e.adults) > 0 else 1.0
+			"housing":  # how good the homes are, a household in a hut counting as a hut
+				value = (float(parts.home_quality) + int(homes.homeless) * _hut_quality(data)) / households if households > 0 else 1.0
+			_:  # met by service buildings
+				value = _covered(coverage, need, people)
+		needs[need] = float(locks.get(need, value))  # a developer lock replaces it
+	var needs_met := _average(needs)
+	var cap := happiness_cap(config, needs)
+	var score := float(locks.get("score", _happiness_from(config, needs)))
 	var band := _band_for(config, score)
-	var leave := float(band.get("leave_per_hour", 0.0))
-	return {"score": score, "percent": happiness_percent(score), "needs_met": needs_met, "expected": expected,
-		"cap": {} if locks.has("score") else cap,
-		"next_expected": next_expectation(config, people), "needs": village, "classes": classes,
-		"foods": foods, "households": int(homes.households), "homeless": int(homes.homeless),
-		"unpowered": int(parts.unpowered), "crime": crime, "police": police, "coverage": coverage,
-		"jobless": int(e.unemployed), "homeless_workers": homeless_workers,
-		"growth_speed": float(band.get("speed", 1.0)),
-		"move_in_speed": float(band.get("move_in", band.get("speed", 1.0))),
-		"leave_per_hour": leave, "children_leave_per_hour": float(band.get("children_leave_per_hour", leave)),
-		"homeless_workers_leave": bool(band.get("homeless_workers_leave", false)),
-		"dev_locks": locks}
+	return {"score": score, "percent": happiness_percent(score), "mood": str(band.get("name", "")),
+		"needs_met": needs_met, "cap": {} if locks.has("score") else cap,
+		"needs": needs, "later": later, "people": people, "foods": foods, "households": households,
+		"homeless": int(homes.homeless), "unpowered": int(parts.unpowered),
+		"home_quality": float(parts.home_quality), "unpowered_loss": float(parts.unpowered_loss),
+		"coverage": coverage, "jobless": int(e.unemployed),
+		"growth_speed": float(band.get("births", 1.0)),
+		"move_in_speed": float(band.get("move_in", band.get("births", 1.0))),
+		"leave_per_hour": float(band.get("leave_per_hour", 0.0)), "dev_locks": locks}
 
 
-## The needs that count, in the order to show them: those in happiness.needs, then any other
-## with a weight (happiness.weights or class_weights). A need nobody gives a weight doesn't count.
+## Every need, in the order to show them (happiness.needs), counting now or not.
 static func need_ids(data: Dictionary) -> Array:
-	var config: Dictionary = data.config.get("happiness", {})
-	var all: Array = config.get("needs", {}).keys()
-	var weighted := {}
-	for weights in [config.get("weights", {})] + config.get("class_weights", {}).values():
-		for need in weights:
-			if not all.has(need):
-				all.append(need)
-			if float(weights[need]) > 0.0:
-				weighted[need] = true
-	return all.filter(func(need): return weighted.has(need))
+	return data.config.get("happiness", {}).get("needs", {}).keys()
 
 
 ## A need's name on screen (happiness.needs[need].name; else the id, capitalised).
@@ -496,23 +452,27 @@ static func need_name(data: Dictionary, need: String) -> String:
 	return str(data.config.get("happiness", {}).get("needs", {}).get(need, {}).get("name", need.capitalize()))
 
 
-## One walk over the buildings for what happiness needs from them: {"home_quality" {class: sum
-## of households x home quality}, "unpowered_loss" {class: the quality their homes lose for lack
-## of power}, "unpowered" (households in homes without power), "places" {need: places in service
-## buildings}, "quality" {need: places x their quality}}. `homes` = housing() at `now`.
+## The village size (all people) at which a need starts counting (happiness.needs[need].from_people; 0 = always).
+static func need_from_people(data: Dictionary, need: String) -> int:
+	return int(data.config.get("happiness", {}).get("needs", {}).get(need, {}).get("from_people", 0))
+
+
+## One walk over the buildings for what happiness needs from them: "home_quality" (households in
+## real homes x their home's quality, added up), "unpowered_loss" (the quality those homes lose
+## for lack of power), "unpowered" (households in homes without power), "places" {need: places in
+## service buildings}, "quality" {need: places x their quality}. `homes` = housing() at `now`.
 static func _happiness_walk(state: Dictionary, data: Dictionary, homes: Dictionary, now: float) -> Dictionary:
-	var out := {"home_quality": {}, "unpowered_loss": {}, "unpowered": 0, "places": {}, "quality": {}}
+	var out := {"home_quality": 0.0, "unpowered_loss": 0.0, "unpowered": 0, "places": {}, "quality": {}}
 	for b in state.buildings:
 		var home: Dictionary = homes.homes.get(b.id, {})
 		if not home.is_empty() and home.has("classes"):  # a real home (huts have no "classes")
 			var full := float(data.buildings.get(b.type, {}).get("housing_quality", 1.0))
 			var quality := home_quality(data, b)
-			for id in home.classes:
-				var households := int(home.classes[id])
-				out.home_quality[id] = float(out.home_quality.get(id, 0.0)) + households * quality
-				out.unpowered_loss[id] = float(out.unpowered_loss.get(id, 0.0)) + households * (full - quality)
-				if quality < full:
-					out.unpowered = int(out.unpowered) + households
+			var households := int(home.households)
+			out.home_quality = float(out.home_quality) + households * quality
+			out.unpowered_loss = float(out.unpowered_loss) + households * (full - quality)
+			if quality < full:
+				out.unpowered = int(out.unpowered) + households
 		var need := service_need(data, b)
 		if need != "":
 			var places := service_places(state, data, b, now)
@@ -541,17 +501,6 @@ static func home_quality(data: Dictionary, b: Dictionary) -> float:
 static func _hut_quality(data: Dictionary) -> float:
 	var hut := hut_type_of(data)
 	return float(data.buildings.get(hut, {}).get("housing_quality", 0.0)) if hut != "" else 0.0
-
-
-## How good a job at this building is right now, 0-1: happiness.needs.jobs.quality for the wage
-## bonus its workers are paid now (bonus_earned_now: None, Small, Good, Big; a bonus not listed,
-## or no list at all: 1).
-static func job_quality(data: Dictionary, b: Dictionary) -> float:
-	return _job_quality_for(data.config.get("happiness", {}), bonus_earned_now(data, b))
-
-
-static func _job_quality_for(config: Dictionary, bonus: String) -> float:
-	return float(config.get("needs", {}).get("jobs", {}).get("quality", {}).get(bonus, 1.0))
 
 
 ## The need this service building meets ("service_need" in buildings.json; "" for any other).
@@ -586,104 +535,27 @@ static func _covered(coverage: Dictionary, need: String, people: int) -> float:
 	return minf(float(c.get("places", 0.0)) / people, 1.0) * float(c.get("quality", 0.0))
 
 
-## Crime, 0-1 (happiness.needs.safety): a base level, plus more for the share of adults without a
-## job and the share of households in huts. Police (Safety service buildings) keep it down.
-static func _crime(config: Dictionary, jobless: int, adults_now: int, homeless: int, households: int) -> float:
-	var safety: Dictionary = config.get("needs", {}).get("safety", {})
-	var crime := float(safety.get("crime", 0.0))
-	if adults_now > 0:
-		crime += float(safety.get("crime_per_jobless", 0.0)) * jobless / adults_now
-	if households > 0:
-		crime += float(safety.get("crime_per_homeless", 0.0)) * homeless / households
-	return clampf(crime, 0.0, 1.0)
-
-
-## A class's need weights: happiness.weights, with that class's own (class_weights) on top.
-static func _weights_for(config: Dictionary, class_id: String) -> Dictionary:
-	var weights: Dictionary = config.get("weights", {}).duplicate()
-	weights.merge(config.get("class_weights", {}).get(class_id, {}), true)
-	return weights
-
-
-## The children counted with a class: their share of all children, by its households (children
-## live with the households). Only used as a weight, so it may be a fraction.
-static func _children_share(children: int, households: int, all_households: int) -> float:
-	return children * float(households) / all_households if all_households > 0 else 0.0
-
-
-## A class's needs mixed by its weights (shares of their total), 0-1. No weights: 1.
-static func _class_score(weights: Dictionary, needs: Dictionary) -> float:
+## The plain average of the needs (0-1 each). No needs: 1.
+static func _average(needs: Dictionary) -> float:
+	if needs.is_empty():
+		return 1.0
 	var total := 0.0
-	var weighted := 0.0
 	for need in needs:
-		var w := maxf(float(weights.get(need, 0.0)), 0.0)
-		total += w
-		weighted += w * float(needs[need])
-	return clampf(weighted / total, 0.0, 1.0) if total > 0.0 else 1.0
+		total += float(needs[need])
+	return clampf(total / needs.size(), 0.0, 1.0)
 
 
-## The village's needs met, 0-1: each class's score weighted by its people. Nobody: 1.
-static func _needs_met(classes: Dictionary) -> float:
-	var people := 0.0
-	var weighted := 0.0
-	for id in classes:
-		people += float(classes[id].people)
-		weighted += float(classes[id].people) * float(classes[id].score)
-	return weighted / people if people > 0.0 else 1.0
-
-
-## Each need for the whole village, 0-1: the classes' values weighted by their people.
-static func _village_needs(classes: Dictionary, ids: Array) -> Dictionary:
-	var out := {}
-	for need in ids:
-		var people := 0.0
-		var weighted := 0.0
-		for id in classes:
-			people += float(classes[id].people)
-			weighted += float(classes[id].people) * float(classes[id].needs.get(need, 1.0))
-		out[need] = weighted / people if people > 0.0 else 1.0
-	return out
-
-
-## What people expect at this size, 0-1 (happiness.expectations: [{"people", "expected"}], people
-## going up): in a straight line between the points, the last one's after it. None: 0.
-static func expected_happiness(config: Dictionary, people: int) -> float:
-	var points: Array = config.get("expectations", [])
-	if points.is_empty():
-		return 0.0
-	var before: Dictionary = points[0]
-	if people <= int(before.people):
-		return float(before.expected)
-	for point in points:
-		if people <= int(point.people):
-			var span := float(int(point.people) - int(before.people))
-			var along := (people - int(before.people)) / span if span > 0.0 else 1.0
-			return lerpf(float(before.expected), float(point.expected), along)
-		before = point
-	return float(before.expected)
-
-
-## The next expectation point above this many people ({"people", "expected"}), or {} after the last.
-static func next_expectation(config: Dictionary, people: int) -> Dictionary:
-	for point in config.get("expectations", []):
-		if int(point.people) > people and float(point.expected) > expected_happiness(config, people) + 0.000001:
-			return {"people": int(point.people), "expected": float(point.expected)}
-	return {}
-
-
-## Happiness from needs met and expectations: content_at (0.5) when needs met equals what people
-## expect, higher or lower by the difference (0-1). Without expectations: needs met itself.
-## `cap` (happiness_cap) holds it down while a need it can't do without is unmet.
-static func _happiness_from(config: Dictionary, needs_met: float, expected: float, cap := {}) -> float:
-	var score := clampf(needs_met, 0.0, 1.0)
-	if config.has("expectations"):
-		score = clampf(float(config.get("content_at", 0.5)) + needs_met - expected, 0.0, 1.0)
+## Happiness from the needs that count: their average, held down by happiness_cap while a need it
+## can't do without is unmet (no food selling).
+static func _happiness_from(config: Dictionary, needs: Dictionary) -> float:
+	var score := _average(needs)
+	var cap := happiness_cap(config, needs)
 	return minf(score, float(cap.max)) if not cap.is_empty() else score
 
 
 ## The lowest limit an unmet need puts on happiness: happiness.needs[need].max_happiness_when_unmet
-## while that need is at 0 for the whole village (no food selling: at most 40%, whatever the other
-## needs). {"need", "max"}, or {} while no such need is unmet. `village` = needs for the village.
+## while that need counts and is at 0 (no food selling: at most 35%, whatever the other needs).
+## {"need", "max"}, or {} while no such need is unmet. `village` = the needs that count.
 static func happiness_cap(config: Dictionary, village: Dictionary) -> Dictionary:
 	var cap := {}
 	var needs: Dictionary = config.get("needs", {})
@@ -705,75 +577,42 @@ static func happiness_percent(score: float) -> int:
 ## What each fix would add to happiness right now (0-1 each; 0 = nothing to gain), for the needs
 ## that count: "food" (one more different food selling), "jobs" (a job for every jobless adult),
 ## "housing" (a real home for every household in a hut), "power" (power for every home without),
-## and each need met by service buildings, "safety" too (enough places for everyone, at the best
-## quality buildable). A locked need gains nothing; all 0 while a developer lock decides the score.
+## and each need met by service buildings (enough places for everyone, at the best quality
+## buildable). A locked need gains nothing; all 0 while a developer lock decides the score.
 ## `happy` = happiness() now.
 static func happiness_gains(data: Dictionary, happy: Dictionary) -> Dictionary:
 	var config: Dictionary = data.config.get("happiness", {})
-	var ids := need_ids(data)
+	var needs: Dictionary = happy.get("needs", {})
 	var gains := {}
-	for need in ids:
+	for need in needs:
 		gains[need] = 0.0
-	if ids.has("housing"):
+	if needs.has("housing"):
 		gains["power"] = 0.0
 	var locks: Dictionary = happy.get("dev_locks", {})
-	var classes: Dictionary = happy.get("classes", {})
-	if locks.has("score") or classes.is_empty():
+	if locks.has("score") or int(happy.get("people", 0)) <= 0:
 		return gains
-	var fixes := _happiness_fixes(data, happy, ids)
+	# What each fix would make the needs it changes: {fix: {need: value}}.
+	var fixes := {}
+	var households := int(happy.households)
+	for need in needs:
+		match need:
+			"food":
+				fixes[need] = {"food": _food_score(config, int(happy.foods) + 1)}
+			"jobs":
+				fixes[need] = {"jobs": 1.0}
+			"housing":
+				if households > 0:
+					fixes.housing = {"housing": (float(happy.home_quality) + int(happy.homeless) * _cheapest_home_quality(data)) / households}
+					fixes.power = {"housing": (float(happy.home_quality) + float(happy.unpowered_loss) + int(happy.homeless) * _hut_quality(data)) / households}
+			_:
+				fixes[need] = {need: _best_service_quality(data, need)}
 	for fix in fixes:
-		if not gains.has(fix):
-			continue
-		var changed := {}
-		for id in classes:
-			var needs: Dictionary = classes[id].needs.duplicate()
-			var after: Dictionary = fixes[fix].get(id, {})
-			for need in after:
-				if needs.has(need) and not locks.has(need):
-					needs[need] = maxf(float(needs[need]), float(after[need]))
-			changed[id] = {"people": classes[id].people, "score": _class_score(classes[id].weights, needs), "needs": needs}
-		var cap := happiness_cap(config, _village_needs(changed, ids))  # e.g. one food lifts the no-food limit
-		var score := _happiness_from(config, _needs_met(changed), float(happy.expected), cap)
-		gains[fix] = maxf(score - float(happy.score), 0.0)
+		var after := needs.duplicate()
+		for need in fixes[fix]:
+			if not locks.has(need):
+				after[need] = maxf(float(after[need]), float(fixes[fix][need]))
+		gains[fix] = maxf(_happiness_from(config, after) - float(happy.score), 0.0)  # e.g. one food lifts the no-food limit
 	return gains
-
-
-## What each fix (see happiness_gains) would make each class's needs: {fix: {class: {need: value}}}.
-static func _happiness_fixes(data: Dictionary, happy: Dictionary, ids: Array) -> Dictionary:
-	var config: Dictionary = data.config.get("happiness", {})
-	var classes: Dictionary = happy.classes
-	var crime := float(happy.get("crime", 0.0))
-	var police := float(happy.get("police", 0.0))
-	var adults_now := 0
-	for id in classes:
-		adults_now += int(classes[id].adults)
-	# Jobs for everyone also takes away the crime that joblessness brings.
-	var per_jobless := float(config.get("needs", {}).get("safety", {}).get("crime_per_jobless", 0.0))
-	var crime_after_jobs := clampf(crime - per_jobless * int(happy.jobless) / maxf(adults_now, 1.0), 0.0, 1.0)
-	var job_none := _job_quality_for(config, "none")
-	var food := _food_score(config, int(happy.foods) + 1)
-	var best_police := _best_service_quality(data, "safety")
-	var cheapest_home := _cheapest_home_quality(data)
-	var hut := _hut_quality(data)
-	var fixes := {"food": {}, "jobs": {}, "housing": {}, "power": {}, "safety": {}}
-	var best_service := {}  # need -> the best quality buildable for it
-	for need in ids:
-		if not BUILT_IN_NEEDS.has(need):
-			fixes[need] = {}
-			best_service[need] = _best_service_quality(data, need)
-	for id in classes:
-		var c: Dictionary = classes[id]
-		var households := int(c.households)
-		fixes.food[id] = {"food": food}
-		fixes.jobs[id] = {"jobs": (float(c.job_quality) + (int(c.adults) - int(c.workers)) * job_none) / int(c.adults),
-			"safety": 1.0 - crime_after_jobs * (1.0 - police)}
-		if households > 0:
-			fixes.housing[id] = {"housing": (float(c.home_quality) + int(c.homeless) * cheapest_home) / households}
-			fixes.power[id] = {"housing": (float(c.home_quality) + float(c.unpowered_loss) + int(c.homeless) * hut) / households}
-		fixes.safety[id] = {"safety": 1.0 - crime * (1.0 - best_police)}
-		for need in best_service:
-			fixes[need][id] = {need: best_service[need]}
-	return fixes
 
 
 ## The quality of the cheapest kind of real home the player can build (the lowest
@@ -841,11 +680,11 @@ static func _has_needs(data: Dictionary) -> bool:
 	return not data.config.get("happiness", {}).is_empty()
 
 
-## The happiness band a score falls in: the highest band it reaches (happiness.growth_speeds,
-## "from" going up): {"from", "speed", "leave_per_hour"}. No bands = {} (normal speed, nobody leaves).
+## The mood a score falls in: the highest one it reaches (happiness.moods, "from" going up):
+## {"from", "name", "births", "move_in", "leave_per_hour"}. No moods = {} (normal speed, nobody leaves).
 static func _band_for(config: Dictionary, score: float) -> Dictionary:
 	var found := {}
-	for band in config.get("growth_speeds", []):
+	for band in config.get("moods", []):
 		if score + 0.000001 >= float(band.from):  # the tiny allowance: 0.3 + 0.5 must reach 0.8
 			found = band
 	return found
@@ -920,24 +759,22 @@ static func people_stats(state: Dictionary) -> Dictionary:
 
 
 ## Births, deaths and people leaving, per second, as things stand at t: {"born",
-## "adult_deaths", "child_deaths", "adult_leaves", "child_leaves"}. Babies come from all adults,
+## "adult_deaths", "child_deaths", "adult_leaves"}. Babies come from all adults,
 ## at the speed happiness gives, and only while a family has a free child place (2 per
 ## household; a house isn't needed, families in huts have babies too). Everyone dies at the same steady
 ## rate, so adults and children each lose their share. In an unhappy village people leave the
 ## island in groups (life_group_size): adults at happiness leave_per_hour, but only while someone
-## may leave (_leave_pool: the jobless; at the lowest happiness also workers living in huts), and
-## children at children_leave_per_hour. Births and deaths are all 0
+## may leave (_leave_pool: the jobless). Children never leave because of happiness. Births and deaths are all 0
 ## without a "life" block in game_config.json. `happy` (happiness) and `homes` (housing) at t can be
 ## handed in when already worked out.
 static func _life_rates(state: Dictionary, data: Dictionary, t: float, happy := {}, homes := {}) -> Dictionary:
 	var life: Dictionary = data.config.get("life", {})
-	var rates := {"born": 0.0, "adult_deaths": 0.0, "child_deaths": 0.0, "adult_leaves": 0.0, "child_leaves": 0.0}
+	var rates := {"born": 0.0, "adult_deaths": 0.0, "child_deaths": 0.0, "adult_leaves": 0.0}
 	if _has_needs(data):
 		if happy.is_empty():
 			happy = happiness(state, data, t, homes)
 		if _leave_pool(happy) > 0:
 			rates.adult_leaves = adults(state) * float(happy.leave_per_hour) / 3600.0
-		rates.child_leaves = children_count(state) * float(happy.children_leave_per_hour) / 3600.0
 	if life.is_empty():
 		return rates
 	if homes.is_empty():
@@ -950,14 +787,10 @@ static func _life_rates(state: Dictionary, data: Dictionary, t: float, happy := 
 	return rates
 
 
-## The most adults who may leave the island now (`happy` = happiness then): the jobless, and at
-## the lowest happiness (the band's homeless_workers_leave) also the workers living in huts.
-## Workers with a real home never leave. While it's 0, nobody leaves however unhappy.
+## The most adults who may leave the island now (`happy` = happiness then): the jobless.
+## Workers never leave. While it's 0, nobody leaves however unhappy.
 static func _leave_pool(happy: Dictionary) -> int:
-	var pool := int(happy.get("jobless", 0))
-	if bool(happy.get("homeless_workers_leave", false)):
-		pool += int(happy.get("homeless_workers", 0))
-	return pool
+	return int(happy.get("jobless", 0))
 
 
 ## Part-people of births and deaths not yet happened: {"born", "adult_deaths", "child_deaths"}.
@@ -971,7 +804,7 @@ static func _life_carry(state: Dictionary) -> Dictionary:
 ## island go in groups of happiness.leave_group_size (1 when left out); births and deaths one by one.
 ## Their part-people carry fills up to this size before anyone goes.
 static func life_group_size(data: Dictionary, key: String) -> int:
-	if key == "adult_leaves" or key == "child_leaves":
+	if key == "adult_leaves":
 		return maxi(int(data.config.get("happiness", {}).get("leave_group_size", 1)), 1)
 	return 1
 
@@ -1033,7 +866,7 @@ static func _settle_life(state: Dictionary, data: Dictionary, t0: float, t1: flo
 	out.died = adult_deaths + _remove_children(state, int(events.child_deaths))
 	var adults_leaving := mini(int(events.get("adult_leaves", 0)), mini(adults(state), maxi(leave_cap - adult_deaths, 0)))
 	pop.current = int(pop.current) - adults_leaving
-	out.moved_away += adults_leaving + _remove_children(state, int(events.get("child_leaves", 0)))
+	out.moved_away += adults_leaving
 	var life: Dictionary = data.config.get("life", {})
 	if homes.is_empty() or adults(state) != homes_adults:
 		homes = housing(state, data, t1)
@@ -1155,16 +988,16 @@ static func wealth_class_of(data: Dictionary, wage: float) -> String:
 
 
 ## Adults by wealth class, poorest first: {class: {"adults", "wages" (dollars an hour, all of
-## them together), "workers" (adults with a job), "job_quality" (their jobs' quality added up,
-## see job_quality)}}. A worker's class comes from the wage they earn now (wage_earned_now: an
+## them together), "workers" (adults with a job)}}.
+## A worker's class comes from the wage they earn now (wage_earned_now: an
 ## idle farm's next-batch bonus doesn't count); no job = Broke.
 static func adults_by_class(state: Dictionary, data: Dictionary, now: float) -> Dictionary:
 	var out := {}
 	for c in wealth_classes(data):
-		out[str(c.id)] = {"adults": 0, "wages": 0.0, "workers": 0, "job_quality": 0.0}
+		out[str(c.id)] = {"adults": 0, "wages": 0.0, "workers": 0}
 	var jobless := wealth_class_of(data, 0.0)
 	if not out.has(jobless):
-		out[jobless] = {"adults": 0, "wages": 0.0, "workers": 0, "job_quality": 0.0}
+		out[jobless] = {"adults": 0, "wages": 0.0, "workers": 0}
 	var employed := 0
 	for b in state.buildings:
 		if hired(b) <= 0:
@@ -1177,7 +1010,6 @@ static func adults_by_class(state: Dictionary, data: Dictionary, now: float) -> 
 		group.adults = int(group.adults) + n
 		group.wages = float(group.wages) + n * wage
 		group.workers = int(group.workers) + n
-		group.job_quality = float(group.job_quality) + n * job_quality(data, b)
 		employed += n
 	out[jobless].adults = int(out[jobless].adults) + maxi(adults(state) - employed, 0)
 	return out
@@ -1209,7 +1041,7 @@ static func _may_live(data: Dictionary, b: Dictionary, id: String) -> bool:
 ## {"homes": {building_id: {"households", "adults", "children", "rent" (dollars an hour),
 ##   "classes" {class: households}; a hut has no "classes"}},
 ##  "classes": {class: {"households", "adults", "homeless" (households), "homeless_adults",
-##   "workers", "job_quality" (see adults_by_class)}},
+##   "workers"}},
 ##  "homeless" (households),
 ##  "rent_per_hour" (dollars), "child_places" (2 per household, house or hut alike),
 ##  "power_mw" (homes lived in), "households" (all)}.
@@ -1241,7 +1073,7 @@ static func housing(state: Dictionary, data: Dictionary, now: float) -> Dictiona
 		left[id] = [households, int(by_class[id].adults)]
 		income[id] = float(by_class[id].wages) / households if households > 0 else 0.0
 		out.classes[id] = {"households": households, "adults": int(by_class[id].adults), "homeless": 0,
-			"workers": int(by_class[id].get("workers", 0)), "job_quality": float(by_class[id].get("job_quality", 0.0))}
+			"workers": int(by_class[id].get("workers", 0))}
 		out.households += households
 	for any_home in [false, true]:  # first homes meant for them, then any leftover home
 		for id in ids:
@@ -3712,20 +3544,24 @@ static func dev_set_rent(state: Dictionary, data: Dictionary, type_id: String, d
 # "config": {path: value}}. Each tool settles first, so time so far counts with the old rules and
 # the change only from now (time away still equals playing through).
 
-## The happiness parts a developer can lock: the score itself, what people expect, and each need
-## that counts (need_ids).
+## The happiness parts a developer can lock: the score itself, and each need (need_ids).
 static func dev_lock_keys(data: Dictionary) -> Array:
-	return ["score", "expected"] + need_ids(data)
+	return ["score"] + need_ids(data)
+
+
+## Locks from an older game on things that no longer exist (the hut penalty, what people expect).
+const OLD_DEV_LOCKS := ["penalty", "expected"]
 
 
 ## Developer locks on happiness: {key: 0-1} (dev_lock_keys). Read it; don't change it. A lock
-## from an older game on something that no longer exists (the hut penalty) is left out.
+## from an older game on something that no longer exists (OLD_DEV_LOCKS) is left out.
 static func dev_locks(state: Dictionary) -> Dictionary:
 	var locks: Dictionary = state.get("dev", {}).get("locks", {})
-	if not locks.has("penalty"):
+	if not OLD_DEV_LOCKS.any(func(key): return locks.has(key)):
 		return locks
 	var kept := locks.duplicate()
-	kept.erase("penalty")
+	for key in OLD_DEV_LOCKS:
+		kept.erase(key)
 	return kept
 
 
@@ -3754,8 +3590,7 @@ static func _set_dev(state: Dictionary, part: String, what: Dictionary) -> void:
 
 
 ## Locks a part of happiness (dev_lock_keys) at `value` (0-1); a negative value unlocks it. A
-## locked need replaces what every class really has; a locked expectation replaces what people
-## expect; a locked score replaces the whole score.
+## locked need replaces what the village really has; a locked score replaces the whole score.
 static func dev_lock_happiness(state: Dictionary, data: Dictionary, key: String, value: float, now: float) -> Dictionary:
 	if not dev_lock_keys(data).has(key):
 		return _fail("Nothing called %s to lock." % key)
@@ -3769,7 +3604,7 @@ static func dev_lock_happiness(state: Dictionary, data: Dictionary, key: String,
 	return _ok()
 
 
-## The value at `path` in the config ("happiness.growth_speeds.2.speed": dictionary keys and list
+## The value at `path` in the config ("happiness.moods.2.births": dictionary keys and list
 ## places, separated by dots), or null when there's nothing there.
 static func config_value(config: Dictionary, path: String) -> Variant:
 	var node: Variant = config
@@ -3784,8 +3619,8 @@ static func config_value(config: Dictionary, path: String) -> Variant:
 
 
 ## Changes a game_config.json number (or true/false) from now on: `path` as in config_value. It
-## must hold the same kind of value, or be missing from a block that exists (a happiness band
-## without children_leave_per_hour gets one); null takes the change back. The game applies it onto
+## must hold the same kind of value, or be missing from a block that exists (a mood
+## without move_in gets one); null takes the change back. The game applies it onto
 ## its config (apply_config_overrides); `data` is the config as it stands before the change.
 static func dev_set_config(state: Dictionary, data: Dictionary, path: String, value: Variant, now: float) -> Dictionary:
 	var current: Variant = config_value(data.config, path)

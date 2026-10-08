@@ -237,8 +237,12 @@ static func _status_now(b: Dictionary) -> Dictionary:
 			var places := Economy.service_places(b)
 			var full := float(Economy.level_stat(b, "service_capacity"))
 			var need := str(def.get("service_need", ""))
-			var met := float(Economy.happiness().needs.get(need, 0.0))
-			var text := "Serves %s people ⋅ %s %d%%" % [UITheme.number(roundi(places)), Economy.need_name(need), roundi(100.0 * met)]
+			var happy := Economy.happiness()
+			var text := "Serves %s people ⋅ " % UITheme.number(roundi(places))
+			if happy.needs.has(need):
+				text += "%s %d%%" % [Economy.need_name(need), roundi(100.0 * float(happy.needs[need]))]
+			else:  # the village is still too small to want it (happiness.needs from_people)
+				text += "%s counts from %d people" % [Economy.need_name(need), int(happy.get("later", {}).get(need, 0))]
 			return {"text": text, "progress": -1.0, "good": places >= full - 0.001}
 		"extractor", "processor":
 			return _batch_status(b, r)

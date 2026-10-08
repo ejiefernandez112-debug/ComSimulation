@@ -2,7 +2,7 @@ extends ModalWindow
 ## The Statistics window (Stats card in the bottom menu), in six tabs:
 ## - Goods: what's being made and used per minute right now, and all-time totals
 ## - People: population (adults / children), work, homes and wealth, comings and goings
-## - Happiness: the %, what people expect, what would raise it, each need and each wealth class
+## - Happiness: the % and mood, what it does, what would raise it, and each need
 ## - Cash: money in and out over the last hour and all time, by source; the cash check
 ##   and the money log (money_pages.gd)
 ## - Balance: what the company owns and owes, and its value (money_pages.gd)
@@ -114,15 +114,15 @@ func _people_page() -> VBoxContainer:
 	return page
 
 
-## Happiness: the %, what people expect, what it does and what would raise it; then each need
-## (its % and, under it, why) and each wealth class.
+## Happiness: the % and mood, what it's made of, what it does and what would raise it; then each
+## need (its % and, under it, why).
 func _happiness_page() -> VBoxContainer:
 	var page := _page()
 	var mood := _section(page, "Happiness")
 	mood.add_child(_value("happiness"))
 	_values.happiness.theme_type_variation = "HeadingLabel"
 	_happiness_bar = _bar(mood, "GreenBar")
-	mood.add_child(_note("expectation"))
+	mood.add_child(_note("summary"))
 	_value_row(mood, "Births & newcomers", "move_in")
 	mood.add_child(_value("leaving"))
 	mood.add_child(_value("raise"))
@@ -130,10 +130,6 @@ func _happiness_page() -> VBoxContainer:
 	for need in Economy.need_ids():
 		_value_row(needs, Economy.need_name(need), "need_" + need)
 		needs.add_child(_note("why_" + need))
-	var classes := _section(page, "By wealth")
-	for c in Economy.wealth_classes():
-		_value_row(classes, str(c.name), "mood_" + str(c.id))
-		classes.add_child(_note("why_mood_" + str(c.id)))
 	return page
 
 
@@ -192,23 +188,13 @@ func _speed_text(speed: float) -> String:
 	return "×%s" % str(speed)
 
 
-## Who is leaving the island right now, e.g. "Leaving the island, 5% an hour: jobless adults ⋅
-## children"; "" when nobody is. Only the jobless adults leave, plus the workers in huts at the
-## lowest happiness (Simulation._leave_pool); children have their own share.
-func _leaving_text(happy: Dictionary, children: int) -> String:
-	var who: Array[String] = []
-	var adult_rate := float(happy.leave_per_hour)
-	if adult_rate > 0.0 and int(happy.jobless) > 0:
-		who.append("jobless adults")
-	if adult_rate > 0.0 and bool(happy.homeless_workers_leave) and int(happy.homeless_workers) > 0:
-		who.append("workers in huts")
-	var rate := adult_rate if not who.is_empty() else float(happy.children_leave_per_hour)
-	var child_rate := float(happy.children_leave_per_hour)
-	if child_rate > 0.0 and children > 0:
-		who.append("children" if is_equal_approx(child_rate, rate) else "children (%s%%)" % str(snappedf(child_rate * 100.0, 0.1)))
-	if who.is_empty():
+## Who is leaving the island right now, e.g. "Leaving the island, 5% an hour: jobless adults";
+## "" when nobody is. Only the jobless adults leave (Simulation._leave_pool).
+func _leaving_text(happy: Dictionary) -> String:
+	var rate := float(happy.leave_per_hour)
+	if rate <= 0.0 or int(happy.jobless) <= 0:
 		return ""
-	return "Leaving the island, %s%% an hour: %s" % [str(snappedf(rate * 100.0, 0.1)), " ⋅ ".join(who)]
+	return "Leaving the island, %s%% an hour: jobless adults" % str(snappedf(rate * 100.0, 0.1))
 
 
 ## "To raise it: Clinic for 120 more people +9% ⋅ 1 more food +6% ⋅ homes for 10 households in
@@ -336,11 +322,12 @@ func _refresh_people() -> void:
 func _refresh_happiness() -> void:
 	var e := Economy.employment()
 	var happy := Economy.happiness()
-	# Rounded down, like the bands; a Developer-window lock says so.
-	_show("happiness", "%d%% happy%s" % [int(happy.percent), " ⋅ dev lock" if not happy.get("dev_locks", {}).is_empty() else ""])
+	# Rounded down, like the moods; a Developer-window lock says so.
+	var mood := str(happy.get("mood", ""))
+	_show("happiness", "%d%% %s%s" % [int(happy.percent), mood.to_lower() if mood != "" else "happy", " ⋅ dev lock" if not happy.get("dev_locks", {}).is_empty() else ""])
 	_happiness_bar.value = 100.0 * float(happy.score)
-	_show("expectation", _expectation_text(happy, int(e.population)), UITheme.TEXT_DIM)
-	var leaving := _leaving_text(happy, int(e.children))
+	_show("summary", _summary_text(happy), UITheme.TEXT_DIM)
+	var leaving := _leaving_text(happy)
 	_show("leaving", leaving, UITheme.BAD)
 	_values.leaving.visible = leaving != ""  # nothing to say while nobody leaves
 	var raise := _raise_text(happy)
@@ -352,39 +339,23 @@ func _refresh_happiness() -> void:
 	_refresh_needs(happy, e)
 
 
-## The Needs section (each need and why it stands where it does) and each wealth class's happiness.
+## The Needs section: each need and why it stands where it does; a need that only counts in a
+## bigger village says from how many people.
 func _refresh_needs(happy: Dictionary, e: Dictionary) -> void:
 	var needs: Dictionary = happy.needs
-	for need in needs:
-		var value := float(needs[need])
-		_show("need_" + need, "%d%%" % roundi(100.0 * value), UITheme.BAD if value < 0.5 else UITheme.TEXT)
-		_show("why_" + need, _need_reason(happy, e, need), UITheme.TEXT_DIM)
-	var classes: Dictionary = happy.classes
-	for c in Economy.wealth_classes():
-		var id := str(c.id)
-		if not _values.has("mood_" + id):
-			continue
-		var row: Control = _values["mood_" + id].get_parent()
-		row.visible = classes.has(id)  # only classes anyone is in
-		_values["why_mood_" + id].visible = classes.has(id)
-		if not classes.has(id):
-			continue
-		var group: Dictionary = classes[id]
-		var worst := ""
-		var lowest := 2.0
-		for need in group.needs:
-			if float(group.weights.get(need, 0.0)) > 0.0 and float(group.needs[need]) < lowest:
-				lowest = float(group.needs[need])
-				worst = need
-		_show("mood_" + id, "%d%%" % roundi(100.0 * float(group.score)), UITheme.BAD if float(group.score) < 0.5 else UITheme.TEXT)
-		var why := "%d people" % roundi(float(group.people))
-		if worst != "" and lowest < 1.0:
-			why += " ⋅ least met: %s %d%%" % [Economy.need_name(worst), roundi(100.0 * lowest)]
-		_show("why_mood_" + id, why, UITheme.TEXT_DIM)
+	var later: Dictionary = happy.get("later", {})
+	for need in Economy.need_ids():
+		if needs.has(need):
+			var value := float(needs[need])
+			_show("need_" + need, "%d%%" % roundi(100.0 * value), UITheme.BAD if value < 0.5 else UITheme.TEXT)
+			_show("why_" + need, _need_reason(happy, e, need), UITheme.TEXT_DIM)
+		else:
+			_show("need_" + need, "—", UITheme.TEXT_DIM)
+			_show("why_" + need, "counts from %d people" % int(later.get(need, 0)), UITheme.TEXT_DIM)
 
 
 ## Why a need stands where it does, e.g. "2 foods selling ⋅ 1 more food: 60%", "Clinics serve 100
-## of 230 people", "crime 31% ⋅ police serve 0 of 230".
+## of 230 people".
 func _need_reason(happy: Dictionary, e: Dictionary, need: String) -> String:
 	var people := int(e.population)
 	match need:
@@ -409,22 +380,22 @@ func _need_reason(happy: Dictionary, e: Dictionary, need: String) -> String:
 	var places := roundi(float(c.get("places", 0.0)))
 	var type_id := Economy.service_building_for(need)
 	var building := str(GameData.buildings[type_id].name) if type_id != "" else "nothing"
-	var served := ("no %s yet" % building) if places <= 0 else "%ss serve %d of %d" % [building, mini(places, people), people]
-	if need == "safety":
-		return "crime %d%% ⋅ %s" % [roundi(100.0 * float(happy.crime)), served]
-	return served
+	return ("no %s yet" % building) if places <= 0 else "%ss serve %d of %d" % [building, mini(places, people), people]
 
 
-## "Needs met 42% ⋅ people expect 15% at 120 people ⋅ 20% at 150": happiness is the needs met
-## compared with what people expect, which rises as the village grows. While an unmet need limits
-## it: "⋅ no Food selling: at most 40%".
-func _expectation_text(happy: Dictionary, people: int) -> String:
-	var text := "Needs met %d%%" % roundi(100.0 * float(happy.needs_met))
-	if GameData.config.get("happiness", {}).has("expectations"):
-		text += " ⋅ %d people expect %d%%" % [people, roundi(100.0 * float(happy.expected))]
-		var next: Dictionary = happy.get("next_expected", {})
-		if not next.is_empty():
-			text += " (%d%% at %d people)" % [roundi(100.0 * float(next.expected)), int(next.people)]
+## "Average of 4 needs ⋅ Fun counts from 100 people": happiness is the plain average of the needs
+## that count, and the next need joins as the village grows. While an unmet need limits it: "⋅ no
+## food selling: at most 35%".
+func _summary_text(happy: Dictionary) -> String:
+	var needs: Dictionary = happy.needs
+	var text := "Average of %d need%s" % [needs.size(), "" if needs.size() == 1 else "s"]
+	var later: Dictionary = happy.get("later", {})
+	var next := ""
+	for need in later:
+		if next == "" or int(later[need]) < int(later[next]):
+			next = need
+	if next != "":
+		text += " ⋅ %s counts from %d people" % [Economy.need_name(next), int(later[next])]
 	var cap: Dictionary = happy.get("cap", {})
 	if not cap.is_empty():
 		var lacking := "no food selling" if str(cap.need) == "food" else "no " + Economy.need_name(str(cap.need)).to_lower()

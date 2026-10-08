@@ -74,7 +74,7 @@ var _rent_labels := {}  # home type id -> Label showing its rent
 var _mood: Label  # what happiness does right now
 var _lock_labels := {}  # lock key -> Label
 var _tuning := []  # [{"spec", "label"}] one per tuning row
-var _band_titles := []  # Label per happiness band ("Band from 21%")
+var _band_titles := []  # Label per mood ("Content 40–69%")
 var _people: Label
 var _store: Label
 var _items: OptionButton
@@ -216,7 +216,7 @@ func _happiness_page() -> VBoxContainer:
 	_mood = _text("")
 	now_box.add_child(_mood)
 	var lock_box := _section(page, "Locks")
-	lock_box.add_child(_small("Force happiness, what people expect, or one need (for every wealth class) to a value: births, migrants, leaving and every screen follow at once. Off = worked out from the village again."))
+	lock_box.add_child(_small("Force happiness or one need to a value: births, migrants, leaving and every screen follow at once. Off = worked out from the village again."))
 	for lock in _lock_list():
 		_lock_labels[lock[0]] = _name_and_value(lock_box, lock[1])
 		var line := _row(lock_box)
@@ -235,18 +235,16 @@ func _tuning_page() -> VBoxContainer:
 	buttons.add_child(_button("Reset tuning", "DangerButton", _reset_tuning))
 	var happiness: Dictionary = GameData.config.get("happiness", {})
 	_happiness_tuning(page, happiness)
-	var bands: Array = happiness.get("growth_speeds", [])
+	var bands: Array = happiness.get("moods", [])
 	for i in bands.size():
 		var band := _section(page, "")
 		_band_titles.append(band.get_child(0))
-		var at := "happiness.growth_speeds.%d." % i
+		var at := "happiness.moods.%d." % i
 		if i > 0:
 			_tuning_row(band, {"path": at + "from", "name": "Starts at", "step": 0.01, "kind": "%", "band": i})
-		_tuning_row(band, {"path": at + "speed", "name": "Births", "step": 0.5, "kind": "x"})
-		_tuning_row(band, {"path": at + "move_in", "name": "Migrant workers", "step": 0.5, "kind": "x", "fallback": at + "speed"})
+		_tuning_row(band, {"path": at + "births", "name": "Births", "step": 0.5, "kind": "x"})
+		_tuning_row(band, {"path": at + "move_in", "name": "Migrant workers", "step": 0.5, "kind": "x", "fallback": at + "births"})
 		_tuning_row(band, {"path": at + "leave_per_hour", "name": "Jobless adults leave / h", "step": 0.01, "kind": "%"})
-		_tuning_row(band, {"path": at + "children_leave_per_hour", "name": "Children leave / h", "step": 0.01, "kind": "%", "fallback": at + "leave_per_hour"})
-		_tuning_row(band, {"path": at + "homeless_workers_leave", "name": "Workers in huts leave too", "kind": "bool"})
 	var life := _section(page, "Births, children and deaths")
 	_tuning_row(life, {"path": "life.birth_rate_per_hour", "name": "Babies per adult / h", "step": 0.01})
 	_tuning_row(life, {"path": "life.death_rate_per_hour", "name": "Deaths per person / h", "step": 0.001})
@@ -455,29 +453,17 @@ func _refresh() -> void:
 func _refresh_happiness() -> void:
 	var happy := Economy.happiness()
 	var locks := Economy.dev_locks()
-	var bands: Array = GameData.config.get("happiness", {}).get("growth_speeds", [])
-	var band := 0
-	for i in bands.size():
-		if float(happy.score) + 0.000001 >= float(bands[i].from):
-			band = i
-	var top := "100" if band + 1 >= bands.size() else str(Economy.happiness_percent(float(bands[band + 1].from)) - 1)
-	var leaving: Array[String] = []
-	if float(happy.leave_per_hour) > 0.0:
-		leaving.append("jobless adults%s %s%%/h" % [" + workers in huts" if happy.homeless_workers_leave else "", _pct(float(happy.leave_per_hour))])
-	if float(happy.children_leave_per_hour) > 0.0:
-		leaving.append("children %s%%/h" % _pct(float(happy.children_leave_per_hour)))
+	var leaving := "jobless adults %s%%/h" % _pct(float(happy.leave_per_hour)) if float(happy.leave_per_hour) > 0.0 else "nobody"
 	var needs: Array[String] = []
 	for need in happy.needs:
 		needs.append("%s %s%%" % [Economy.need_name(need), _pct(float(happy.needs[need]))])
-	var classes: Array[String] = []
-	for id in happy.classes:
-		classes.append("%s %s%%" % [id.capitalize() if id != "" else "Everyone", _pct(float(happy.classes[id].score))])
-	_mood.text = "%d%% happy%s ⋅ band %d–%s%%\nNeeds met %s%% ⋅ people expect %s%%\nBabies ×%s ⋅ migrants ×%s ⋅ leaving: %s\n%s\nBy class: %s" % [
-		int(happy.percent), " (locked)" if locks.has("score") else "",
-		Economy.happiness_percent(float(bands[band].from)) if not bands.is_empty() else 0, top,
-		_pct(float(happy.needs_met)), _pct(float(happy.expected)),
-		str(happy.growth_speed), str(happy.move_in_speed), ", ".join(leaving) if not leaving.is_empty() else "nobody",
-		" ⋅ ".join(needs), " ⋅ ".join(classes) if not classes.is_empty() else "nobody lives here"]
+	var later: Dictionary = happy.get("later", {})
+	for need in later:
+		needs.append("%s from %d people" % [Economy.need_name(need), int(later[need])])
+	_mood.text = "%d%% %s%s\nAverage of needs %s%%\nBabies ×%s ⋅ migrants ×%s ⋅ leaving: %s\n%s" % [
+		int(happy.percent), str(happy.mood), " (locked)" if locks.has("score") else "",
+		_pct(float(happy.needs_met)),
+		str(happy.growth_speed), str(happy.move_in_speed), leaving, " ⋅ ".join(needs)]
 	for key in _lock_labels:
 		var locked := locks.has(key)
 		_lock_labels[key].text = "%s%% %s" % [_pct(float(locks.get(key, _real_value(happy, key)))), "locked" if locked else "real"]
@@ -489,10 +475,10 @@ func _refresh_tuning() -> void:
 	for row in _tuning:
 		var spec: Dictionary = row.spec
 		row.label.text = _tuning_text(spec, _tuning_value(spec)) + (" *" if changed.has(spec.path) else "")
-	var bands: Array = GameData.config.get("happiness", {}).get("growth_speeds", [])
+	var bands: Array = GameData.config.get("happiness", {}).get("moods", [])
 	for i in mini(_band_titles.size(), bands.size()):
 		var top := "100" if i + 1 >= bands.size() else str(Economy.happiness_percent(float(bands[i + 1].from)) - 1)
-		_band_titles[i].text = "Happiness %d–%s%%" % [Economy.happiness_percent(float(bands[i].from)), top]
+		_band_titles[i].text = "%s %d–%s%%" % [str(bands[i].get("name", "Mood")), Economy.happiness_percent(float(bands[i].from)), top]
 
 
 # --- Look --------------------------------------------------------------------------
@@ -624,58 +610,39 @@ func _skip(seconds: float, label: String) -> void:
 	_refresh()
 
 
-## What can be locked, with its name: the score, what people expect, and each need that counts.
+## What can be locked, with its name: the score and each need.
 func _lock_list() -> Array:
-	var out := [["score", "Happiness"], ["expected", "People expect"]]
+	var out := [["score", "Happiness"]]
 	for key in Economy.dev_lock_keys():
-		if key not in ["score", "expected"]:
+		if key != "score":
 			out.append([key, "%s need" % Economy.need_name(key)])
 	return out
 
 
 ## The value a lock replaces, as the village really has it (0-1).
 func _real_value(happy: Dictionary, key: String) -> float:
-	if key == "score" or key == "expected":
+	if key == "score":
 		return float(happy[key])
 	return float(happy.needs.get(key, 0.0))
 
 
-## Tuning rows for happiness (game_config.json happiness): the weights (for everyone, then each
-## wealth class), each need's own numbers, and what people expect as the village grows.
+## Tuning rows for happiness (game_config.json happiness): when each need starts counting, and
+## the Food and Housing needs' own numbers.
 func _happiness_tuning(page: VBoxContainer, happiness: Dictionary) -> void:
 	var needs: Dictionary = happiness.get("needs", {})
-	var mix := _section(page, "Needs mix (weights, everyone)")
-	for need in happiness.get("weights", {}):
-		_tuning_row(mix, {"path": "happiness.weights." + need, "name": Economy.need_name(need), "step": 0.5})
-	for c in Economy.wealth_classes():
-		var own: Dictionary = happiness.get("class_weights", {}).get(str(c.id), {})
-		if own.is_empty():
-			continue
-		var box := _section(page, "Needs mix: %s" % c.name)
-		for need in own:
-			_tuning_row(box, {"path": "happiness.class_weights.%s.%s" % [c.id, need], "name": Economy.need_name(need), "step": 0.5})
+	var counts := _section(page, "Needs count from (people)")
+	for need in needs:
+		_tuning_row(counts, {"path": "happiness.needs.%s.from_people" % need, "name": Economy.need_name(need), "step": 25, "whole": true})
 	var food := _section(page, "Food need by different foods selling")
 	var scores: Array = needs.get("food", {}).get("scores", [])
 	for i in scores.size():
 		_tuning_row(food, {"path": "happiness.needs.food.scores.%d" % i, "name": "%d%s food%s" % [i, "+" if i == scores.size() - 1 else "", "" if i == 1 else "s"], "step": 0.05, "kind": "%"})
 	if needs.get("food", {}).has("max_happiness_when_unmet"):
 		_tuning_row(food, {"path": "happiness.needs.food.max_happiness_when_unmet", "name": "No food: happiness at most", "step": 0.05, "kind": "%"})
-	var other := _section(page, "Jobs, homes and crime")
-	for bonus in needs.get("jobs", {}).get("quality", {}):
-		_tuning_row(other, {"path": "happiness.needs.jobs.quality." + bonus, "name": "Job quality, %s bonus" % bonus.capitalize(), "step": 0.05, "kind": "%"})
+	var other := _section(page, "Homes and leaving")
 	if needs.get("housing", {}).has("unpowered"):
 		_tuning_row(other, {"path": "happiness.needs.housing.unpowered", "name": "A home without power counts", "step": 0.05, "kind": "%"})
-	for row in [["crime", "Crime, always"], ["crime_per_jobless", "Crime x jobless share"], ["crime_per_homeless", "Crime x share in huts"]]:
-		if needs.get("safety", {}).has(row[0]):
-			_tuning_row(other, {"path": "happiness.needs.safety." + row[0], "name": row[1], "step": 0.05, "kind": "%"})
 	_tuning_row(other, {"path": "happiness.leave_group_size", "name": "People leave in groups of", "step": 1, "whole": true, "min": 1})
-	var expect := _section(page, "What people expect")
-	_tuning_row(expect, {"path": "happiness.content_at", "name": "Happiness when needs met = expected", "step": 0.05, "kind": "%"})
-	var points: Array = happiness.get("expectations", [])
-	for i in points.size():
-		if i > 0:
-			_tuning_row(expect, {"path": "happiness.expectations.%d.people" % i, "name": "Point %d: people" % i, "step": 10, "whole": true})
-		_tuning_row(expect, {"path": "happiness.expectations.%d.expected" % i, "name": "Point %d: they expect" % i, "step": 0.05, "kind": "%"})
 
 
 ## A lock up or down by `step` percentage points, starting from the real value when it's off.
@@ -696,7 +663,7 @@ func _change_tuning(spec: Dictionary, direction: int) -> void:
 		var low := float(spec.get("min", 0.0))
 		var high := 1.0 if spec.get("kind", "") == "%" else INF
 		if spec.has("band"):  # a band's start stays between its neighbours'
-			var bands: Array = GameData.config.happiness.growth_speeds
+			var bands: Array = GameData.config.happiness.moods
 			low = float(bands[spec.band - 1].from) + 0.01
 			if spec.band + 1 < bands.size():
 				high = float(bands[spec.band + 1].from) - 0.01

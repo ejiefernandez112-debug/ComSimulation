@@ -632,32 +632,30 @@ func _check_service(config: Dictionary, def: Dictionary, where: String) -> void:
 	_whole_at_least(def, "max_workers", 1, where, true)
 
 
-## Needs & happiness (plan.md §5.6): needs with their settings, weights for known needs and
-## wealth classes, expectations going up, and move-in speed bands starting at 0 and going up.
+## Needs & happiness (plan.md §5.6): needs with their settings, and moods starting at 0 and
+## going up, each with a name.
 func _check_happiness(data: Dictionary, h: Dictionary, where: String) -> void:
-	_unknown_keys(h, ["needs", "weights", "class_weights", "expectations", "content_at", "leave_group_size", "growth_speeds"], where)
+	_unknown_keys(h, ["needs", "leave_group_size", "moods"], where)
 	_whole_at_least(h, "leave_group_size", 1, where, false)  # people leave in groups this big
 	var needs: Dictionary = h.get("needs", {})
-	var extra := {"food": ["scores"], "jobs": ["quality"], "housing": ["unpowered"], "safety": ["crime", "crime_per_jobless", "crime_per_homeless"]}
+	if needs.is_empty():
+		_fail("%s needs: none (happiness is the average of the needs)" % where)
+	var extra := {"food": ["scores"], "housing": ["unpowered"]}
 	for need in needs:
 		var at := "%s needs '%s'" % [where, need]
 		var n: Dictionary = needs[need]
-		_unknown_keys(n, ["name", "max_happiness_when_unmet"] + extra.get(need, []), at)
+		_unknown_keys(n, ["name", "max_happiness_when_unmet", "from_people"] + extra.get(need, []), at)
 		if str(n.get("name", "")) == "":
 			_fail("%s: has no name" % at)
-		for key in ["unpowered", "crime", "crime_per_jobless", "crime_per_homeless", "max_happiness_when_unmet"]:
+		for key in ["unpowered", "max_happiness_when_unmet"]:
 			_share(n.get(key), "%s %s" % [at, key], false)
+		_whole_at_least(n, "from_people", 0, at, false)  # the village size it starts counting at
 		if need == "food":
 			var scores: Array = n.get("scores", [])
 			if scores.is_empty():
 				_fail("%s scores: empty (one score for 0 foods, 1 food, ...)" % at)
 			for score in scores:
 				_share(score, at + " scores", true)
-		if need == "jobs":
-			for bonus in n.get("quality", {}):
-				if not data.config.get("wage_bonuses", {}).has(bonus):
-					_fail("%s quality: '%s' isn't one of game_config.json wage_bonuses" % [at, bonus])
-				_share(n.quality[bonus], "%s quality %s" % [at, bonus], true)
 		if not need in ["food", "jobs", "housing"]:
 			var served := false
 			for type_id in data.buildings:
@@ -665,57 +663,23 @@ func _check_happiness(data: Dictionary, h: Dictionary, where: String) -> void:
 				served = served or (def is Dictionary and def.get("buildable", false) and str(def.get("service_need", "")) == need)
 			if not served:
 				_note("%s: no building you can build meets it, so it stays low" % at)
-	var total := _check_weights(h.get("weights", {}), needs, where + " weights")
-	var classes := {}
-	for wealth in data.config.get("housing", {}).get("wealth_classes", []):
-		classes[str(wealth.get("id", ""))] = true
-	for id in h.get("class_weights", {}):
-		if not classes.has(id):
-			_fail("%s class_weights: '%s' isn't in game_config.json housing wealth_classes" % [where, id])
-		total += _check_weights(h.class_weights[id], needs, "%s class_weights '%s'" % [where, id])
-	if total <= 0.0:
-		_fail("%s weights: no need counts (all weights are 0)" % where)
-	var last_people := -1
-	for point in h.get("expectations", []):
-		_unknown_keys(point, ["people", "expected"], where + " expectations")
-		_whole_at_least(point, "people", 0, where + " expectations", true)
-		_share(point.get("expected"), where + " expectations expected", true)
-		if _is_number(point.get("people")):
-			if int(point.people) <= last_people:
-				_fail("%s expectations: 'people' must go up (%s after %s)" % [where, point.people, last_people])
-			last_people = int(point.people)
-	if h.has("expectations") and (h.expectations.is_empty() or int(h.expectations[0].get("people", -1)) != 0):
-		_fail("%s expectations: the first point must be for 0 people" % where)
-	_share(h.get("content_at"), where + " content_at", false)
-	var bands: Array = h.get("growth_speeds", [])
-	if bands.is_empty() or float(bands[0].get("from", -1)) != 0.0:
-		_fail("%s growth_speeds: the first band must start from 0" % where)
+	var moods: Array = h.get("moods", [])
+	if moods.is_empty() or float(moods[0].get("from", -1)) != 0.0:
+		_fail("%s moods: the first mood must start from 0" % where)
 	var last := -1.0
-	for band in bands:
-		var from = band.get("from")
+	for mood in moods:
+		var from = mood.get("from")
 		if not _is_number(from) or from <= last:
-			_fail("%s growth_speeds: 'from' values must go up (%s after %s)" % [where, from, last])
+			_fail("%s moods: 'from' values must go up (%s after %s)" % [where, from, last])
 		else:
 			last = float(from)
-		_share(from, where + " growth_speeds from", true)
-		_unknown_keys(band, ["from", "speed", "move_in", "leave_per_hour", "children_leave_per_hour", "homeless_workers_leave"], where + " growth_speeds")
-		_number_at_least(band, "speed", 0.0, where + " growth_speeds", true)
-		_number_at_least(band, "move_in", 0.0, where + " growth_speeds", false)
-		_share(band.get("leave_per_hour", 0.0), where + " growth_speeds leave_per_hour", false)
-		_share(band.get("children_leave_per_hour", 0.0), where + " growth_speeds children_leave_per_hour", false)
-		if band.has("homeless_workers_leave") and typeof(band.homeless_workers_leave) != TYPE_BOOL:
-			_fail("%s growth_speeds homeless_workers_leave: must be true or false" % where)
-
-
-## Need weights: each a number of at least 0, for a need in happiness needs. Returns their total.
-func _check_weights(weights: Dictionary, needs: Dictionary, where: String) -> float:
-	var total := 0.0
-	for need in weights:
-		if not needs.has(need):
-			_fail("%s: '%s' isn't a need in happiness needs" % [where, need])
-		_number_at_least(weights, need, 0.0, where, true)
-		total += float(weights[need]) if _is_number(weights[need]) else 0.0
-	return total
+		_share(from, where + " moods from", true)
+		_unknown_keys(mood, ["from", "name", "births", "move_in", "leave_per_hour"], where + " moods")
+		if str(mood.get("name", "")) == "":
+			_fail("%s moods: a mood from %s has no name" % [where, from])
+		_number_at_least(mood, "births", 0.0, where + " moods", true)
+		_number_at_least(mood, "move_in", 0.0, where + " moods", false)
+		_share(mood.get("leave_per_hour", 0.0), where + " moods leave_per_hour", false)
 
 
 ## Brackets / tiers: start at 0, each "from" higher than the last, `value_key` a share 0-1.

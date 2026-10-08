@@ -39,45 +39,23 @@
 		"material": { "name": "Materials" },
 		"building_material": { "name": "Building materials" }
 	},
-	"_happiness": "Village happiness (plan.md 5.6 'Needs & happiness', Tropico-style). Each wealth class scores every need 0-1 and mixes them by its weights (weights = for everyone; class_weights = a class's own, on top) into its score; needs met = the classes' scores weighted by their people (adults + their share of the children). needs: food scores = score for 0, 1, 2, ... or more different foods selling at a staffed store (the last number = that many or more); max_happiness_when_unmet = while this need is at 0 (no food selling), happiness is at most this (0.4 = 40%), whatever the other needs. jobs quality = how good a job is by its wage bonus (no job = 0). housing: each home's housing_quality (buildings.json; a hut 0), times unpowered while it needs power and has none. health / fun / faith = met by service buildings (service_need in buildings.json): their places for everyone (at most all) x their service_quality. safety = 1 - crime x (1 - police places for everyone); crime = crime + crime_per_jobless x share of adults without a job + crime_per_homeless x share of households in huts. expectations = what people expect at each size [people, expected], in a straight line between the points: happiness = content_at + needs met - expected (0-1). So a small village expects little, and a big one needs more. growth_speeds: for each happiness band (from = lowest score of the band; the % on screen is rounded down, so from 0.21 = shown 21%), speed = the birth speed (1 = normal, 0 = no babies), move_in = the speed job seekers move in (1 = one group every population_growth_seconds, 0 = nobody comes; same as speed if left out; today: nobody at 20% or less, above that only the open jobs decide), leave_per_hour = share of adults who leave the island each hour, but only the jobless leave (nobody once everyone has a job), children_leave_per_hour = share of children who leave each hour (same as leave_per_hour if left out; today only at 15% or less), homeless_workers_leave = true: adults living in huts leave too, even with a job (today only at 10% or less). leave_group_size = people leave in groups this big (adults and children each in their own groups). PLACEHOLDERS.",
+	"_happiness": "Village happiness (plan.md 5.6 'Needs & happiness', simplified 2026-10-08). Happiness = the plain average of the needs that count, each 0-1 for the whole village. needs: from_people = the village size (everyone) at which a need starts counting (left out = from the start). food scores = score for 0, 1, 2, ... or more different foods selling at a staffed store (the last number = that many or more); max_happiness_when_unmet = while this need is at 0 (no food selling), happiness is at most this (0.35 = 35%), whatever the other needs. jobs = the share of adults with a job. housing = each household's home quality (housing_quality in buildings.json; a hut 0), times unpowered while the home needs power and has none. health / fun / faith / safety = met by service buildings (service_need in buildings.json): their places for everyone (at most all) x their service_quality. moods: for each mood (from = lowest score of it; the % on screen is rounded down, so from 0.15 = shown 15%), births = the birth speed (1 = normal, 0 = no babies), move_in = the speed migrant workers come (1 = one group every population_growth_seconds, 0 = nobody comes; only the open jobs decide how many), leave_per_hour = share of adults who leave the island each hour, but only the jobless leave (nobody once everyone has a job). leave_group_size = people leave in groups this big. PLACEHOLDERS.",
 	"happiness": {
 		"needs": {
-			"food": { "name": "Food", "scores": [0.0, 0.4, 0.6, 0.75, 0.9, 1.0], "max_happiness_when_unmet": 0.4 },
-			"jobs": { "name": "Jobs", "quality": { "none": 0.6, "small": 0.75, "good": 0.9, "big": 1.0 } },
+			"food": { "name": "Food", "scores": [0.0, 0.4, 0.6, 0.75, 0.9, 1.0], "max_happiness_when_unmet": 0.35 },
+			"jobs": { "name": "Jobs" },
 			"housing": { "name": "Housing", "unpowered": 0.8 },
-			"health": { "name": "Health" },
-			"fun": { "name": "Fun" },
-			"faith": { "name": "Faith" },
-			"safety": { "name": "Safety", "crime": 0.05, "crime_per_jobless": 0.4, "crime_per_homeless": 0.2 }
+			"health": { "name": "Health", "from_people": 75 },
+			"fun": { "name": "Fun", "from_people": 100 },
+			"faith": { "name": "Faith", "from_people": 150 },
+			"safety": { "name": "Safety", "from_people": 200 }
 		},
-		"weights": { "food": 2, "jobs": 2, "housing": 2, "health": 1.5, "fun": 1, "faith": 1, "safety": 1 },
-		"class_weights": {
-			"broke": { "food": 3, "jobs": 3, "housing": 2, "health": 1, "fun": 0.5, "faith": 1, "safety": 0.5 },
-			"poor": { "food": 3, "jobs": 2, "housing": 2, "health": 1.5, "fun": 1, "faith": 1, "safety": 1 },
-			"well_off": { "food": 2, "jobs": 2, "housing": 2, "health": 2, "fun": 1.5, "faith": 1, "safety": 1.5 },
-			"rich": { "food": 1.5, "jobs": 1.5, "housing": 3, "health": 2, "fun": 2, "faith": 1, "safety": 2 },
-			"filthy_rich": { "food": 1, "jobs": 1, "housing": 3, "health": 2, "fun": 3, "faith": 0.5, "safety": 2.5 }
-		},
-		"expectations": [
-			{ "people": 0, "expected": 0.0 },
-			{ "people": 50, "expected": 0.0 },
-			{ "people": 75, "expected": 0.3 },
-			{ "people": 100, "expected": 0.38 },
-			{ "people": 150, "expected": 0.45 },
-			{ "people": 300, "expected": 0.52 },
-			{ "people": 600, "expected": 0.6 },
-			{ "people": 1200, "expected": 0.7 }
-		],
-		"content_at": 0.5,
 		"leave_group_size": 5,
-		"growth_speeds": [
-			{ "from": 0, "speed": 0.0, "move_in": 0.0, "leave_per_hour": 0.05, "children_leave_per_hour": 0.05, "homeless_workers_leave": true },
-			{ "from": 0.11, "speed": 0.0, "move_in": 0.0, "leave_per_hour": 0.05, "children_leave_per_hour": 0.05 },
-			{ "from": 0.16, "speed": 0.0, "move_in": 0.0, "leave_per_hour": 0.05, "children_leave_per_hour": 0.0 },
-			{ "from": 0.2, "speed": 0.5, "move_in": 0.0, "leave_per_hour": 0.02, "children_leave_per_hour": 0.0 },
-			{ "from": 0.21, "speed": 0.5, "move_in": 1.0, "leave_per_hour": 0.02, "children_leave_per_hour": 0.0 },
-			{ "from": 0.5, "speed": 1.0, "move_in": 1.0, "leave_per_hour": 0.0 },
-			{ "from": 0.8, "speed": 1.5, "move_in": 1.0, "leave_per_hour": 0.0 }
+		"moods": [
+			{ "from": 0, "name": "Angry", "births": 0.0, "move_in": 0.0, "leave_per_hour": 0.05 },
+			{ "from": 0.15, "name": "Unhappy", "births": 0.5, "move_in": 1.0, "leave_per_hour": 0.02 },
+			{ "from": 0.4, "name": "Content", "births": 1.0, "move_in": 1.0, "leave_per_hour": 0.0 },
+			{ "from": 0.7, "name": "Happy", "births": 1.5, "move_in": 1.0, "leave_per_hour": 0.0 }
 		]
 	},
 	"grid_size": [26, 26],

@@ -380,7 +380,7 @@ func rent_changed(type_id: String) -> bool:
 	return state.get("dev_rent", {}).has(type_id)
 
 
-## Developer: locks a part of happiness ("score", "expected" or a need, see dev_lock_keys) at
+## Developer: locks a part of happiness ("score" or a need, see dev_lock_keys) at
 ## `value` (0-1); a negative value unlocks it.
 func dev_lock_happiness(key: String, value: float) -> Dictionary:
 	return _after(Simulation.dev_lock_happiness(state, data(), key, value, TimeService.now()))
@@ -391,7 +391,7 @@ func dev_locks() -> Dictionary:
 	return Simulation.dev_locks(state)
 
 
-## What a developer can lock: "score", "expected" and each need that counts.
+## What a developer can lock: "score" and each need.
 func dev_lock_keys() -> Array:
 	return Simulation.dev_lock_keys(data())
 
@@ -932,7 +932,7 @@ func happiness_gains() -> Dictionary:
 	return Simulation.happiness_gains(data(), happiness())
 
 
-## The needs that count, in the order to show them (see Simulation.need_ids).
+## Every need, in the order to show them (see Simulation.need_ids).
 func need_ids() -> Array:
 	return Simulation.need_ids(data())
 

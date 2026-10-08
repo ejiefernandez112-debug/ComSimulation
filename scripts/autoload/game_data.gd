@@ -30,7 +30,7 @@ func apply_dev_config(overrides: Dictionary) -> void:
 	Simulation.apply_config_overrides(config, _file_config, overrides)
 
 
-## A game_config.json value by its path ("happiness.growth_speeds.2.speed"), with any developer
+## A game_config.json value by its path ("happiness.moods.2.births"), with any developer
 ## tuning, or null.
 func config_value(path: String) -> Variant:
 	return Simulation.config_value(config, path)
