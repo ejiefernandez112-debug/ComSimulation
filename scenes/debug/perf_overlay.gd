@@ -77,7 +77,7 @@ func _update() -> void:
 		"Tick: rules %.1f ms ⋅ screens %.1f ms" % [int(tick.get("rules", 0)) / 1000.0, int(tick.get("screens", 0)) / 1000.0],
 		"Slowest tick: rules %.1f ms ⋅ screens %.1f ms" % [int(_slowest.rules) / 1000.0, int(_slowest.screens) / 1000.0],
 		"Video memory %d MB" % roundi(Performance.get_monitor(Performance.RENDER_VIDEO_MEM_USED) / 1048576.0),
-		"Limit 30 after 10 s untouched = battery saver",
+		"Limit ~30 after 10 s untouched, 15 behind other apps = battery saver",
 	])
 
 

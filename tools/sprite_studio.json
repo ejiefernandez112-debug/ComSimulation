@@ -1,5 +1,5 @@
 {
-	"_comment": "Sprite studio settings (see tools/sprite_studio.gd). kit_folder = where the 3D models are; output_folder = where the building pictures go. For each building id from data/buildings.json: model = file in the kit, turn = quarter turns (0-3) so its front faces the camera, tiles = how many tiles wide it stands (default: its size in data/buildings.json, else 1), kit_folder (optional) = look for this one model somewhere else. Our own models are made in Blender by the scripts in art/blender/ and saved to art/models/ (how-to: art/README.md). The rest are TEMPORARY stand-ins from Kenney City Kit (Commercial) 2.1, CC0, https://kenney.nl/assets/city-kit-commercial - not committed to Git; re-download into Sprites kit/ to re-run the studio on another computer.",
+	"_comment": "Sprite studio settings (see tools/sprite_studio.gd). kit_folder = where the 3D models are; output_folder = where the building pictures go. For each building id from data/buildings.json: model = file in the kit, turn = quarter turns (0-3) so its front faces the camera, tiles = how many tiles wide it stands (default: its size in data/buildings.json, else 1), kit_folder (optional) = look for this one model somewhere else, spin (optional) = a part that turns in the game: part = its name in the model (made with a pivot, art/blender/kit.py), frames = pictures per repeat, repeat_degrees = how far it turns before it looks the same again (120 for 3 blades), clockwise = as the player sees it, seconds_per_turn = one full turn in the game. Our own models are made in Blender by the scripts in art/blender/ and saved to art/models/ (how-to: art/README.md). The rest are TEMPORARY stand-ins from Kenney City Kit (Commercial) 2.1, CC0, https://kenney.nl/assets/city-kit-commercial - not committed to Git; re-download into Sprites kit/ to re-run the studio on another computer.",
 	"kit_folder": "Sprites kit/kenney_city-kit-commercial_2.1/Models/GLB format",
 	"output_folder": "assets/buildings",
 	"buildings": {
@@ -11,9 +11,9 @@
 		"villa": { "model": "building-a.glb", "turn": 0 },
 		"makeshift_hut": { "model": "detail-awning.glb", "turn": 0 },
 		"wheat_farm": { "kit_folder": "art/models", "model": "wheat_farm.glb" },
-		"flour_mill": { "kit_folder": "art/models", "model": "flour_mill.glb" },
+		"flour_mill": { "kit_folder": "art/models", "model": "flour_mill.glb", "spin": { "part": "sails", "frames": 12, "repeat_degrees": 90, "clockwise": false, "seconds_per_turn": 8 } },
 		"bakery": { "kit_folder": "art/models", "model": "bakery.glb" },
-		"wind_turbine": { "kit_folder": "art/models", "model": "wind_turbine.glb" },
+		"wind_turbine": { "kit_folder": "art/models", "model": "wind_turbine.glb", "spin": { "part": "rotor", "frames": 16, "repeat_degrees": 120, "clockwise": true, "seconds_per_turn": 4 } },
 		"electric_substation": { "kit_folder": "art/models", "model": "electric_substation.glb" },
 		"solar_power_plant": { "kit_folder": "art/models", "model": "solar_power_plant.glb" },
 		"nuclear_power_plant": { "kit_folder": "art/models", "model": "nuclear_power_plant.glb" }

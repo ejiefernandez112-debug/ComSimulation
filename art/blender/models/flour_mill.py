@@ -92,7 +92,8 @@ def _cap_and_sails():
 	c.ball(0.2, frame(hub + FACING * 0.18, ACROSS, z_axis=FACING), mat("metal_dark"), detail=1)
 	c.done(bevel=0.03)
 
-	# Four sails in an X: a stock, a lattice frame and a cream cloth on one side of it.
+	# Four sails in an X: a stock, a lattice frame and a cream cloth on one side of it. They turn
+	# in the game while the mill works (tools/sprite_studio.json "spin"), around the windshaft.
 	s = Parts("sails")
 	length, start, width = 4.4, 0.55, 1.0
 	for k in range(4):
@@ -107,7 +108,7 @@ def _cap_and_sails():
 			at = base + along * (start + i * (length - start) / 5) + side * (width / 2 + 0.08)
 			s.box((width + 0.12, 0.07, 0.08), frame(at + FACING * 0.09, side, z_axis=FACING), mat("wood"))
 		s.box((0.07, length - start, 0.08), frame(cloth_mid + side * (width / 2) + FACING * 0.09, side, z_axis=FACING), mat("wood"))
-	s.done(bevel=0.02)
+	s.done(bevel=0.02, pivot=frame(hub, FACING, z_axis=(0, 0, 1)))
 
 
 def _gallery():

@@ -18,7 +18,13 @@ photographs the finished models into the 2D sprites the game shows (plan.md §4)
    Add `--blend` at the end to also get `models/wheat_farm.blend`, which you can open in Blender to look around.
 2. Check `previews/wheat_farm.png`.
 3. Photograph it into the game sprite. The model must be listed in `tools/sprite_studio.json`
-   with `"kit_folder": "art/models"`. Then run the studio and the import, as in CLAUDE.md.
+   with `"kit_folder": "art/models"`. Then run the studio and the import, as in CLAUDE.md
+   (`-- only <id>` at the end of the studio command remakes just that building).
+
+**Parts that turn in the game** (the Wind Turbine's `rotor`, the Grain Mill's `sails`): build the
+part as its own `Parts("name")` and finish it with `done(pivot=frame(hub, axle_direction, z_axis=(0, 0, 1)))`,
+so it turns around its axle. Its `"spin"` in `tools/sprite_studio.json` names that part. A new
+version of such a model must keep the part and its name (plan.md §4, "Turning parts").
 
 ## Pack status
 

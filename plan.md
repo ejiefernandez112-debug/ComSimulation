@@ -92,7 +92,11 @@ These are cheap now and very expensive to retrofit later. Include them in instru
 		 - The sprite studio photographs each building at its `size` (no setting needed in `tools/sprite_studio.json`)
 	 - Still to do: trees and rocks as sprites
   3. **The island itself** — 3D terrain built in the studio from the same coastline seed (flat plot in the middle, cliffs and beaches around it, mountain and forest at the back), baked once into a background picture cut into chunks for phones
-  4. **Life** — spinning mill sails, bakery smoke, swaying trees, drifting cloud shadows, birds, boats. ✅ People walking and cars driving on the roads (2026-10-05, §5.20; simple shapes drawn in code for now)
+  4. **Life** — bakery smoke, swaying trees, drifting cloud shadows, birds, boats. ✅ People walking and cars driving on the roads (2026-10-05, §5.20; simple shapes drawn in code for now)
+	 - ✅ **Turning parts (built 2026-10-08, the user's request "the wind turbine and mill aren't spinning"):** the Wind Turbine's rotor turns (clockwise, one turn in 4 s) whenever it makes power; the Grain Mill's sails turn (anticlockwise like Dutch mills, one turn in 8 s) only while someone is working there (a batch, workers and power), so a standing mill shows at a glance. Under construction, switched off or idle they stand still in the normal picture
+		 - How: the turning part is its own part in the Blender model, made with a pivot on its axle (`Parts.done(pivot=...)`, `art/blender/kit.py`). Its entry in `tools/sprite_studio.json` has a `"spin"` (part, frames, repeat_degrees, clockwise, seconds_per_turn); the studio then also makes `<id>_base.png` (the picture without the part) and `<id>_spin.png` (a sheet of the part at each angle, keeping only the pixels it changes: the part and its shadow on the building). `building_view.gd` shows the base with the sheet's pictures in turn on top; Build menu and placement keep the normal picture
+		 - Cost: the turbine's 16 pictures and the mill's 12 add about 4 MB of video memory in all (shared by every turbine and mill); per frame, each turning building only picks a picture number (no work while standing still)
+		 - Redo one or two buildings without re-photographing the rest: `... -s tools/sprite_studio.gd -- only wind_turbine flour_mill`
 - **Audio** — ✅ interface and event sounds built 2026-10-07 (§5.24). Direction: realistic, modern, restrained. Ambience, building sounds and adaptive music are designed but not built (§5.24).
 
 ## 5. Game Mechanics
@@ -1098,7 +1102,20 @@ PlayerSave
 
 **After the happiness restructure (2026-10-07, §5.6, §5.23; the big village now also has a Clinic, Tavern, Chapel and Police Station):** `happiness()` 2.8 → 3.6 ms (its own part, without housing and employment, about 0.2 → 0.75 ms: seven needs per wealth class, one walk over the buildings), HUD numbers 3.3 → 4.1 ms, one tick 14.8 → 15.3 ms, Statistics → People open 13.5 → 13.9 ms, 24 h away 7.2 → 2.0 s (the village now settles differently). Small village: one tick's rules 0.68 → 0.79 ms. `test_invariants` is a little slower (2 games: 41 → 54 s), partly because it now checks happiness after every step.
 
+**Laptop running hot (2026-10-08):** the frame-rate limiter (`scenes/main/frame_rate.gd`: about 60 pictures a second while playing, 30 after 10 s untouched) had been written but never added to the game, so Godot drew as fast as the screen refreshes. Measured fullscreen on the development laptop (2560×1440 at 165 Hz, Godot running on its RTX 3060), small village:
+
+| | pictures a second | graphics chip busy | CPU (of the whole machine) |
+|---|---|---|---|
+| Before (no limit) | ~160 | ~33% | ~4–5% |
+| — island hidden | ~160 | ~30% | same |
+| — glass blur off | ~147 | ~29% | same |
+| After: playing | 55 | ~12% | ~1.5% |
+| After: 10 s untouched | 33 | ~7% | ~1% |
+
+So the culprit was how many frames were drawn, not the island shader or the glass blur (hiding them saved little on this GPU; a phone may differ). Fixed: `main.gd` now adds the limiter, `Settings` has its `frame_rate` key ("smooth"; no Settings button yet), and it drops to **15 while the window is behind another app** on a computer (a click or key brings it straight back; the mouse just passing over doesn't). On a 165 Hz screen "60" becomes 55 and "30" becomes 33 so each picture stays up for a whole number of screen refreshes.
+
 **Still open:**
+- **Frame rate button in Settings** (Saver 30 / Smooth 60 / Max): the limiter already reads the `frame_rate` setting; the Settings window needs a row for it.
 - **Long time away in a big village.** Every birth is its own step (about 1,500 a day at 800 people), so 24 h away still takes ~6.7 s on the PC, more on a phone. Options: a quick path for steps where only a baby was born (same rules), or babies arriving in small groups like people leaving (a small rule change).
 - **Phone test with the overlay**: what the island shader costs (Island switch). If it's a lot, bake the land and cliffs into a picture once at start-up and let the shader paint only the water (an early part of Section 4, visual step 3).
 - Opening the Warehouse window in a big village builds ~50 rows at once (~40 ms on the PC).

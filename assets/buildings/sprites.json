@@ -35,7 +35,17 @@
 				110.0,
 				157.0
 			],
-			"model": "flour_mill.glb"
+			"model": "flour_mill.glb",
+			"spin": {
+				"at": [
+					25,
+					-17
+				],
+				"columns": 4,
+				"frames": 12,
+				"rows": 3,
+				"seconds_per_frame": 0.166666666666667
+			}
 		},
 		"makeshift_hut": {
 			"anchor": [
@@ -98,7 +108,17 @@
 				59.0,
 				203.0
 			],
-			"model": "wind_turbine.glb"
+			"model": "wind_turbine.glb",
+			"spin": {
+				"at": [
+					-17,
+					-4
+				],
+				"columns": 4,
+				"frames": 16,
+				"rows": 4,
+				"seconds_per_frame": 0.0833333333333333
+			}
 		}
 	}
 }

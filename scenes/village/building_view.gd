@@ -4,6 +4,9 @@ extends Node2D
 ## of the building's tile; the Objects layer sorts it by how low on screen it is, so nearer things
 ## cover farther ones. Also shows a bubble when goods are ready to collect, a bounce and glow when
 ## selected, and its name when the "Building names" setting is on. Holds no game numbers.
+## A building with a turning part (a Wind Turbine's rotor, a Grain Mill's sails: "spin" in
+## sprites.json) shows it turning while the building works: its picture without that part, with
+## the part's pictures from the sprite studio shown in turn on top (see spinner()).
 
 const SPRITES := "res://assets/buildings/"
 const HEIGHT := 30.0  # placeholder box height
@@ -12,6 +15,7 @@ const BUBBLE_RADIUS := 17.0
 const CONSTRUCTION_TINT := Color(1, 1, 1, 0.45)
 const SUSPENDED_TINT := Color(0.55, 0.55, 0.62)  # greyed: switched off by the player
 const BUILD_BAR_SIZE := Vector2(60, 10)
+const GLOW := Color(1.25, 1.25, 1.2)  # brightest point of the selected building's pulsing glow
 const CATEGORY_COLORS := {
 	"civic": Color("8a8fa8"),
 	"residential": Color("c98b5e"),
@@ -30,10 +34,16 @@ static var show_names := false
 static var _manifest := {}  # what the sprite studio wrote: which pictures exist, and their anchors
 static var _hit_images := {}  # building type -> Image, to check whether a tap landed on the picture
 static var _pictures := {}  # building type -> picture(): worked out once, it's asked for often
+static var _spinners := {}  # building type -> spinner(), the same way
 
 var type_id := ""
 var building_id := ""
 var _sprite: Sprite2D
+# Turning part: only buildings that have one, and only while it turns, do per-frame work (_process).
+var _spinner: Sprite2D
+var _spin := {}  # spinner(type_id)
+var _turning := false
+var _spin_phase := 0.0  # frames: so neighbouring turbines don't all turn in step
 var _bubble := Node2D.new()
 var _bubble_icon: Texture2D
 var _bob: Tween
@@ -64,6 +74,17 @@ func _ready() -> void:
 		_sprite.scale = Vector2.ONE * art.scale
 		_sprite.show_behind_parent = true  # keeps the name label drawn on top
 		add_child(_sprite)
+		_spin = spinner(type_id)
+		if not _spin.is_empty():
+			_spinner = Sprite2D.new()
+			_spinner.texture = _spin.sheet
+			_spinner.centered = false
+			_spinner.hframes = _spin.columns
+			_spinner.vframes = _spin.rows
+			_spinner.position = _spin.at - art.anchor  # in the picture's pixels, like _sprite.offset
+			_spinner.visible = false
+			_sprite.add_child(_spinner)  # drawn over the picture, faded and greyed with it
+			_spin_phase = absi(hash(building_id)) % 1000 / 1000.0 * int(_spin.frames)
 	# The bubble floats above every building (z_index), bobbing gently.
 	_bubble.z_index = 5
 	_bubble.visible = false
@@ -84,10 +105,15 @@ func _draw() -> void:
 
 
 func _process(_delta: float) -> void:
-	if Economy.is_built(_b):
-		refresh(_b)  # finished: switch to the normal look right away, not at the next tick
-	else:
-		_build_bar.queue_redraw()
+	if _constructing:
+		if Economy.is_built(_b):
+			refresh(_b)  # finished: switch to the normal look right away, not at the next tick
+		else:
+			_build_bar.queue_redraw()
+	if _turning:
+		var frame := int(Time.get_ticks_msec() / 1000.0 / float(_spin.seconds_per_frame) + _spin_phase) % int(_spin.frames)
+		if frame != _spinner.frame:
+			_spinner.frame = frame
 
 
 ## Keeps the bubble and the construction look up to date (the village calls this every tick).
@@ -99,13 +125,20 @@ func refresh(b: Dictionary) -> void:
 		var finished := _constructing and not constructing
 		_constructing = constructing
 		_suspended = suspended
-		set_process(constructing)
+		set_process(constructing or _turning)
 		_build_bar.visible = constructing
 		if _sprite:
 			_sprite.modulate = _tint()
 		queue_redraw()
 		if finished:
 			pop_in()  # construction done
+	if _spinner:
+		var turning := _is_turning(b)
+		if turning != _turning:
+			_turning = turning
+			_spinner.visible = turning
+			_sprite.texture = _spin.base if turning else picture(type_id).texture  # standing still: the normal picture
+			set_process(_constructing or turning)
 	# A batch's finished hours wait in the building (plan.md §5.1): the bubble appears once the
 	# first hour is done and stays until they are collected.
 	var waiting := Economy.waiting_goods(b)
@@ -143,6 +176,15 @@ func refresh(b: Dictionary) -> void:
 		_bob.tween_property(_bubble, "position:y", rest, 0.6).set_trans(Tween.TRANS_SINE)
 
 
+## Its turning part turns while it works: built and switched on, and, for a building with workers,
+## someone working there (a Grain Mill with a batch, workers and power). A Wind Turbine needs no
+## workers: it turns whenever it makes power.
+func _is_turning(b: Dictionary) -> bool:
+	if not Economy.is_built(b) or Economy.is_suspended(b):
+		return false
+	return int(Economy.level_stat(b, "max_workers")) == 0 or Economy.workers_working(b) > 0.0
+
+
 ## Faded while being built, greyed while suspended.
 func _tint() -> Color:
 	if _constructing:
@@ -156,15 +198,19 @@ func set_selected(on: bool) -> void:
 	if _glow:
 		_glow.kill()
 		_glow = null
-	target.self_modulate = Color.WHITE
+	var glow := func(color: Color) -> void:
+		target.self_modulate = color
+		if _spinner:
+			_spinner.self_modulate = color  # its turning part glows with it
+	glow.call(Color.WHITE)
 	if not on:
 		return
 	var bounce := create_tween()
 	bounce.tween_property(self, "scale", Vector2(1.08, 0.94), 0.08)
 	bounce.tween_property(self, "scale", Vector2.ONE, 0.25).set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
 	_glow = create_tween().set_loops()
-	_glow.tween_property(target, "self_modulate", Color(1.25, 1.25, 1.2), 0.5).set_trans(Tween.TRANS_SINE)
-	_glow.tween_property(target, "self_modulate", Color.WHITE, 0.5).set_trans(Tween.TRANS_SINE)
+	_glow.tween_method(glow, Color.WHITE, GLOW, 0.5).set_trans(Tween.TRANS_SINE)
+	_glow.tween_method(glow, GLOW, Color.WHITE, 0.5).set_trans(Tween.TRANS_SINE)
 
 
 ## A just-built building drops into place.
@@ -285,6 +331,29 @@ static func picture(type_id: String) -> Dictionary:
 		}
 	_pictures[type_id] = art
 	return art
+
+
+## The building's turning part, or {} if it has none: {"base" (its picture without the part, same
+## size and anchor as picture()), "sheet" (the part at "frames" angles, in a grid of "columns" x
+## "rows"), "at" (where the sheet's frames sit in the picture, in picture pixels), "frames",
+## "seconds_per_frame"}. Made by the sprite studio ("spin" in tools/sprite_studio.json).
+static func spinner(type_id: String) -> Dictionary:
+	if _spinners.has(type_id):
+		return _spinners[type_id]
+	var spin := {}
+	var entry: Dictionary = _manifest.get("sprites", {}).get(type_id, {}).get("spin", {}) if not picture(type_id).is_empty() else {}
+	if not entry.is_empty():
+		spin = {
+			"base": load(SPRITES + type_id + "_base.png"),
+			"sheet": load(SPRITES + type_id + "_spin.png"),
+			"at": Vector2(entry.at[0], entry.at[1]),
+			"frames": int(entry.frames),
+			"columns": int(entry.columns),
+			"rows": int(entry.rows),
+			"seconds_per_frame": float(entry.seconds_per_frame),
+		}
+	_spinners[type_id] = spin
+	return spin
 
 
 ## The building's name, just above its top, in the game's outlined font.

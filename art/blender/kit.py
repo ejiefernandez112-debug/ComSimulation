@@ -160,10 +160,14 @@ class Parts:
 		bmesh.ops.recalc_face_normals(self.bm, faces=faces)
 		self._paint(front + back, material)
 
-	def done(self, bevel=0.03) -> bpy.types.Object:
+	def done(self, bevel=0.03, pivot: Matrix = None) -> bpy.types.Object:
 		"""Turns the collected shapes into an object. `bevel` rounds every sharp edge by that much,
-		which catches the sun and makes small things read as solid, chunky toys (0 = no rounding)."""
+		which catches the sun and makes small things read as solid, chunky toys (0 = no rounding).
+		`pivot` (a frame()) is for a part that turns in the game, like a turbine's rotor: the object
+		then sits there, its own X axis being the axle it turns around (the sprite studio's "spin")."""
 		mesh = bpy.data.meshes.new(self.name)
+		if pivot is not None:
+			self.bm.transform(pivot.inverted())  # the shapes were placed in world positions
 		self.bm.to_mesh(mesh)
 		self.bm.free()
 		for material in self.materials:
@@ -171,6 +175,8 @@ class Parts:
 		for poly in mesh.polygons:
 			poly.use_smooth = bevel > 0  # without rounding, keep crisp flat faces
 		obj = bpy.data.objects.new(self.name, mesh)
+		if pivot is not None:
+			obj.matrix_world = pivot
 		bpy.context.scene.collection.objects.link(obj)
 		if bevel > 0:
 			mod = obj.modifiers.new("rounded edges", "BEVEL")

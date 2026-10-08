@@ -14,6 +14,7 @@ const DEFAULTS := {
 	"water_detail": true,
 	"fullscreen": false,
 	"glass_blur": true,  # frosted glass windows (blur the map behind them); off on phones, see _ready
+	"frame_rate": "smooth",  # scenes/main/frame_rate.gd: "saver" (30), "smooth" (about 60) or "max"
 }
 
 var _values := DEFAULTS.duplicate()

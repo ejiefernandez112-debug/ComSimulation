@@ -37,10 +37,15 @@ def _tower():
 
 
 def _rotor():
-	r = Parts("rotor")
 	top = Vector((0, 0, 0.4 + HEIGHT + 0.25))
-	# Nacelle: a rounded box along the facing direction, a little behind the hub.
-	r.box((1.5, 0.62, 0.62), frame(top - FACING * 0.35, FACING, z_axis=(0, 0, 1)), mat("white", -0.04))
+	# Nacelle: a rounded box along the facing direction, a little behind the hub. Its own part:
+	# it stays still while the rotor turns.
+	n = Parts("nacelle")
+	n.box((1.5, 0.62, 0.62), frame(top - FACING * 0.35, FACING, z_axis=(0, 0, 1)), mat("white", -0.04))
+	n.done(bevel=0.03)
+	# The rotor (hub and blades) turns in the game: the sprite studio photographs it at several
+	# angles (tools/sprite_studio.json "spin"), turning it around its axle (the pivot's X axis).
+	r = Parts("rotor")
 	hub = top + FACING * 0.55
 	r.ball(0.36, frame(hub, FACING, z_axis=(0, 0, 1)), mat("white"), squash=(1.3, 1, 1))
 	# Three blades in the plane facing the camera, one pointing up a little off vertical.
@@ -52,4 +57,4 @@ def _rotor():
 		centre = hub + out * (BLADE / 2 + 0.25) + FACING * 0.08
 		r.box((0.1, 0.36, BLADE), frame(centre, FACING, z_axis=out), mat("white"))
 		r.box((0.11, 0.37, 0.4), frame(hub + out * (BLADE + 0.05) + FACING * 0.08, FACING, z_axis=out), mat("barn_red"))
-	r.done(bevel=0.03)
+	r.done(bevel=0.03, pivot=frame(hub, FACING, z_axis=(0, 0, 1)))

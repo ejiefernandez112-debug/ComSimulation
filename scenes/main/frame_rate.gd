@@ -5,8 +5,13 @@ extends Node
 ##   the mouse),
 ## - 30 once nobody has touched it for IDLE_AFTER seconds: then only the water and small bobbing
 ##   things move, and they look the same at 30. Any touch brings it straight back.
-## The Settings "Frame rate" choice changes this: Saver = 30 always, Max = as fast as the screen.
+## - 15 while the game's window is behind another one on a computer (the player is in another
+##   app, but the village is still on screen). Clicking it or a key brings it straight back.
+## The "frame_rate" setting changes this: Saver = 30 always, Max = as fast as the screen (no
+## button for it in the Settings window yet: it stays on Smooth).
 ## Godot itself stops drawing while the game is minimised or in the background on a phone.
+## Without this the game drew as fast as the screen: ~160 a second on a 165 Hz laptop screen,
+## keeping its graphics chip ~3 times busier than at 60 and heating the laptop (plan.md §9.1.1).
 ##
 ## "About 60": a screen shows a new picture at fixed moments (120 times a second on a 120 Hz
 ## phone). If the game's speed doesn't fit evenly into the screen's, some pictures stay up longer
@@ -16,9 +21,11 @@ extends Node
 const ACTIVE_FPS := {"saver": 30, "smooth": 60, "max": 0}  # 0 = no limit: the screen's own speed
 const IDLE_FPS := 30
 const IDLE_AFTER := 10.0  # seconds without any input before dropping to IDLE_FPS
+const BACKGROUND_FPS := 15
 
 var _last_input_ms := 0
 var _idle := false
+var _in_front := true  # the game's window has the focus (false while the player uses another app)
 
 
 func _ready() -> void:
@@ -36,12 +43,21 @@ func _ready() -> void:
 
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_APPLICATION_RESUMED or what == NOTIFICATION_APPLICATION_FOCUS_IN:
+		_in_front = true
 		_on_input(null)  # back in the game: full speed straight away
+	elif what == NOTIFICATION_APPLICATION_FOCUS_OUT:
+		_in_front = false
+		_apply()
 
 
-func _on_input(_event: InputEvent) -> void:
+func _on_input(event: InputEvent) -> void:
 	_last_input_ms = Time.get_ticks_msec()
-	if _idle:
+	# A click, touch or key means the player is using the game, even if the window didn't say it
+	# has the focus (a game running inside the Godot editor). Just moving the mouse over it doesn't.
+	var woke := not _in_front and (event is InputEventMouseButton or event is InputEventKey or event is InputEventScreenTouch)
+	if woke:
+		_in_front = true
+	if _idle or woke:
 		_apply()
 
 
@@ -52,6 +68,8 @@ func _apply() -> void:
 	var target: int = ACTIVE_FPS.get(choice, ACTIVE_FPS.smooth)
 	if _idle:
 		target = IDLE_FPS
+	if not _in_front:
+		target = BACKGROUND_FPS
 	var limit := fitted(target, DisplayServer.screen_get_refresh_rate(), DisplayServer.window_get_vsync_mode() != DisplayServer.VSYNC_DISABLED)
 	if Engine.max_fps != limit:
 		Engine.max_fps = limit

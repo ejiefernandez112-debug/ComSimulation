@@ -97,3 +97,7 @@ C = another layout or roof shape. All three keep the footprint and the signature
 - Smoke or steam: 2-3 white balls rising and drifting right; small, so they don't hide the roof.
 - 1x1 homes are about 4-5 units wide, 2x2 buildings about 9-10: the studio scales each model to
   fill its tiles, so a model much smaller than its plot ends up looking oversized.
+- Parts that turn in the game (Wind Turbine `rotor`, Grain Mill `sails`; their `"spin"` in
+  `tools/sprite_studio.json`): every variant must build that part as its own
+  `Parts("<same name>")`, finished with `done(pivot=frame(hub, axle_direction, z_axis=(0, 0, 1)))`,
+  and nothing else in it (the nacelle or cap is a separate part, it stands still).

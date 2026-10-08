@@ -3,7 +3,7 @@
 	python tools/apply_picks.py "dairy=b ranch=a"
 
 For each building id, tools/sprite_studio.json gets  "<id>": { "kit_folder": "art/models",
-"model": "<id>-<letter>.glb" }  (the line is replaced, or added). The variant's model must exist
+"model": "<id>-<letter>.glb" }  (the line is replaced, or added; a "spin" on it is kept). The variant's model must exist
 in art/models/ (built by art/blender/build.py). Afterwards run the sprite studio and the import
 (CLAUDE.md), which turn the chosen models into the game's pictures.
 """
@@ -32,8 +32,11 @@ def main():
 		if not (ROOT / "art" / "models" / model).exists():
 			problems.append(f"{building_id}: art/models/{model} doesn't exist (build it first)")
 			continue
-		entry = f'\t\t"{building_id}": {{ "kit_folder": "art/models", "model": "{model}" }},'
 		at = next((i for i, line in enumerate(lines) if line.startswith(f'\t\t"{building_id}":')), -1)
+		# A part that turns ("spin") stays: the new variant's script must make that part too.
+		old = json.loads("{" + lines[at].strip().rstrip(",") + "}")[building_id] if at >= 0 else {}
+		spin = f', "spin": {json.dumps(old["spin"])}' if "spin" in old else ""
+		entry = f'\t\t"{building_id}": {{ "kit_folder": "art/models", "model": "{model}"{spin} }},'
 		if at >= 0:
 			lines[at] = entry if lines[at].rstrip().endswith(",") else entry.rstrip(",")
 		else:

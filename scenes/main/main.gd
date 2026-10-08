@@ -4,6 +4,7 @@ extends Node
 ## from the UI (collect, produce, build) -> Economy, with feedback on the map and in the HUD.
 
 const SoundCues = preload("res://scenes/main/sound_cues.gd")
+const FrameRate = preload("res://scenes/main/frame_rate.gd")
 
 @onready var village: Node2D = $Village
 @onready var ui_root: Control = $UI/Root
@@ -29,6 +30,9 @@ func _ready() -> void:
 	_sound_cues = SoundCues.new()
 	_sound_cues.name = "SoundCues"
 	add_child(_sound_cues)
+	var frame_rate := FrameRate.new()  # about 60 pictures a second, 30 when untouched (keeps laptops and phones cool)
+	frame_rate.name = "FrameRate"
+	add_child(frame_rate)
 	village.ghost_moved.connect(build_menu.show_ghost_state)
 	village.building_tapped.connect(_on_building_tapped)
 	village.bubble_tapped.connect(_collect)

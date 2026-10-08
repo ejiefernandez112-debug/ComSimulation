@@ -5,6 +5,10 @@ extends SceneTree
 ##
 ## Make the building sprites listed in tools/sprite_studio.json (writes assets/buildings/):
 ##   "C:\Program Files\Godot\Godot.exe.exe" --path . --rendering-method forward_plus -s tools/sprite_studio.gd
+## Remake only some of them (the others and their sprites.json entries stay as they are):
+##   ... -s tools/sprite_studio.gd -- only wind_turbine flour_mill
+## A building whose entry has a "spin" (a part that turns: a turbine's rotor, a mill's sails) also
+## gets <id>_base.png and <id>_spin.png, see _spin_photos().
 ## Make a contact sheet of every model in the kit (or in another folder, e.g. art/models), to choose from:
 ##   ... -s tools/sprite_studio.gd -- sheet <output.png> [folder]
 ##
@@ -21,6 +25,8 @@ const SHEET_COLUMNS := 7
 ## Baked shadow colour at its darkest; same blue-black as the map's shadows (scenes/village/shadow_layer.gd).
 const SHADOW := Color(0.03, 0.08, 0.12, 0.45)
 const AMBIENT := 0.45  # strength of the bluish sky light that fills in shaded walls
+const SPIN_NOISE := 3  # a pixel counts as changed by a turning part when a colour differs by more than this (of 255)
+const SPIN_PAD := 4  # see-through border around each picture in a spin sheet, so neighbours don't bleed in when shrunk
 
 var _viewport: SubViewport
 var _camera: Camera3D
@@ -28,6 +34,7 @@ var _environment: Environment
 var _floor: MeshInstance3D  # only visible while photographing the shadow
 var _stand: Node3D  # the model being photographed is placed on this
 var _caption: Label3D
+var _last_shadow: Image  # the shadow photo of the last _photograph()
 
 
 func _initialize() -> void:
@@ -36,19 +43,25 @@ func _initialize() -> void:
 	if args.size() >= 2 and args[0] == "sheet":
 		_make_sheet.call_deferred(args[1], args[2] if args.size() >= 3 else "")
 	else:
-		_make_sprites.call_deferred()
+		_make_sprites.call_deferred(args.slice(1) if args.size() >= 2 and args[0] == "only" else [])
 
 
 # --- The two jobs ---
 
-func _make_sprites() -> void:
+## `only` = building ids to remake (empty = all of them).
+func _make_sprites(only: Array) -> void:
 	var config: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(CONFIG_PATH))
 	var out_folder: String = "res://" + config.output_folder
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(out_folder))
 	var manifest := {"_note": "Written by tools/sprite_studio.gd - do not edit by hand.", "pixels_per_tile": PX_PER_TILE, "sprites": {}}
+	var manifest_path := out_folder.path_join("sprites.json")
+	if not only.is_empty() and FileAccess.file_exists(manifest_path):
+		manifest.sprites = JSON.parse_string(FileAccess.get_file_as_string(manifest_path)).sprites  # keep the others
 	# How many tiles wide each building stands: its "size" in data/buildings.json (1 if none).
 	var buildings: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://data/buildings.json"))
 	for building_id in config.buildings:
+		if not only.is_empty() and building_id not in only:
+			continue
 		var entry: Dictionary = config.buildings[building_id]
 		var tiles := int(entry.get("tiles", buildings.get(building_id, {}).get("size", 1)))
 		var photo := await _photograph(_kit_path(config, entry), int(entry.get("turn", 0)), tiles, "")
@@ -60,7 +73,11 @@ func _make_sprites() -> void:
 		var anchor := ANCHOR - Vector2(crop.position)
 		manifest.sprites[building_id] = {"anchor": [anchor.x, anchor.y], "model": entry.model}
 		print("Sprite studio: %s <- %s (%dx%d px)" % [building_id, entry.model, crop.size.x, crop.size.y])
-	var file := FileAccess.open(out_folder.path_join("sprites.json"), FileAccess.WRITE)
+		if entry.has("spin"):
+			var spin := await _spin_photos(building_id, entry.spin, crop, out_folder)
+			if not spin.is_empty():
+				manifest.sprites[building_id]["spin"] = spin
+	var file := FileAccess.open(manifest_path, FileAccess.WRITE)
 	file.store_string(JSON.stringify(manifest, "\t"))
 	file.close()
 	quit()
@@ -114,9 +131,74 @@ func _photograph(model_path: String, turn: int, tiles: int, caption: String) -> 
 	# Two photos: the building on its own, then only its shadow falling on a white floor.
 	var building := await _snap()
 	_shadow_pass(true)
-	var shadow := await _snap()
+	_last_shadow = await _snap()
 	_shadow_pass(false)
-	return _combine(building, shadow)
+	return _combine(building, _last_shadow)
+
+
+## A building with a part that turns in the game ("spin" in sprite_studio.json: "part" = the
+## model's part, e.g. "rotor"; it turns around that part's own X axis, see art/blender/kit.py).
+## Besides the normal picture (the part at rest) it gets two more, for the game to put together:
+## - <id>_base.png: the same picture without the part (same size and anchor),
+## - <id>_spin.png: a sheet of the part at `frames` angles, each turned `repeat_degrees` / `frames`
+##   further (a 3-bladed rotor looks the same again after 120°). Only the pixels the part changes
+##   are kept (the part, and its shadow on the building), so the sheet stays small. Its shadow on
+##   the ground stays as in the normal picture: with the sun beside it, it is only a thin line.
+## Returns what the game needs (sprites.json "spin"): the number of frames, the sheet's grid, where
+## the sheet's top-left corner sits in the normal picture, and seconds per frame.
+## Call it right after _photograph() of that building (the model is still on the stand).
+func _spin_photos(building_id: String, spin: Dictionary, crop: Rect2i, out_folder: String) -> Dictionary:
+	var part := _stand.find_child(String(spin.part), true, false) as Node3D
+	if part == null:
+		push_error("Sprite studio: %s's model has no part called \"%s\"" % [building_id, spin.part])
+		return {}
+	var frames := int(spin.frames)
+	var step := deg_to_rad(float(spin.repeat_degrees) / frames)
+	if spin.get("clockwise", true):
+		step = -step  # its axle points at the camera, and a positive turn looks anticlockwise from there
+	var rest := part.transform
+	part.visible = false
+	var bare := await _snap()
+	_combine(bare, _last_shadow).get_region(crop).save_png(ProjectSettings.globalize_path(out_folder.path_join(building_id + "_base.png")))
+	part.visible = true
+	var layers: Array[Image] = []
+	var used := Rect2i()
+	for k in frames:
+		part.transform = rest.rotated_local(Vector3.RIGHT, step * k)
+		var layer := _changed(await _snap(), bare)
+		layers.append(layer)
+		var area := layer.get_used_rect()
+		if area.has_area():
+			used = area if not used.has_area() else used.merge(area)
+	part.transform = rest
+	var columns := ceili(sqrt(frames))
+	var rows := ceili(frames / float(columns))
+	var pad := Vector2i(SPIN_PAD, SPIN_PAD)
+	var cell := used.size + pad * 2
+	var sheet := Image.create_empty(cell.x * columns, cell.y * rows, false, Image.FORMAT_RGBA8)
+	for k in frames:
+		sheet.blit_rect(layers[k], used, Vector2i(k % columns, k / columns) * cell + pad)
+	sheet.save_png(ProjectSettings.globalize_path(out_folder.path_join(building_id + "_spin.png")))
+	var at := used.position - crop.position - pad
+	print("Sprite studio: %s turns: %d frames of %dx%d px" % [building_id, frames, cell.x, cell.y])
+	return {
+		"frames": frames, "columns": columns, "rows": rows, "at": [at.x, at.y],
+		"seconds_per_frame": float(spin.seconds_per_turn) * float(spin.repeat_degrees) / frames / 360.0,
+	}
+
+
+## The pixels of `photo` that differ from `bare`; everything else see-through.
+func _changed(photo: Image, bare: Image) -> Image:
+	var a := photo.get_data()
+	var b := bare.get_data()
+	var out := PackedByteArray()
+	out.resize(a.size())  # all zero: see-through
+	for i in range(0, a.size(), 4):
+		if absi(a[i] - b[i]) > SPIN_NOISE or absi(a[i + 1] - b[i + 1]) > SPIN_NOISE \
+				or absi(a[i + 2] - b[i + 2]) > SPIN_NOISE or absi(a[i + 3] - b[i + 3]) > SPIN_NOISE:
+			for c in 4:
+				out[i + c] = a[i + c]
+	return Image.create_from_data(photo.get_width(), photo.get_height(), false, Image.FORMAT_RGBA8, out)
 
 
 ## Gives the renderer a few frames (shadows and shading settle), then takes the picture.
@@ -161,8 +243,19 @@ func _bounds(model: Node3D) -> AABB:
 	var first := true
 	for mesh: MeshInstance3D in model.find_children("*", "MeshInstance3D", true, false):
 		var part := mesh.global_transform * mesh.get_aabb()
+		if not mesh.global_basis.orthonormalized().is_equal_approx(Basis.IDENTITY):
+			part = _turned_bounds(mesh)  # a turned part (a rotor on its pivot): a box around a turned box is too big
 		box = part if first else box.merge(part)
 		first = false
+	return box
+
+
+## Box around a turned part's corners, in world space.
+func _turned_bounds(mesh: MeshInstance3D) -> AABB:
+	var corners := mesh.mesh.get_faces()
+	var box := AABB(mesh.global_transform * corners[0], Vector3.ZERO)
+	for corner in corners:
+		box = box.expand(mesh.global_transform * corner)
 	return box
 
 
