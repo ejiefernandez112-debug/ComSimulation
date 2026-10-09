@@ -1,6 +1,6 @@
 extends SceneTree
 ## Performance benchmark (plan.md §9.1): how long the game's regular work takes, in milliseconds,
-## for a small village (a new game) and a big one (a full 26x26 plot: ~60 factories and farms, ~70
+## for a small village (a new game) and a big one (a full 26x26 block of the 40x40 plot: ~60 factories and farms, ~70
 ## homes, shops, warehouses, power, ~800 people, batches running). Not a pass/fail test: timings
 ## differ from computer to computer, so run it before and after a change and compare.
 ##   "C:\Program Files\Godot\Godot.exe.exe" --headless --path . -s tests/bench_performance.gd

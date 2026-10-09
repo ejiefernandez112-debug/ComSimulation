@@ -13,7 +13,7 @@ extends RefCounted
 ## Time model: buildings store when their current batch started (`job_started_at`).
 ## "Settling" turns elapsed time into finished output in one calculation, never tick-by-tick.
 
-const SAVE_VERSION := 15  # 2: warehouses are buildings; 3: buildings keep their own hired workers;
+const SAVE_VERSION := 16  # 2: warehouses are buildings; 3: buildings keep their own hired workers;
 # 4: money is stored in cents; 5: stock carries cost tags; 6: children, births and deaths;
 # 7: housing types (old free Small Houses become Public Housing); 8: balance sheet (buildings
 # keep what was paid for them, starting capital, money log); 9: production batches (a Farm,
@@ -24,7 +24,7 @@ const SAVE_VERSION := 15  # 2: warehouses are buildings; 3: buildings keep their
 # 13: each producer keeps its product (b.product): older ones keep what they were making;
 # 14: big buildings stand on 2x2 tiles and the land grew to 26x26 (see fit_footprints);
 # 15: buildings keep the materials they were built with (b.materials / b.materials_cost);
-# Supermarkets have fewer shelves
+# Supermarkets have fewer shelves; 16: the land grew to 40x40 (the village moves to its middle)
 ## Used when game_config.json has no staffing_levels: share of max_workers per level.
 const DEFAULT_STAFFING_LEVELS := {"low": 0.5, "medium": 0.75, "high": 1.0}
 

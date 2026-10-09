@@ -153,6 +153,11 @@ static func _migrate(state: Dictionary, version: int, data: Dictionary, warnings
 		_record_old_materials(state, data)
 		_trim_shelves(state, data)
 		version = 15
+	if version < 16:
+		# Version 16: the land grew from 26x26 to 40x40 (plan.md §4), room for a bigger village.
+		# The whole village moves 7 tiles inward to stay in the middle; nothing else changes.
+		_grow_plot(state, data)
+		version = 16
 	state["save_version"] = version
 
 
@@ -195,7 +200,7 @@ static func _trim_shelves(state: Dictionary, data: Dictionary) -> void:
 		list.resize(keep)
 
 
-## For a version 13 save: the land grows to game_config.json's grid_size (it never shrinks), and
+## For a version 13 or 15 save: the land grows to game_config.json's grid_size (it never shrinks), and
 ## every building and road moves by the same amount, so the village stays in the middle.
 static func _grow_plot(state: Dictionary, data: Dictionary) -> void:
 	var old: Array = state.plot.grid_size

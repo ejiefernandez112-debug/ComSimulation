@@ -1,8 +1,9 @@
 extends Camera2D
 ## Clash-of-Clans-style camera: drag to pan, mouse wheel / pinch to zoom, no rotation. You can't
-## zoom out further than the whole-island view, or pan the view past the island's edges.
-## Double-tap toggles: from the whole-island view it zooms straight in to the closest zoom; when
-## zoomed in at all, it zooms back out to the whole island.
+## zoom out further than ZOOM_MIN, so buildings stay big enough to see (the island is bigger than
+## the screen since 2026-10-08: pan to see the rest), or pan the view past the island's edges.
+## It starts on City Hall (`home`). Double-tap toggles: zoomed all the way out, it zooms straight
+## in to the closest zoom; when zoomed in at all, it zooms back out as far as it goes.
 ## Tells the village when the player taps (presses and releases without dragging). Taps are
 ## reported straight away; the second tap of a double-tap only zooms.
 ## In Placement Mode (`placing`), one finger moves the building's ghost instead of the map: the
@@ -18,22 +19,27 @@ signal finger_cancelled
 
 const DRAG_THRESHOLD := 8.0  # pixels the finger/mouse must move before a press counts as a drag
 const ZOOM_MAX := 1.6  # closest zoom, the same for pinch, mouse wheel and double-tap
+## Furthest zoom-out: a 2x2 building is about 115 px wide on a 1280x720 screen (it was about 80
+## when zooming out showed the whole island; the user found that too small).
+const ZOOM_MIN := 0.9
 const ZOOM_STEP := 1.15
-const FIT_MARGIN := 0.97  # whole-island view: the island fills the screen, with a sliver of sea around it
+const FIT_MARGIN := 0.97  # a screen big enough for the whole island stops there, with a sliver of sea around it
 const DOUBLE_TAP_TIME := 0.3  # seconds after a tap in which a second tap makes it a double-tap
 const DOUBLE_TAP_DIST := 60.0  # pixels: the second tap must land this close to the first
 const ZOOM_GLIDE := 0.25  # seconds the double-tap zoom takes
 
 ## The island's rectangle (set by the village). The view never goes past it.
 var bounds := Rect2()
+## Where the view starts (set by the village): the middle of City Hall, in world pixels.
+var home := Vector2.ZERO
 ## Placement Mode (set by the village): one finger moves the ghost, not the map.
 var placing := false
 
 var _pressed := false
 var _dragging := false
 var _press_pos := Vector2.ZERO
-var _player_moved := false  # once the player drags or zooms, stop re-framing the island
-var _zoom_min := 1.0  # furthest zoom-out = the whole-island view; depends on the window size
+var _player_moved := false  # once the player drags or zooms, stop re-framing the start view
+var _zoom_min := ZOOM_MIN  # furthest zoom-out right now (closer on a screen that shows the whole island)
 ## Fingers on the screen right now (finger number -> screen position). Phones also turn the FIRST
 ## finger into fake mouse events, which handle one-finger pan and tap below; two fingers = pinch.
 var _touches := {}
@@ -54,31 +60,34 @@ func _ready() -> void:
 	add_child(_tap_timer)
 
 
-## Zooms out to the whole-island view (as large as the screen allows), centred.
-func show_whole_island() -> void:
-	_zoom_min = _whole_island_zoom()
+## The start view: zoomed out as far as it goes, centred on City Hall (`home`).
+func show_village() -> void:
+	_zoom_min = _furthest_zoom()
 	zoom = Vector2(_zoom_min, _zoom_min)
-	position = bounds.get_center()
+	position = home
+	_clamp()
 
 
 ## The window can change size just after start-up (the editor's game panel, a phone settling its
-## screen) or later (resizing, rotating). Until the player takes over, re-frame the island; after
-## that, just make sure the new window can't zoom out past the island.
+## screen) or later (resizing, rotating). Until the player takes over, re-frame the start view;
+## after that, just make sure the new window keeps to the zoom limits.
 func _on_window_resized() -> void:
 	if not _player_moved:
-		show_whole_island()
+		show_village()
 		return
-	_zoom_min = _whole_island_zoom()
+	_zoom_min = _furthest_zoom()
 	if zoom.x < _zoom_min:
 		zoom = Vector2(_zoom_min, _zoom_min)
 	_clamp()
 
 
-func _whole_island_zoom() -> float:
+## ZOOM_MIN, unless the screen is big enough to show the whole island closer than that: then
+## there's nothing more to see further out, so it stops at the whole island.
+func _furthest_zoom() -> float:
 	if bounds.size == Vector2.ZERO:
-		return 1.0  # the village hasn't said where the island is yet
+		return ZOOM_MIN  # the village hasn't said where the island is yet
 	var fit := get_viewport_rect().size / bounds.size
-	return minf(minf(fit.x, fit.y) * FIT_MARGIN, ZOOM_MAX)
+	return clampf(minf(fit.x, fit.y) * FIT_MARGIN, ZOOM_MIN, ZOOM_MAX)
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -200,8 +209,8 @@ func _on_tap(screen_pos: Vector2) -> void:
 	_tap_timer.start()
 
 
-## Zoomed in at all (by pinch or double-tap): glide out to the whole island. At the whole-island
-## view: glide straight in to the closest zoom, on the tapped spot.
+## Zoomed in at all (by pinch or double-tap): glide out as far as it goes. Zoomed all the way
+## out: glide straight in to the closest zoom. Either way the tapped spot stays under the finger.
 func _double_tap_zoom(screen_pos: Vector2) -> void:
 	var target := _zoom_min if zoom.x > _zoom_min + 0.01 else ZOOM_MAX
 	_stop_glide()
@@ -230,7 +239,7 @@ func _screen_to_world(screen_pos: Vector2) -> Vector2:
 
 
 ## Keeps the view inside the island's rectangle. Where the view is wider (or taller) than the
-## island, as in the whole-island view, it stays centred that way instead.
+## island (a screen big enough for all of it), it stays centred that way instead.
 func _clamp() -> void:
 	var half_view := get_viewport_rect().size / zoom / 2.0
 	var lo := bounds.position + half_view

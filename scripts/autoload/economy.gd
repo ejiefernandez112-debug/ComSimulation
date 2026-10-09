@@ -982,6 +982,16 @@ func centre_at(type_id: String, cell: Vector2i) -> Vector2:
 	return Simulation.centre_at(data(), type_id, cell)
 
 
+## The heart of the village, in tiles: the middle of City Hall (the road hub), or the middle of
+## the plot if there's none. The map opens here.
+func village_centre() -> Vector2:
+	for b in state.buildings:
+		if Simulation.is_road_hub(data(), b):
+			return Simulation.centre_of(data(), b)
+	var size: Array = state.plot.grid_size
+	return (Vector2(float(size[0]), float(size[1])) - Vector2.ONE) / 2.0
+
+
 ## The tiles a building of this kind covers standing at `cell`.
 func footprint(type_id: String, cell: Vector2i) -> Array[Vector2i]:
 	return Simulation.footprint(data(), type_id, cell)

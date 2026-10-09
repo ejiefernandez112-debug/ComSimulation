@@ -4314,7 +4314,7 @@ func test_fit_footprints() -> void:
 	_check(Sim.fit_footprints(state, data).is_empty(), "running it again changes nothing")
 
 
-## Version 14 grows the land and moves the village to its middle.
+## Versions 14 and 16 grow the land and move the village to its middle.
 func test_grow_plot() -> void:
 	var data := _road_data()
 	var state := Sim.new_game(data, T0)
@@ -4326,6 +4326,19 @@ func test_grow_plot() -> void:
 	data.config.grid_size = [8, 8]
 	SaveFormat._grow_plot(state, data)
 	_check(state.plot.grid_size == [14, 16] and Sim._cell_of(state.buildings[0]) == Vector2i(2, 3), "it never shrinks")
+
+	# Version 16 grows it again (26x26 -> 40x40 in the real game): a version 15 save loads on the
+	# bigger land with its village moved to the middle, and nothing else about it changes.
+	data = _road_data()
+	var v15 := Sim.new_game(data, T0)
+	Sim.build_roads(v15, data, _cells([[0, 1]]), T0)
+	var old := JSON.parse_string(SaveFormat.to_text(v15, T0)) as Dictionary
+	old.save_version = 15
+	data.config.grid_size = [14, 16]
+	var result := SaveFormat.from_text(JSON.stringify(old), data)
+	_check(result.ok and int(result.state.save_version) == Sim.SAVE_VERSION and result.state.plot.grid_size == [14, 16], "a version 15 save loads on the bigger land")
+	_check(result.ok and Sim._cell_of(result.state.buildings[0]) == Vector2i(2, 3) and Sim.is_road(result.state, Vector2i(2, 4)), "its village moved to the middle")
+	_check(result.ok and int(result.state.profile.currency) == int(v15.profile.currency) and result.state.buildings.size() == v15.buildings.size(), "same cash, same buildings")
 
 
 ## A building with no road waits; time away gives the same as playing through it.

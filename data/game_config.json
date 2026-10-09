@@ -58,7 +58,8 @@
 			{ "from": 0.7, "name": "Happy", "births": 1.5, "move_in": 1.0, "leave_per_hour": 0.0 }
 		]
 	},
-	"grid_size": [26, 26],
+	"_grid_size": "The buildable land, in tiles [x, y] (plan.md 4, Footprints): 40x40 since 2026-10-08 (26x26 before). Older saves grow to it and their village moves to the middle; it never shrinks. starting_buildings and starting_roads sit in its middle.",
+	"grid_size": [40, 40],
 	"_save": "The game saves to user://save.json every autosave_seconds, right after player actions, and when it closes or goes to the background (plan.md 8). The Welcome back window shows at start-up when the game was closed for at least welcome_back_after_seconds.",
 	"autosave_seconds": 30,
 	"welcome_back_after_seconds": 120,
@@ -66,8 +67,8 @@
 	"roads": {
 		"price": 25,
 		"starting_roads": [
-			[6, 13], [7, 13], [8, 13], [9, 13], [10, 13], [11, 13], [12, 13], [13, 13], [14, 13], [15, 13], [16, 13], [17, 13], [18, 13],
-			[19, 13], [20, 13], [21, 13]
+			[13, 20], [14, 20], [15, 20], [16, 20], [17, 20], [18, 20], [19, 20], [20, 20], [21, 20], [22, 20], [23, 20], [24, 20], [25, 20],
+			[26, 20], [27, 20], [28, 20]
 		]
 	},
 	"_construction": "Building and upgrading (plan.md 5.15). Every building's materials (buildings.json) are its Level 1 amounts; each level needs level_growth times the level below (2 = doubles: Level 2 = 2x, Level 3 = 4x, Level 4 = 8x). The materials are items (resources.json, category building_material, with their base price): the warehouse's own are used first, the rest is bought from an in-game supplier when the work starts, at today's market price: the base price (dollars) plus or minus up to price_swing (0.2 = 20%), a new price every price_change_seconds. Labor = construction workers from your Construction Offices: crew of them to build anything with materials (a building can set its own crew), crew_per_level more for each upgrade level (1, then 2 for Level 2, 3 for Level 3, 4 for Level 4); they are busy until the work is done, so more offices or bigger ones let you build more at once. Paid once, labor_share of the materials' value at today's prices (0.1 = 10%; warehouse materials count too). level_seconds = how long it takes: building (Level 1), then each upgrade (to Level 2, 3, 4, ...; levels past the list take the last time). All PLACEHOLDERS.",
@@ -138,14 +139,14 @@
 		"tree_density": 0.6
 	},
 	"starting_buildings": [
-		{ "type": "city_hall", "position": [10, 11] },
-		{ "type": "construction_office", "position": [10, 14] },
-		{ "type": "public_housing", "position": [14, 12] },
-		{ "type": "public_housing", "position": [17, 12] },
-		{ "type": "public_housing", "position": [20, 12] },
-		{ "type": "public_housing", "position": [14, 14] },
-		{ "type": "public_housing", "position": [17, 14] },
-		{ "type": "warehouse", "position": [6, 11] },
-		{ "type": "electric_substation", "position": [20, 14] }
+		{ "type": "city_hall", "position": [17, 18] },
+		{ "type": "construction_office", "position": [17, 21] },
+		{ "type": "public_housing", "position": [21, 19] },
+		{ "type": "public_housing", "position": [24, 19] },
+		{ "type": "public_housing", "position": [27, 19] },
+		{ "type": "public_housing", "position": [21, 21] },
+		{ "type": "public_housing", "position": [24, 21] },
+		{ "type": "warehouse", "position": [13, 18] },
+		{ "type": "electric_substation", "position": [27, 21] }
 	]
 }

@@ -71,7 +71,8 @@ func _ready() -> void:
 	_sync_buildings()
 	_started = true
 	camera.bounds = island.world_bounds()
-	camera.show_whole_island()
+	camera.home = Iso.to_world(Economy.village_centre())
+	camera.show_village()
 	camera.tapped.connect(_on_tapped)
 	camera.finger_down.connect(_on_finger_down)
 	camera.finger_moved.connect(_on_finger_moved)

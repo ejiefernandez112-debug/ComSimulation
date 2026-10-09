@@ -1,0 +1,699 @@
+{
+	"buildings": [
+		{
+			"batch": {},
+			"built_at": 0.0,
+			"hired": 0,
+			"id": "b1",
+			"job_started_at": 1000000.0,
+			"level": 1,
+			"paid": 0,
+			"position": [
+				10,
+				11
+			],
+			"storage": {},
+			"type": "city_hall"
+		},
+		{
+			"batch": {},
+			"built_at": 0.0,
+			"hired": 4,
+			"id": "b2",
+			"job_started_at": 1000000.0,
+			"level": 1,
+			"materials": {
+				"bricks": 400,
+				"cement": 40,
+				"construction_materials": 20,
+				"steel": 10
+			},
+			"materials_cost": {
+				"bricks": 40000.0,
+				"cement": 40000.0,
+				"construction_materials": 40000.0,
+				"steel": 50000.0
+			},
+			"paid": 187000,
+			"position": [
+				10,
+				14
+			],
+			"road": true,
+			"storage": {},
+			"type": "construction_office"
+		},
+		{
+			"batch": {},
+			"built_at": 0.0,
+			"hired": 0,
+			"id": "b3",
+			"job_started_at": 1000000.0,
+			"level": 1,
+			"materials": {
+				"bricks": 160,
+				"cement": 16,
+				"construction_materials": 8,
+				"steel": 4
+			},
+			"materials_cost": {
+				"bricks": 16000.0,
+				"cement": 16000.0,
+				"construction_materials": 16000.0,
+				"steel": 20000.0
+			},
+			"paid": 74800,
+			"position": [
+				14,
+				12
+			],
+			"power": "no_grid",
+			"storage": {},
+			"type": "public_housing"
+		},
+		{
+			"batch": {},
+			"built_at": 0.0,
+			"hired": 0,
+			"id": "b4",
+			"job_started_at": 1000000.0,
+			"level": 1,
+			"materials": {
+				"bricks": 160,
+				"cement": 16,
+				"construction_materials": 8,
+				"steel": 4
+			},
+			"materials_cost": {
+				"bricks": 16000.0,
+				"cement": 16000.0,
+				"construction_materials": 16000.0,
+				"steel": 20000.0
+			},
+			"paid": 74800,
+			"position": [
+				17,
+				12
+			],
+			"power": "no_grid",
+			"storage": {},
+			"type": "public_housing"
+		},
+		{
+			"batch": {},
+			"built_at": 0.0,
+			"hired": 0,
+			"id": "b5",
+			"job_started_at": 1000000.0,
+			"level": 1,
+			"materials": {
+				"bricks": 160,
+				"cement": 16,
+				"construction_materials": 8,
+				"steel": 4
+			},
+			"materials_cost": {
+				"bricks": 16000.0,
+				"cement": 16000.0,
+				"construction_materials": 16000.0,
+				"steel": 20000.0
+			},
+			"paid": 74800,
+			"position": [
+				20,
+				12
+			],
+			"power": "no_grid",
+			"storage": {},
+			"type": "public_housing"
+		},
+		{
+			"batch": {},
+			"built_at": 0.0,
+			"hired": 0,
+			"id": "b6",
+			"job_started_at": 1000000.0,
+			"level": 1,
+			"materials": {
+				"bricks": 160,
+				"cement": 16,
+				"construction_materials": 8,
+				"steel": 4
+			},
+			"materials_cost": {
+				"bricks": 16000.0,
+				"cement": 16000.0,
+				"construction_materials": 16000.0,
+				"steel": 20000.0
+			},
+			"paid": 74800,
+			"position": [
+				14,
+				14
+			],
+			"power": "no_grid",
+			"storage": {},
+			"type": "public_housing"
+		},
+		{
+			"batch": {},
+			"built_at": 0.0,
+			"hired": 0,
+			"id": "b7",
+			"job_started_at": 1000000.0,
+			"level": 1,
+			"materials": {
+				"bricks": 160,
+				"cement": 16,
+				"construction_materials": 8,
+				"steel": 4
+			},
+			"materials_cost": {
+				"bricks": 16000.0,
+				"cement": 16000.0,
+				"construction_materials": 16000.0,
+				"steel": 20000.0
+			},
+			"paid": 74800,
+			"position": [
+				17,
+				14
+			],
+			"power": "no_grid",
+			"storage": {},
+			"type": "public_housing"
+		},
+		{
+			"batch": {},
+			"built_at": 0.0,
+			"hired": 4,
+			"id": "b8",
+			"job_started_at": 1000000.0,
+			"level": 1,
+			"materials": {
+				"bricks": 600,
+				"cement": 60,
+				"construction_materials": 30,
+				"steel": 15
+			},
+			"materials_cost": {
+				"bricks": 60000.0,
+				"cement": 60000.0,
+				"construction_materials": 60000.0,
+				"steel": 75000.0
+			},
+			"paid": 280500,
+			"position": [
+				6,
+				11
+			],
+			"road": true,
+			"storage": {},
+			"type": "warehouse"
+		},
+		{
+			"batch": {},
+			"built_at": 0.0,
+			"hired": 0,
+			"id": "b9",
+			"job_started_at": 1000000.0,
+			"level": 1,
+			"materials": {
+				"bricks": 300,
+				"cement": 30,
+				"construction_materials": 20,
+				"steel": 20
+			},
+			"materials_cost": {
+				"bricks": 30000.0,
+				"cement": 30000.0,
+				"construction_materials": 40000.0,
+				"steel": 100000.0
+			},
+			"paid": 220000,
+			"position": [
+				20,
+				14
+			],
+			"storage": {},
+			"type": "electric_substation"
+		},
+		{
+			"batch": {},
+			"built_at": 1000010.0,
+			"hired": 0,
+			"id": "b10",
+			"job_started_at": 1000010.0,
+			"level": 1,
+			"materials": {
+				"bricks": 200,
+				"cement": 20,
+				"construction_materials": 10,
+				"steel": 5
+			},
+			"materials_cost": {
+				"bricks": 16600.0,
+				"cement": 17500.0,
+				"construction_materials": 16230.0,
+				"steel": 22050.0
+			},
+			"paid": 79618,
+			"position": [
+				5,
+				20
+			],
+			"power": "no_grid",
+			"storage": {},
+			"type": "small_house"
+		},
+		{
+			"batch": {},
+			"built_at": 1000010.0,
+			"hired": 0,
+			"id": "b11",
+			"job_started_at": 1000010.0,
+			"level": 1,
+			"materials": {
+				"bricks": 200,
+				"cement": 20,
+				"construction_materials": 10,
+				"steel": 5
+			},
+			"materials_cost": {
+				"bricks": 16600.0,
+				"cement": 17500.0,
+				"construction_materials": 16230.0,
+				"steel": 22050.0
+			},
+			"paid": 79618,
+			"position": [
+				9,
+				8
+			],
+			"power": "no_grid",
+			"storage": {},
+			"type": "small_house"
+		},
+		{
+			"batch": {},
+			"built_at": 1000010.0,
+			"hired": 0,
+			"id": "b12",
+			"job_started_at": 1000010.0,
+			"level": 1,
+			"materials": {
+				"bricks": 200,
+				"cement": 20,
+				"construction_materials": 10,
+				"steel": 5
+			},
+			"materials_cost": {
+				"bricks": 16600.0,
+				"cement": 17500.0,
+				"construction_materials": 16230.0,
+				"steel": 22050.0
+			},
+			"paid": 79618,
+			"position": [
+				1,
+				15
+			],
+			"power": "no_grid",
+			"storage": {},
+			"type": "small_house"
+		},
+		{
+			"batch": {
+				"bonus": "small",
+				"collected": {},
+				"cost": 40800.0,
+				"hours": 2,
+				"input_cost": {},
+				"inputs": {},
+				"made_hours": 0,
+				"recipe_id": "grow_wheat",
+				"unit_cost": {
+					"wheat": 309.09090909090907
+				},
+				"units": {
+					"wheat": 132
+				},
+				"wages": 28800
+			},
+			"bonus": "small",
+			"built_at": 1000010.0,
+			"hired": 0,
+			"id": "b13",
+			"job_started_at": 1011400.0,
+			"level": 1,
+			"materials": {
+				"bricks": 400,
+				"cement": 40,
+				"construction_materials": 20,
+				"steel": 10
+			},
+			"materials_cost": {
+				"bricks": 33200.0,
+				"cement": 35000.0,
+				"construction_materials": 32460.0,
+				"steel": 44100.0
+			},
+			"paid": 159236,
+			"position": [
+				21,
+				17
+			],
+			"product": "grow_wheat",
+			"road": false,
+			"staffing": "low",
+			"storage": {},
+			"type": "wheat_farm"
+		}
+	],
+	"inventory": {},
+	"inventory_cost": {},
+	"last_saved_at": 1011400.0,
+	"next_building_id": 14,
+	"plot": {
+		"grid_size": [
+			26,
+			26
+		]
+	},
+	"population": {
+		"children": [
+			{
+				"count": 3,
+				"grows_up_at": 1022400.0
+			},
+			{
+				"count": 2,
+				"grows_up_at": 1026000.0
+			},
+			{
+				"count": 2,
+				"grows_up_at": 1029600.0
+			}
+		],
+		"current": 57,
+		"growth_anchor": 1011400.0,
+		"growth_speed": 0.5,
+		"life_carry": {
+			"adult_deaths": 0.7916666666666666,
+			"adult_leaves": 3.1666666666666665,
+			"born": 0.9166666666666667,
+			"child_deaths": 0.05483333332499994
+		},
+		"move_in_speed": 1.0
+	},
+	"power_meter": {
+		"base_cost": 0.0,
+		"cycle_start": 1000000.0,
+		"mwh": 0.0
+	},
+	"profile": {
+		"currency": 9555375
+	},
+	"rent_carry": 0.5555555555555287,
+	"roads": [
+		[
+			6,
+			13,
+			2500
+		],
+		[
+			7,
+			13,
+			2500
+		],
+		[
+			8,
+			13,
+			2500
+		],
+		[
+			9,
+			13,
+			2500
+		],
+		[
+			10,
+			13,
+			2500
+		],
+		[
+			11,
+			13,
+			2500
+		],
+		[
+			12,
+			13,
+			2500
+		],
+		[
+			13,
+			13,
+			2500
+		],
+		[
+			14,
+			13,
+			2500
+		],
+		[
+			15,
+			13,
+			2500
+		],
+		[
+			16,
+			13,
+			2500
+		],
+		[
+			17,
+			13,
+			2500
+		],
+		[
+			18,
+			13,
+			2500
+		],
+		[
+			19,
+			13,
+			2500
+		],
+		[
+			20,
+			13,
+			2500
+		],
+		[
+			21,
+			13,
+			2500
+		]
+	],
+	"save_version": 15,
+	"settled_at": 1011400.0,
+	"started_at": 1000000.0,
+	"stats": {
+		"adjustments": 8500000,
+		"capital": {
+			"buildings": 1101500,
+			"cash": 1500000
+		},
+		"history": [
+			{
+				"adults": 50,
+				"born": 0,
+				"cash": 10000000,
+				"children": 0,
+				"died": 0,
+				"employed": 8,
+				"grew_up": 0,
+				"income": 0,
+				"jobs": 8,
+				"made": {},
+				"moved_away": 0,
+				"moved_in": 0,
+				"population": 50,
+				"spending": 0,
+				"t": 1000000.0
+			},
+			{
+				"adults": 50,
+				"born": 2,
+				"cash": 9596308,
+				"children": 2,
+				"died": 0,
+				"employed": 8,
+				"grew_up": 0,
+				"income": 398,
+				"jobs": 8,
+				"made": {},
+				"moved_away": 0,
+				"moved_in": 0,
+				"population": 52,
+				"spending": 404090,
+				"t": 1003600.0
+			},
+			{
+				"adults": 50,
+				"born": 5,
+				"cash": 9561908,
+				"children": 5,
+				"died": 0,
+				"employed": 8,
+				"grew_up": 0,
+				"income": 798,
+				"jobs": 8,
+				"made": {},
+				"moved_away": 0,
+				"moved_in": 0,
+				"population": 55,
+				"spending": 438890,
+				"t": 1007200.0
+			},
+			{
+				"adults": 50,
+				"born": 7,
+				"cash": 9556308,
+				"children": 7,
+				"died": 0,
+				"employed": 8,
+				"grew_up": 0,
+				"income": 1198,
+				"jobs": 8,
+				"made": {},
+				"moved_away": 0,
+				"moved_in": 0,
+				"population": 57,
+				"spending": 444890,
+				"t": 1010800.0
+			},
+			{
+				"adults": 50,
+				"born": 7,
+				"cash": 9555375,
+				"children": 7,
+				"died": 0,
+				"employed": 8,
+				"grew_up": 0,
+				"income": 1265,
+				"jobs": 8,
+				"made": {},
+				"moved_away": 0,
+				"moved_in": 0,
+				"population": 57,
+				"spending": 445890,
+				"t": 1011400.0
+			}
+		],
+		"income": {
+			"demolish": 0,
+			"rent": 1265,
+			"sales": 0
+		},
+		"made": {},
+		"money_log": [
+			{
+				"adjustments": 0,
+				"income": {
+					"demolish": 0,
+					"sales": 0
+				},
+				"sales_by_item": {},
+				"spending": {
+					"construction": 0,
+					"power": 0,
+					"roads": 0,
+					"tax": 0,
+					"wages": 0,
+					"water": 0
+				},
+				"t": 1000000.0
+			},
+			{
+				"adjustments": 8500000,
+				"income": {
+					"demolish": 0,
+					"rent": 398,
+					"sales": 0
+				},
+				"sales_by_item": {},
+				"spending": {
+					"construction": 398090,
+					"power": 0,
+					"roads": 0,
+					"tax": 0,
+					"wages": 6000,
+					"water": 0
+				},
+				"t": 1003600.0
+			},
+			{
+				"adjustments": 8500000,
+				"income": {
+					"demolish": 0,
+					"rent": 798,
+					"sales": 0
+				},
+				"sales_by_item": {},
+				"spending": {
+					"construction": 398090,
+					"power": 0,
+					"roads": 0,
+					"tax": 0,
+					"wages": 40800,
+					"water": 0
+				},
+				"t": 1007200.0
+			},
+			{
+				"adjustments": 8500000,
+				"income": {
+					"demolish": 0,
+					"rent": 1198,
+					"sales": 0
+				},
+				"sales_by_item": {},
+				"spending": {
+					"construction": 398090,
+					"power": 0,
+					"roads": 0,
+					"tax": 0,
+					"wages": 46800,
+					"water": 0
+				},
+				"t": 1010800.0
+			}
+		],
+		"people": {
+			"born": 7,
+			"died": 0,
+			"grew_up": 0,
+			"moved_away": 0,
+			"moved_in": 0
+		},
+		"sales_by_item": {},
+		"sold": {},
+		"spending": {
+			"construction": 398090,
+			"power": 0,
+			"roads": 0,
+			"tax": 0,
+			"wages": 47800,
+			"water": 0
+		}
+	},
+	"wage_carry": 0.0,
+	"water_meter": {
+		"base_cost": 0.0,
+		"cycle_start": 1000000.0,
+		"m3": 0.0
+	}
+}
