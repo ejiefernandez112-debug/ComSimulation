@@ -9,6 +9,10 @@ extends RefCounted
 const NAMES := {"rent": "Rent", "demolish": "Refunds", "batch_refunds": "Cancelled batches",
 	"construction": "Construction", "roads": "Roads", "wages": "Wages", "water": "Water", "power": "Power", "tax": "Sales tax",
 	"switch_fees": "Switching products", "purchases": "Trading Post purchases"}
+## The money log lists this many finished blocks, the newest (2 hours of 30-minute blocks), and
+## sums up the older ones in one line, so the Bills & log view fits without a scroll bar.
+const LOG_BLOCKS := 4
+const LIST_MOST := 3  # money in or out: the biggest sources named in a block, the rest summed up
 
 var _panel  # the Statistics window (stats_panel.gd)
 var _log_rows: VBoxContainer  # the finished blocks of the money log, rebuilt when a block ends
@@ -146,25 +150,50 @@ func refresh_money_log() -> void:
 		return
 	_log_shown = shown
 	for child in _log_rows.get_children():
+		_log_rows.remove_child(child)  # out at once, so the window measures only the new rows
 		child.queue_free()
 	if finished.is_empty():
 		_log_rows.add_child(_note("Nothing yet."))
 	var every := float(GameData.config.get("money_log_minutes", 30)) * 60.0
-	for row in finished:
-		var line := HBoxContainer.new()
-		_log_rows.add_child(line)
-		var when: Label = _panel._body(_when(row, now, every))
-		when.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		line.add_child(when)
-		var net: Label = _panel._body(_signed(int(row.net)))
-		net.add_theme_color_override("font_color", _panel._signed_color(roundi(int(row.net) / 100.0)))
-		line.add_child(net)
+	for row in finished.slice(0, LOG_BLOCKS):
+		_add_log_line(_when(row, now, every), int(row.net))
 		var money_in := _money_in(row)
 		var money_out := _money_out(row)
 		if not money_in.is_empty():
 			_log_rows.add_child(_note("In: " + _list(money_in)))
 		if not money_out.is_empty():
 			_log_rows.add_child(_note("Out: " + _list(money_out)))
+	if finished.size() > LOG_BLOCKS:
+		_add_earlier(finished.slice(LOG_BLOCKS))
+
+
+## One block's line in the money log: when it was, and how much cash changed.
+func _add_log_line(when_text: String, net_cents: int) -> void:
+	var line := HBoxContainer.new()
+	_log_rows.add_child(line)
+	var when: Label = _panel._body(when_text)
+	when.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	line.add_child(when)
+	var net: Label = _panel._body(_signed(net_cents))
+	net.add_theme_color_override("font_color", _panel._signed_color(roundi(net_cents / 100.0)))
+	line.add_child(net)
+
+
+## The blocks older than the ones listed (`rows`, newest first), summed up in one entry:
+## "Before that (22h)  +$2,850" and "In $4,100 ⋅ Out $1,250".
+func _add_earlier(rows: Array) -> void:
+	var money_in := 0
+	var money_out := 0
+	var net := 0
+	for row in rows:
+		for key in row.income:  # "sales" is every sale, so the items aren't counted again
+			money_in += int(row.income[key])
+		for key in row.spending:
+			money_out += int(row.spending[key])
+		net += int(row.net)
+	var span := float(rows[0].to) - float(rows[-1].from)
+	_add_log_line("Before that (%s)" % LineChart._ago(span), net)
+	_log_rows.add_child(_note("In %s ⋅ Out %s" % [UITheme.money(money_in), UITheme.money(money_out)]))
 
 
 ## "2h ago – 1h 30m ago", or "While you were away (6h)" for a block that covers time away.
@@ -194,11 +223,21 @@ func _money_out(row: Dictionary) -> Array:
 	return out
 
 
-## "Bread $900, Rent $300", or "nothing".
+## "Bread $900, Rent $300", the biggest first, or "nothing". Past the 3 biggest, the rest are summed
+## up ("and 4 more ($250)"), so a busy half hour still fits on two lines (every source is listed
+## under All time on the other view).
 func _list(items: Array) -> String:
+	var sorted := items.duplicate()
+	sorted.sort_custom(func(a, b): return int(a[1]) > int(b[1]))
 	var parts := []
-	for item in items:
-		parts.append("%s %s" % [item[0], UITheme.money(item[1])])
+	var rest := 0
+	for i in sorted.size():
+		if i < LIST_MOST:
+			parts.append("%s %s" % [sorted[i][0], UITheme.money(sorted[i][1])])
+		else:
+			rest += int(sorted[i][1])
+	if sorted.size() > LIST_MOST:
+		parts.append("and %d more (%s)" % [sorted.size() - LIST_MOST, UITheme.money(rest)])
 	return "nothing" if parts.is_empty() else ", ".join(parts)
 
 
