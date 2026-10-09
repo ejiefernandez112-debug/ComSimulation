@@ -54,7 +54,11 @@ func toast(text: String, bad := false) -> void:
 	row.add_child(label)
 	_toast_box.add_child(pill)
 	if _toast_box.get_child_count() > 3:
-		_toast_box.get_child(0).queue_free()
+		# Out of the box at once: several messages in the same frame (start-up notes) would otherwise
+		# all queue the same oldest one and pile up down the screen.
+		var oldest := _toast_box.get_child(0)
+		_toast_box.remove_child(oldest)
+		oldest.queue_free()
 	var fade := create_tween()
 	fade.tween_interval(1.8)
 	fade.tween_property(pill, "modulate:a", 0.0, 0.5)

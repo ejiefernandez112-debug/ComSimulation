@@ -1,8 +1,8 @@
 extends RefCounted
 ## The money parts of the Statistics window (plan.md §5.19):
 ## - the Balance tab: what the company owns and owes, its value, and where that value came from
-## - on the Cash tab: the Cash check (start + money in − money out = cash now) and the Money log
-##   (money in and out per 30-minute block)
+## - on the Cash tab: the Cash check (start + money in − money out = cash now), in its "Money in
+##   & out" view, and the Money log (money in and out per 30-minute block), in "Bills & log"
 ## Built with the window's own helpers (_section, _value_row, _show, _body), so they look the
 ## same. Every number comes from Economy; this only shows them.
 
@@ -110,7 +110,7 @@ func refresh_cash_check() -> void:
 		_panel._show("cc_result", "Doesn't add up: %s unaccounted for. Please report this bug." % UITheme.price(int(check.cash) - int(check.expected)), UITheme.BAD)
 
 
-# --- Money log (Cash tab) ----------------------------------------------------------
+# --- Money log (Cash tab, Bills & log) ---------------------------------------------
 
 func build_money_log(page: VBoxContainer) -> void:
 	var minutes := roundi(float(GameData.config.get("money_log_minutes", 30)))

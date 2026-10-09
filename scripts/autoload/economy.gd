@@ -340,7 +340,7 @@ func sales_tax(gross: int) -> int:
 	return Simulation.sales_tax(state, data(), gross, TimeService.now())
 
 
-## {"sold" (Retailer sales, last 24 h), "rate" (bracket the next sale starts in), "next_at"}.
+## {"sold" (all sales, last 24 h), "rate" (bracket the next sale starts in), "next_at"}.
 func tax_bracket() -> Dictionary:
 	return Simulation.tax_bracket(state, data(), TimeService.now())
 

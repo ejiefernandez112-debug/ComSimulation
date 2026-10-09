@@ -3,13 +3,16 @@ extends ModalWindow
 ## - Goods: what's being made and used per minute right now, and all-time totals
 ## - People: population (adults / children), work, homes and wealth, comings and goings
 ## - Happiness: the % and mood, what it does, what would raise it, and each need
-## - Cash: money in and out over the last hour and all time, by source; the cash check
-##   and the money log (money_pages.gd)
+## - Cash, in two views (a switch at its top): "Money in & out" (cash, the last hour, all time
+##   by source, the cash check) and "Bills & log" (sales tax, water and power bills, the money
+##   log); one page with all of it didn't fit on the screen (money_pages.gd)
 ## - Balance: what the company owns and owes, and its value (money_pages.gd)
 ## - Graphs: cash, cash flow, people and production over time (15 min / 1 h / 6 h)
 ## Every number comes from Economy (the rules in scripts/sim/); this window only shows them.
 
 const TABS := [["production", "Goods"], ["people", "People"], ["happiness", "Happiness"], ["cash", "Cash"], ["balance", "Balance"], ["graphs", "Graphs"]]
+## The Cash tab's two views, picked with the switch at its top.
+const CASH_VIEWS := [["money", "Money in & out"], ["bills", "Bills & log"]]
 const GRAPHS := [["cash", "Cash"], ["flow", "Cash flow"], ["people", "People"], ["life", "Births"], ["production", "Production"]]
 const CHILD_ROWS := 6  # age groups listed in "Children by age"; the rest are summed up
 const PEOPLE_FLOW := [["moved_in", "Moved in"], ["born", "Born"], ["grew_up", "Grew up"], ["died", "Died"], ["moved_away", "Left the island"]]
@@ -17,6 +20,9 @@ const RANGES := [[900.0, "15 min"], [3600.0, "1 hour"], [21600.0, "6 hours"]]
 const AVERAGE_OVER := 600.0  # rate graphs (cash flow, production) show 10-minute averages
 
 var _tab := "production"
+var _cash_view := "money"  # CASH_VIEWS: the Cash tab's view shown
+var _cash_view_buttons := {}
+var _cash_sections := {}  # view id -> the Cash tab's sections it shows
 var _graph := "cash"
 var _range := 3600.0
 var _pages := {}  # tab id -> its page
@@ -46,8 +52,11 @@ func _ready() -> void:
 	Economy.changed.connect(_refresh)
 
 
-## Opens the window on `tab` ("people", ...), or on the tab shown last time.
-func show_stats(tab := "") -> void:
+## Opens the window on `tab` ("people", ...), or on the tab shown last time. `view` picks the
+## Cash tab's view ("money" or "bills"; else the one shown last time).
+func show_stats(tab := "", view := "") -> void:
+	if _cash_sections.has(view):
+		_select_cash_view(view)
 	_select_tab(tab if _pages.has(tab) else _tab)
 	open("Statistics")
 	_refresh()
@@ -135,6 +144,9 @@ func _happiness_page() -> VBoxContainer:
 
 func _cash_page() -> VBoxContainer:
 	var page := _page()
+	_button_row(page, CASH_VIEWS, _cash_view_buttons, _select_cash_view)
+	# "Money in & out": the cash, where it came from and went, and the check that it adds up.
+	var first := page.get_child_count()
 	var now_box := _section(page, "Cash")
 	now_box.add_child(_value("cash"))
 	_values.cash.theme_type_variation = "BigLabel"
@@ -161,9 +173,12 @@ func _cash_page() -> VBoxContainer:
 	_value_row(money_out, "Trading Post purchases", "out_purchases")
 	_value_row(money_out, "Total", "out_total")
 	_money.build_cash_check(page)
-	_money.build_money_log(page)
+	_cash_sections["money"] = page.get_children().slice(first)
+	# "Bills & log": what is charged (sales tax, water, power), then the money log, which grows
+	# through the day and so comes last.
+	first = page.get_child_count()
 	var tax := _section(page, "Sales tax")
-	_value_row(tax, "Sold to the Retailer, last 24 h", "tax_sold")
+	_value_row(tax, "Sold in the last 24 h", "tax_sold")
 	_value_row(tax, "Your next sale is taxed at", "tax_rate")
 	var water := _section(page, "Water bill")
 	_value_row(water, "Using now", "water_now")
@@ -176,7 +191,21 @@ func _cash_page() -> VBoxContainer:
 		_value_row(power, "This cycle so far", "power_so_far")
 		_value_row(power, "Charged in", "power_due")
 		_value_row(power, "Last bill", "power_last")
+	_money.build_money_log(page)
+	_cash_sections["bills"] = page.get_children().slice(first)
+	_select_cash_view(_cash_view)
 	return page
+
+
+## The Cash tab's switch: money in and out, or the bills and the money log.
+func _select_cash_view(id: String) -> void:
+	_cash_view = id
+	for view in _cash_sections:
+		for section: Control in _cash_sections[view]:
+			section.visible = view == id
+	_highlight(_cash_view_buttons, id)
+	_refresh()
+	_layout.call_deferred()  # the window resizes to the new view
 
 
 ## A growth speed (babies or migrant workers) in words: "none", "half", "normal", "×1.5".
@@ -274,9 +303,12 @@ func _refresh() -> void:
 		"happiness":
 			_refresh_happiness()
 		"cash":
-			_refresh_cash()
-			_money.refresh_cash_check()
-			_money.refresh_money_log()
+			if _cash_view == "money":
+				_refresh_cash()
+				_money.refresh_cash_check()
+			else:
+				_refresh_bills()
+				_money.refresh_money_log()
 		"balance":
 			_money.refresh_balance()
 		"graphs":
@@ -554,6 +586,10 @@ func _refresh_cash() -> void:
 	for key in st.spending:
 		total_out += int(st.spending[key])
 	_show("out_total", UITheme.money(total_out), UITheme.BAD)
+
+
+## The Cash tab's "Bills & log" view: sales tax, and the water and power bills.
+func _refresh_bills() -> void:
 	var bracket := Economy.tax_bracket()
 	_show("tax_sold", UITheme.money(int(bracket.sold)))
 	var rate := "%d%%" % roundi(float(bracket.rate) * 100.0)

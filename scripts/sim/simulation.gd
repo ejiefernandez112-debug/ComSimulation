@@ -2933,9 +2933,10 @@ static func sell(state: Dictionary, data: Dictionary, resource_id: String, qty: 
 
 
 ## Books a sale of `qty` × `resource_id` worth `gross` cents at time `now`, wherever it was sold
-## (the Retailer, a Supermarket shelf): sales tax (§5.9) comes off, the rest goes to cash, and the
-## tax window and statistics remember it. `made_for` = what the goods cost to make (cents, their
-## cost tags). Returns, in cents: {"earned", "gross", "tax", "rate", "cost", "profit"}.
+## (the Retailer, a Supermarket shelf, the Trading Post): sales tax (§5.9) comes off, the rest
+## goes to cash, and the tax window and statistics remember it. `made_for` = what the goods cost
+## to make (cents, their cost tags). Returns, in cents: {"earned", "gross", "tax", "rate", "cost",
+## "profit"}.
 static func _record_sale(state: Dictionary, data: Dictionary, resource_id: String, qty: int, gross: int, made_for: float, now: float) -> Dictionary:
 	var tax := sales_tax(state, data, gross, now)
 	var earned := gross - tax
@@ -2957,7 +2958,7 @@ static func _record_sale(state: Dictionary, data: Dictionary, resource_id: Strin
 
 
 ## Sales tax, in cents, on a sale worth `gross` cents (changes nothing). Progressive, like
-## income-tax brackets, on the company's Retailer sales over the last sales_tax_window_hours (24):
+## income-tax brackets, on all the company's sales over the last sales_tax_window_hours (24):
 ## each part of the sale pays the rate of the bracket it falls in (first $5,000 0%, then 8%,
 ## 15%, 22%; "from" is in dollars in the config), so selling more never leaves you with less.
 static func sales_tax(state: Dictionary, data: Dictionary, gross: int, now: float) -> int:
@@ -2972,7 +2973,8 @@ static func sales_tax(state: Dictionary, data: Dictionary, gross: int, now: floa
 	return roundi(tax)
 
 
-## Retailer sales (before tax) over the tax window. Changes nothing (sell tidies the log).
+## All sales (before tax) over the tax window: Retailer, shelves and Trading Post. Changes nothing
+## (each sale tidies the log).
 static func sales_last_day(state: Dictionary, data: Dictionary, now: float) -> int:
 	var window := float(data.config.get("sales_tax_window_hours", 24)) * 3600.0
 	var total := 0

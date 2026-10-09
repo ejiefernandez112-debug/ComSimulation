@@ -245,7 +245,8 @@ func _layout() -> void:
 # --- Extra panels beside the window ----------------------------------------------
 
 ## Which panel each row goes in (0 = the window), in order: the window holds `room` of rows, each
-## extra panel `panel_room`. Empty when they need more panels than the screen is wide enough for.
+## extra panel `panel_room`. Empty when they need more panels than the screen is wide enough for,
+## or when one row alone is taller than a panel (it would hang off the screen): then they scroll.
 func _flow_plan(rows: Array[Control], room: float, panel_room: float) -> Array[int]:
 	var most := maxi(floori((size.x - GAP) / (UITheme.WINDOW_WIDTH + GAP)), 1)
 	var place: Array[int] = []
@@ -257,6 +258,9 @@ func _flow_plan(rows: Array[Control], room: float, panel_room: float) -> Array[i
 			panel += 1
 			used = 0.0
 		used += (ROW_GAP if used > 0.0 else 0.0) + height
+		if used > (room if panel == 0 else panel_room) + 0.5:
+			place.clear()  # a row taller than a whole panel (e.g. a day-long money log)
+			return place
 		place.append(panel)
 	if panel + 1 > most:
 		place.clear()

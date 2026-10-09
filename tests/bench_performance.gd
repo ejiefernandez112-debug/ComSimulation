@@ -197,7 +197,8 @@ func _run_screens() -> void:
 		["warehouse window", func(): _main._warehouse_panel.show_stock(), func(): _main._warehouse_panel.close()],
 		["statistics: production", func(): _main.stats_panel.show_stats("production"), func(): _main.stats_panel.close()],
 		["statistics: people", func(): _main.stats_panel.show_stats("people"), func(): _main.stats_panel.close()],
-		["statistics: cash", func(): _main.stats_panel.show_stats("cash"), func(): _main.stats_panel.close()],
+		["statistics: cash", func(): _main.stats_panel.show_stats("cash", "money"), func(): _main.stats_panel.close()],
+		["statistics: bills", func(): _main.stats_panel.show_stats("cash", "bills"), func(): _main.stats_panel.close()],
 		["statistics: balance", func(): _main.stats_panel.show_stats("balance"), func(): _main.stats_panel.close()],
 	]
 	for w in windows:
