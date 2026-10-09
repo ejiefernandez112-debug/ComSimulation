@@ -840,11 +840,6 @@ func build_quote(type_id: String) -> Dictionary:
 	return Simulation.construction_plan(state, data(), type_id, 1, TimeService.now())
 
 
-## Seconds until construction material prices change next.
-func price_change_in() -> float:
-	return maxf(Simulation.next_price_change_at(data(), TimeService.now()) - TimeService.now(), 0.0)
-
-
 func population() -> int:
 	return int(state.population.current)
 
@@ -904,19 +899,20 @@ func children_groups() -> Array:
 
 
 ## Who came and went over (up to) the last `window` seconds:
-## {"moved_in", "born", "grew_up", "died", "seconds"}.
+## {"moved_in", "born", "grew_up", "died", "moved_away", "seconds"}.
 func people_flow(window: float) -> Dictionary:
 	return Simulation.people_flow(state, window, TimeService.now())
 
 
-## Lifetime counters: {"moved_in", "born", "grew_up", "died"}. Read it; don't change it.
+## Lifetime counters: {"moved_in", "born", "grew_up", "died", "moved_away"}. Read it; don't change it.
 func people_stats() -> Dictionary:
 	return Simulation.people_stats(state)
 
 
-## Village happiness: {"score", "percent" (as shown: rounded down), "needs_met", "expected",
-## "needs" {need: 0-1}, "classes" {wealth class: its people, needs and score}, "growth_speed"
-## (births), "move_in_speed" (migrant workers), "leave_per_hour", ...} (see Simulation.happiness).
+## Village happiness: {"score", "percent" (as shown: rounded down), "mood", "needs_met", "needs"
+## {need: 0-1, the needs that count now}, "later" {need: people it starts counting at},
+## "growth_speed" (births), "move_in_speed" (migrant workers), "leave_per_hour", ...} (see
+## Simulation.happiness).
 func happiness() -> Dictionary:
 	return _remember("happiness", func(): return Simulation.happiness(state, data(), TimeService.now(), housing(), employment()))
 
@@ -1067,12 +1063,6 @@ func crew() -> Dictionary:
 	var now := TimeService.now()
 	return {"total": Simulation.crew_total(state, data(), now), "busy": Simulation.crew_busy(state, data(), now),
 		"free": Simulation.crew_free(state, data(), now), "jobs": Simulation.crew_jobs(state, data(), now)}
-
-
-## Construction workers needed to build (level 1) or upgrade to `level`.
-func crew_needed(type_id: String, level := 1) -> int:
-	return int(Simulation.construction_needs(data(), type_id, level).crew)
-
 
 
 ## What demolishing would give back ({"ok", "error", "materials", "goods"}: no money, all of it

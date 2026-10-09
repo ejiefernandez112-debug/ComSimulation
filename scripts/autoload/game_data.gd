@@ -41,14 +41,6 @@ func file_config_value(path: String) -> Variant:
 	return Simulation.config_value(_file_config, path)
 
 
-func get_building(type_id: String) -> Dictionary:
-	return buildings.get(type_id, {})
-
-
-func get_resource(resource_id: String) -> Dictionary:
-	return resources.get(resource_id, {})
-
-
 ## Static so tests can load the real data files without the autoload running.
 static func load_json(path: String) -> Dictionary:
 	var text := FileAccess.get_file_as_string(path)

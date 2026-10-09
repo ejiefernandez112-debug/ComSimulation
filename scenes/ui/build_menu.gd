@@ -7,8 +7,8 @@ extends Control
 ## the chosen building's details, the materials it needs (from the warehouse first, the rest bought
 ## at today's prices) and a big Build button. On a computer, pointing at a card previews it.
 ## Wide screens get a wide panel above the toolbar; tall (phone) screens a sheet, cards on top.
-## The panel keeps one size whatever building is shown (longer details scroll inside it), so
-## pointing from card to card never makes it jump.
+## The panel keeps one size whatever building is shown (made tall enough for the biggest one, see
+## _fit_all), so pointing from card to card never makes it jump.
 ##
 ## Placing: tapping a card only chooses it. Build closes the panel and puts the building's
 ## see-through "ghost" on the map, with the bar along the bottom (✕, hint, ✓): ✓ builds it where
@@ -134,10 +134,6 @@ func close() -> void:
 		Sfx.play("panel_close")
 		_window.hide()
 		tab_changed.emit("")
-
-
-func is_open() -> bool:
-	return _window.visible
 
 
 ## The middle of the part of the map the panel leaves in view: a new ghost starts there.

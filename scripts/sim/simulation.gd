@@ -1692,8 +1692,8 @@ static func fit_footprints(state: Dictionary, data: Dictionary) -> Array[String]
 		state.profile.currency += refund
 		var income: Dictionary = stats(state).income
 		income["demolish"] = int(income.get("demolish", 0)) + refund
-		notes.append("Big buildings now stand on 2x2 tiles: %d road %s under them %s removed and $%s given back." % [
-			removed, "tile" if removed == 1 else "tiles", "was" if removed == 1 else "were", _whole_dollars(refund)])
+		notes.append("Big buildings now stand on 2x2 tiles: %d road %s under them %s removed and %s given back." % [
+			removed, "tile" if removed == 1 else "tiles", "was" if removed == 1 else "were", _money_text(refund)])
 
 	var moved: Array[String] = []
 	var grid: Array = state.plot.grid_size
@@ -1732,16 +1732,6 @@ static func _fits_among(state: Dictionary, data: Dictionary, type_id: String, ce
 		if not _in_plot(state, c) or placed.has(c) or is_road(state, c):  # perf-ok: only when an old save is upgraded
 			return false
 	return true
-
-
-## Cents as whole dollars with thousands separators, for notes: 125000 -> "1,250".
-static func _whole_dollars(amount: int) -> String:
-	var text := str(roundi(amount / 100.0))
-	var out := ""
-	while text.length() > 3:
-		out = "," + text.right(3) + out
-		text = text.left(text.length() - 3)
-	return text + out
 
 
 ## Whether the building's staffing could be set to `level` ("low", "medium", "high"); changes nothing.
@@ -4250,11 +4240,6 @@ static func water_meter(state: Dictionary, now: float) -> Dictionary:
 	return utility_meter(state, "water", now)
 
 
-## Seconds in one water billing cycle (water.billing_hours, 12 = one game day).
-static func billing_seconds(data: Dictionary) -> float:
-	return _billing_seconds(data, "water")
-
-
 ## When the current water bill falls due (a fixed moment: cycle start + one cycle).
 static func water_bill_due_at(state: Dictionary, data: Dictionary, now: float) -> float:
 	return bill_due_at(state, data, "water", now)
@@ -5087,8 +5072,6 @@ static func _add_building(state: Dictionary, type_id: String, cell: Vector2i, no
 	return b
 
 
-
-
 static func _in_plot(state: Dictionary, cell: Vector2i) -> bool:
 	var grid: Array = state.plot.grid_size
 	return cell.x >= 0 and cell.y >= 0 and cell.x < int(grid[0]) and cell.y < int(grid[1])
@@ -5121,15 +5104,6 @@ static func _total(amounts: Dictionary) -> int:
 	for k in amounts:
 		sum += int(amounts[k])
 	return sum
-
-
-static func _scaled(amounts: Dictionary, times: int) -> Dictionary:
-	var out := {}
-	if times <= 0:
-		return out
-	for k in amounts:
-		out[k] = int(amounts[k]) * times
-	return out
 
 
 ## Each amount times `fraction`, rounded down; amounts that round to 0 are left out.

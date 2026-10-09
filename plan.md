@@ -788,13 +788,13 @@ Housing gets **types**, each with a name, a base build cost, a number of househo
 ### 5.19 Balance sheet, cash check & money log (built 2026-10-04)
 The player wanted a balance sheet (like Sim Companies') and to be sure **every cent of cash is tracked: where it came from and where it went**.
 - **Every cash change is counted** under money in (sales by item, rent, demolish refunds) or money out (construction incl. upgrades, wages, water, sales tax). Developer-tool cash changes are counted separately (`stats.adjustments`), so they don't show up as income in the graphs.
-- **Cash check** (Statistics → Cash flow): starting cash + all money in − all money out (± dev tools) = cash now, exact to the cent. The invariant test checks this after every step of every random game.
+- **Cash check** (Statistics → Cash): starting cash + all money in − all money out (± dev tools) = cash now, exact to the cent. The invariant test checks this after every step of every random game. (Missing from the window from 2026-10-06, when it was dropped in a rework without a note; back 2026-10-09.)
 - **Balance sheet** (Statistics → Balance), all at what was paid (decided with the user):
   - **Owned:** cash; shop sales not paid yet (Supermarket goods sold but paid only when the shelf sells out or is taken down; after the sales tax they'll pay); goods per item at their cost tags (§5.14), wherever they are (warehouse, building storage, unsold on shelves); ingredients in queued batches; buildings at **price paid** (build + upgrades, no wear); buildings and upgrades still being built
   - **Owed:** debt (cash below $0); the water bill so far this cycle
   - **Company value** = owned − owed. **Starting capital** = starting cash + the starter buildings at their build cost (they were free, but count at list price). **Profit kept** = company value − starting capital
   - Demolishing shows as a loss of the half of the price that isn't refunded
-- **Money log** (Statistics → Cash flow): money in and out per **30-minute block** (`money_log_minutes`), the last 24 hours (`money_log_size` 48), by source; the running block is shown live; time spent away = one block. Kept cheap on purpose (the user asked): it saves a copy of the running totals every 30 minutes, never one entry per payment.
+- **Money log** (Statistics → Cash): money in and out per **30-minute block** (`money_log_minutes`), the last 24 hours (`money_log_size` 48), by source; the running block is shown live; time spent away = one block. Kept cheap on purpose (the user asked): it saves a copy of the running totals every 30 minutes, never one entry per payment.
 - **Save version 8:** each building keeps `paid` (and `upgrade_paid` while an upgrade is under way), `stats.capital`, `stats.adjustments`, `stats.money_log`. Older saves get list prices and the starting cash that makes the cash check add up.
 - **Not built (ideas):** a profit & loss statement (would need the cost of goods sold vs actual wages paid tracked as well), wear on buildings (depreciation), a CSV export.
 - **Code:** `Simulation.balance_sheet`, `cash_check`, `money_log`, `_record_money_log`; `scenes/ui/money_pages.gd`
@@ -1268,6 +1268,13 @@ A hidden dev menu (key combo on PC, secret tap sequence on mobile) for testing t
 Both are functional, self-contained HTML/JS artifacts used to validate the trading-mechanic math and UX before porting logic into Godot.
 
 ## 15. Revision Log
+
+**2026-10-09 (code check-up: bug fixes and dead code):**
+- The user asked for a check of the whole project for bugs and organisation. All three test scripts passed before and after (1,571 checks; 50 random games, no problems; every old save loads).
+- Fixed: Statistics → Cash, "All time: money in": refunds from cancelled batches had no row and were left out of the Total, so money in and money out didn't add up to the cash. They now have their own row ("Cancelled batches", shown once there are any) and the Total counts every kind of money in, like the Total out.
+- The **Cash check** box is back on Statistics → Cash (§5.19): it went missing in the 2026-10-06 rework with no note, and the user chose to bring it back.
+- Fixed: Godot crashed while quitting in every `--headless` run that loaded the game's screens (`tests/bench_performance.gd` ended with a crash). The trees' shared picture (`TreeView.bake_picture`) waits for a drawn frame, which headless runs never draw, and a Godot bug crashes on quit when a lambda made inside such a still-waiting static function exists. The painting is now a named function (`_paint_both`); same picture.
+- Removed code nothing used (`Simulation.billing_seconds`, `_scaled`, `_whole_dollars` (notes use `_money_text`), `Economy.price_change_in`, `crew_needed`, `GameData.get_building`, `get_resource`, and three small screen helpers) and fixed comments that described older versions.
 
 **2026-10-08 (bigger buildings when zoomed out; land 40×40):**
 - Tested on the Redmi Note 10 Pro (Android 13, Adreno 618, 120 Hz): 60 fps while touching, about 40% of one CPU core, 29 °C. Found: the Back gesture (a swipe in from the screen edge) closes the game at once (Godot's default; it saves first).

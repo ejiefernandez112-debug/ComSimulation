@@ -35,10 +35,6 @@ func _ready() -> void:
 	_setup_shader()
 
 
-func is_buildable(cell: Vector2i) -> bool:
-	return Rect2i(Vector2i.ZERO, plot_size).has_point(cell)
-
-
 func is_land(cell: Vector2i) -> bool:
 	return _land.has(cell)
 

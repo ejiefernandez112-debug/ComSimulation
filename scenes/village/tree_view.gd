@@ -67,12 +67,9 @@ static func bake_picture(host: Node) -> void:
 	canvas.size = Vector2i(_region(true).end.ceil())
 	canvas.render_target_update_mode = SubViewport.UPDATE_ONCE
 	var painter := Node2D.new()
-	painter.draw.connect(func():
-		for kind_is_pine in [false, true]:
-			var box := PINE_BOX if kind_is_pine else ROUND_BOX
-			# Scale up, then move the box's top-left corner to its place in the picture.
-			painter.draw_set_transform(_region(kind_is_pine).position - box.position * BAKE_SCALE, 0.0, Vector2.ONE * BAKE_SCALE)
-			paint(painter, Vector2.ZERO, kind_is_pine, 1.0))
+	# A named function, not a lambda: Godot crashes on quit if a lambda made in this function still
+	# exists while the wait below never ends (no frame is ever drawn in --headless runs, e.g. tests).
+	painter.draw.connect(_paint_both.bind(painter))
 	canvas.add_child(painter)
 	host.add_child(canvas)
 	await RenderingServer.frame_post_draw
@@ -87,6 +84,15 @@ static func bake_picture(host: Node) -> void:
 	_blend.blend_mode = CanvasItemMaterial.BLEND_MODE_PREMULT_ALPHA
 	_picture = ImageTexture.create_from_image(image)
 	host.get_tree().call_group("placeholder_trees", "use_picture")
+
+
+## Paints both kinds of tree into the shared picture, each in its own place (see bake_picture).
+static func _paint_both(painter: Node2D) -> void:
+	for kind_is_pine in [false, true]:
+		var box := PINE_BOX if kind_is_pine else ROUND_BOX
+		# Scale up, then move the box's top-left corner to its place in the picture.
+		painter.draw_set_transform(_region(kind_is_pine).position - box.position * BAKE_SCALE, 0.0, Vector2.ONE * BAKE_SCALE)
+		paint(painter, Vector2.ZERO, kind_is_pine, 1.0)
 
 
 ## Where each kind sits in the shared picture, in picture pixels.

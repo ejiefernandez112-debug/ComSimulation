@@ -167,11 +167,6 @@ static func _with_speed(b: Dictionary, text: String, progress: float, speed: flo
 	return {"text": text, "progress": progress, "good": true}
 
 
-## Workers are always whole people: "3".
-static func _count(workers: float) -> String:
-	return str(roundi(workers))
-
-
 static func _no_workers(_b: Dictionary, progress: float) -> Dictionary:
 	return {"text": "Stopped: no workers", "progress": progress, "good": false}
 
@@ -182,8 +177,6 @@ static func _batch_status(b: Dictionary, r: Dictionary) -> Dictionary:
 	var item := resource_name(output_of(r))
 	var waiting := stored(b)
 	if not Economy.has_batch(b):
-		if choosing(b):
-			return {"text": "Idle", "progress": -1.0, "good": false}
 		return {"text": "Idle", "progress": -1.0, "good": false}
 	if not Economy.batch_running(b):
 		return {"text": "Batch done: collect %s %s" % [UITheme.number(waiting), item], "progress": 1.0, "good": true}

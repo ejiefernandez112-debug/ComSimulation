@@ -148,6 +148,7 @@ func _cash_page() -> VBoxContainer:
 		_value_row(money_in, "Sales of %s" % GameData.resources[res].name, "in_sales_" + res)
 	_value_row(money_in, "Rent", "in_rent")
 	_value_row(money_in, "Refunds", "in_demolish")  # older demolishes and roads paid back; demolishing now gives materials, not money
+	_value_row(money_in, "Cancelled batches", "in_batch_refunds")
 	_value_row(money_in, "Total", "in_total")
 	var money_out := _section(page, "All time: money out")
 	_value_row(money_out, "Construction", "out_construction")
@@ -159,6 +160,7 @@ func _cash_page() -> VBoxContainer:
 	_value_row(money_out, "Switching products", "out_switch_fees")
 	_value_row(money_out, "Trading Post purchases", "out_purchases")
 	_value_row(money_out, "Total", "out_total")
+	_money.build_cash_check(page)
 	_money.build_money_log(page)
 	var tax := _section(page, "Sales tax")
 	_value_row(tax, "Sold to the Retailer, last 24 h", "tax_sold")
@@ -273,6 +275,7 @@ func _refresh() -> void:
 			_refresh_happiness()
 		"cash":
 			_refresh_cash()
+			_money.refresh_cash_check()
 			_money.refresh_money_log()
 		"balance":
 			_money.refresh_balance()
@@ -528,15 +531,17 @@ func _refresh_cash() -> void:
 	_show("flow_out", ("-" if spent > 0 else "") + UITheme.money(flow.spending), UITheme.BAD if spent > 0 else UITheme.TEXT)
 	var net: int = flow.income - flow.spending
 	_show("flow_net", ("+" if roundi(net / 100.0) > 0 else "") + UITheme.money(net), _signed_color(roundi(net / 100.0)))
-	var total_in := 0
 	for res in GameData.resources:
 		var earned := int(st.sales_by_item.get(res, 0))
-		total_in += earned
 		_show("in_sales_" + res, UITheme.money(earned))
 		_values["in_sales_" + res].get_parent().visible = earned > 0  # only goods that have sold
 	_show("in_rent", UITheme.money(int(st.income.get("rent", 0))))
 	_show("in_demolish", UITheme.money(int(st.income.demolish)))
-	_show("in_total", UITheme.money(total_in + int(st.income.get("rent", 0)) + int(st.income.demolish)), UITheme.GOOD)
+	var refunds := int(st.income.get("batch_refunds", 0))
+	_show("in_batch_refunds", UITheme.money(refunds))
+	_values.in_batch_refunds.get_parent().visible = refunds > 0  # only once a batch was cancelled
+	# Every kind of money in (like the Total out below), so the two totals match the cash.
+	_show("in_total", UITheme.money(_sum(st.income)), UITheme.GOOD)
 	_show("out_construction", UITheme.money(int(st.spending.construction)))
 	_show("out_roads", UITheme.money(int(st.spending.get("roads", 0))))
 	_show("out_wages", UITheme.money(int(st.spending.get("wages", 0))))

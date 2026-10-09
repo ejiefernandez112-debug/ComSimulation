@@ -1,7 +1,7 @@
 extends ModalWindow
-## The Warehouse window (the Warehouse card in the bottom menu): everything the company has in
-## stock, how much room all warehouses have together, and what the goods are worth. Selling
-## happens at a Retail store (a later building), not here. Only shows Economy's numbers.
+## The Warehouse window (the Warehouse button in the top-left corner): everything the company has
+## in stock, how much room all warehouses have together, and what the goods are worth. Selling
+## happens at a Supermarket or the Trading Post, not here. Only shows Economy's numbers.
 
 var _room_text: Label
 var _room_bar: ProgressBar
