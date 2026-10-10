@@ -611,7 +611,7 @@ func _fill_makes(type_id: String) -> void:
 			_makes.add_child(_words("%s for %s people (%d workers)" % [Economy.need_name(need), UITheme.number(int(def.get("service_capacity", 0))), int(def.get("max_workers", 0))]))
 		"utility":
 			_makes.add_child(UITheme.icon_rect("water", 22))
-			_makes.add_child(_words("Cleans %s m³ of water an hour (%d workers)" % [UITheme.number(int(def.get("water_supply", 0))), int(def.get("max_workers", 0))]))
+			_makes.add_child(_words("Cleans %s units of water an hour (%d workers)" % [UITheme.number(int(def.get("water_supply", 0))), int(def.get("max_workers", 0))]))
 		"power":
 			# "Makes 5 MW ⋅ reaches 3 tiles" (plan.md §5.5)
 			_makes.add_child(UITheme.icon_rect("power", 22))

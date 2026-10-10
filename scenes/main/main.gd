@@ -71,7 +71,7 @@ func _ready() -> void:
 	hud.happiness_pressed.connect(func(): stats_panel.show_stats("happiness"))
 	settings_panel.new_game_requested.connect(_ask_new_game)
 	Economy.water_bill_paid.connect(func(cost: int, m3: float):
-		hud.toast("Water bill paid: %s for %s m³" % [UITheme.money(cost), UITheme.number(roundi(m3))], Economy.currency() < 0))
+		hud.toast("Water bill paid: %s for %s units of water" % [UITheme.money(cost), UITheme.number(roundi(m3))], Economy.currency() < 0))
 	Economy.power_bill_paid.connect(func(cost: int, mwh: float):
 		hud.toast("Power bill paid: %s for %s MWh" % [UITheme.money(cost), UITheme.number(roundi(mwh))], Economy.currency() < 0))
 	_warehouse_panel = load("res://scenes/ui/warehouse_panel.gd").new()
@@ -247,9 +247,9 @@ func _collect(building_id: String) -> void:
 
 ## Starting a batch pays its ingredients and wages at once and locks in its bonus (plan.md §5.1),
 ## so show the whole cost first and ask.
-func _ask_start_batch(building_id: String, recipe_id: String, hours: int, bonus: String) -> void:
+func _ask_start_batch(building_id: String, recipe_id: String, hours: int, bonus: String, fertilize: bool) -> void:
 	var b := Economy.building(building_id)
-	var check := Economy.can_start_batch(building_id, recipe_id, hours, bonus)
+	var check := Economy.can_start_batch(building_id, recipe_id, hours, bonus, fertilize)
 	if not check.ok:
 		_refuse(check.error)
 		return
@@ -262,6 +262,8 @@ func _ask_start_batch(building_id: String, recipe_id: String, hours: int, bonus:
 	for line in check.ingredients:
 		lines.append("Ingredients: %s %s ⋅ %s" % [UITheme.number(int(line.qty)), BuildingInfo.resource_name(line.res), UITheme.money(roundi(float(line.cost)))])
 	lines.append("Labor: %d workers ⋅ %s" % [int(check.workers), UITheme.money(int(check.wages))])
+	if float(check.water_units) > 0.0:
+		lines.append("Water: %s units ⋅ %s" % [UITheme.number(roundi(float(check.water_units))), UITheme.money(roundi(float(check.water)))])
 	if Economy.power_problem(Economy.building(building_id)) == "no_grid":
 		lines.append("No power: it won't work until a Substation reaches it.")
 	lines.append("Total: %s" % UITheme.money(roundi(float(check.total))))  # includes water and power
@@ -272,7 +274,7 @@ func _ask_start_batch(building_id: String, recipe_id: String, hours: int, bonus:
 		else:
 			lines.append("It will make %s for good." % item)
 	confirm_dialog.ask("Start this batch?", "\n".join(lines), 0, {}, "Start",
-		_start_batch.bind(building_id, recipe_id, hours, bonus), "Back", "GoButton")
+		_start_batch.bind(building_id, recipe_id, hours, bonus, fertilize), "Back", "GoButton")
 
 
 ## Switching a Plantation (or Ranch) to another product costs a fee (plan.md §5.21), so ask.
@@ -295,8 +297,8 @@ func _switch_product(building_id: String, recipe_id: String) -> void:
 		return
 
 
-func _start_batch(building_id: String, recipe_id: String, hours: int, bonus: String) -> void:
-	var result := Economy.start_batch(building_id, recipe_id, hours, bonus)
+func _start_batch(building_id: String, recipe_id: String, hours: int, bonus: String, fertilize: bool) -> void:
+	var result := Economy.start_batch(building_id, recipe_id, hours, bonus, fertilize)
 	if not result.ok:
 		_refuse(result.error)
 		return

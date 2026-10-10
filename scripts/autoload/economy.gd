@@ -208,9 +208,10 @@ func build(type_id: String, cell: Vector2i) -> Dictionary:
 
 
 ## Start a production batch of `hours` with wage bonus `bonus` (plan.md §5.1): ingredients and
-## wages are paid now. Returns the batch's quote (see batch_quote) on success.
-func start_batch(building_id: String, recipe_id: String, hours: int, bonus: String) -> Dictionary:
-	return _after(Simulation.start_batch(state, data(), building_id, recipe_id, hours, bonus, TimeService.now()))
+## wages are paid now; `fertilize` takes fertilizer too, for more units (plan.md §5.17). Returns the
+## batch's quote (see batch_quote) on success.
+func start_batch(building_id: String, recipe_id: String, hours: int, bonus: String, fertilize := false) -> Dictionary:
+	return _after(Simulation.start_batch(state, data(), building_id, recipe_id, hours, bonus, TimeService.now(), fertilize))
 
 
 ## Cancel the running batch: hours already made are kept; part of the rest comes back
@@ -554,6 +555,11 @@ func shop_products() -> Array[String]:
 
 
 ## The goods a store of this type sells (its "sells" categories), in resources.json order.
+func sold_in_stores(resource_id: String) -> bool:
+	return Simulation.sold_in_stores(data(), resource_id)
+
+
+## The items a store of this type can sell, in resources.json order.
 func store_products(type_id: String) -> Array[String]:
 	return Simulation.store_products(data(), type_id)
 
@@ -726,8 +732,23 @@ func power_bills() -> Array:
 ## What a batch of `hours` with bonus `bonus` would make and cost, in cents: units, ingredients,
 ## wages, water, total, cost per unit, finish time (see Simulation.batch_quote). {} if it makes
 ## nothing.
-func batch_quote(building: Dictionary, recipe_id: String, hours: int, bonus: String) -> Dictionary:
-	return Simulation.batch_quote(state, data(), building, recipe_id, hours, bonus, TimeService.now())
+func batch_quote(building: Dictionary, recipe_id: String, hours: int, bonus: String, fertilize := false) -> Dictionary:
+	return Simulation.batch_quote(state, data(), building, recipe_id, hours, bonus, TimeService.now(), fertilize)
+
+
+## The item fertilized batches take (game_config.json fertilizer.item; plan.md §5.17).
+func fertilizer_item() -> String:
+	return Simulation.fertilizer_item(data())
+
+
+## Fertilizer each unit this recipe of this building type makes takes when fertilized (0 = it
+## can't use any), and the extra share of units it makes then (plan.md §5.17.1).
+func fertilizer_per_unit(type_id: String, recipe_id: String) -> float:
+	return Simulation.fertilizer_per_unit(data(), Simulation._recipe(data().buildings.get(type_id, {}), recipe_id))
+
+
+func fertilizer_boost(type_id: String, recipe_id: String) -> float:
+	return Simulation.fertilizer_boost(data(), Simulation._recipe(data().buildings.get(type_id, {}), recipe_id))
 
 
 ## The recipe this building is set up for, or "" while it hasn't chosen (its first batch chooses).
@@ -761,14 +782,14 @@ func batch_unit_cost(batch: Dictionary, resource_id: String) -> float:
 
 
 ## Whether that batch could start now ({"ok", "error"} + the quote); changes nothing.
-func can_start_batch(building_id: String, recipe_id: String, hours: int, bonus: String) -> Dictionary:
-	return Simulation.can_start_batch(state, data(), building_id, recipe_id, hours, bonus, TimeService.now())
+func can_start_batch(building_id: String, recipe_id: String, hours: int, bonus: String, fertilize := false) -> Dictionary:
+	return Simulation.can_start_batch(state, data(), building_id, recipe_id, hours, bonus, TimeService.now(), fertilize)
 
 
 ## The longest batch that could start now, in hours (0 = none): limited by batch.max_hours, the
 ## ingredients in the Warehouse and the cash for the wages.
-func batch_max_hours(building_id: String, recipe_id: String, bonus: String) -> int:
-	return Simulation.batch_max_hours(state, data(), building_id, recipe_id, bonus)
+func batch_max_hours(building_id: String, recipe_id: String, bonus: String, fertilize := false) -> int:
+	return Simulation.batch_max_hours(state, data(), building_id, recipe_id, bonus, fertilize)
 
 
 ## The longest batch allowed at all, and the length the panel offers first.

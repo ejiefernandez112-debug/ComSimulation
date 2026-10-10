@@ -191,7 +191,7 @@
 	},
 	"_chains": "Production chains, Wave 1 (plan.md 5.21). A building with several recipes makes ONE product: its first batch chooses it for free. switch_fee = share of its value paid to switch later (Plantation, Ranch, Fishery); without it the choice is for good. A recipe's first output is its main product; cost_share splits the cost between by-products. The selling price of an item comes from the FIRST recipe in this file that makes it (plan.md 5.12), so keep the usual recipe first. Outputs per hour and appetites (resources.json) are PLACEHOLDERS: one building's output is sized for about 100 villagers.",
 	"wheat_farm": {
-		"_comment": "The Plantation (was the Wheat Farm; the id stays so saves keep their farms). Extractor: needs no ingredients. Grows one crop at a time; wheat stays first, so its price and old saves don't change. 60 wheat per hour of work, so a 24 h batch = 1,440 wheat. Other crops: PLACEHOLDERS (fewer units for dearer crops: the cost per hour is the same).",
+		"_comment": "The Plantation (was the Wheat Farm; the id stays so saves keep their farms). Extractor: needs no ingredients. Grows one crop at a time; wheat stays first, so its price and old saves don't change. One Plantation = 1 hectare and 1 unit = 10 kg (plan.md 5.17, decided 2026-10-10): each crop's units per hour follow its real yield per hectare per day of growing, scaled so wheat stays 60 (1 hour of work = about 20 days on a real field). water_per_unit = units of water each unit of the crop needs (real water need per tonne, scaled so wheat needs 0.5: 30 an hour), counted on every unit a batch makes, bonus and fertilizer extras included. fertilizer_per_unit = Fertilizer bags each unit made takes when the player chooses to fertilize (real fertilizer use per tonne; the batch rounds up to whole bags, and can only be fertilized with all of them in the Warehouse), for the boost in game_config.json fertilizer (fertilizer_boost = this crop's own; soybeans make their own nitrogen). The building's water_per_hour is only for recipes without water_per_unit.",
 		"name": "Plantation", "category": "extractor", "menu_tab": "farming", "size": 2,
 		"description": "Grows one crop at a time (wheat, corn, rice, fruit, coffee and more) in batches of the hours you choose. Switching to another crop costs a fee.",
 		"buildable": true, "max_workers": 8, "worker_type": "low_skilled",
@@ -199,16 +199,16 @@
 		"water_per_hour": 30,
 		"switch_fee": 0.1,
 		"recipes": [
-			{ "id": "grow_wheat", "inputs": {}, "outputs": { "wheat": 60 }, "duration": 3600 },
-			{ "id": "grow_corn", "inputs": {}, "outputs": { "corn": 60 }, "duration": 3600 },
-			{ "id": "grow_rice", "inputs": {}, "outputs": { "rice": 50 }, "duration": 3600 },
-			{ "id": "grow_soybeans", "inputs": {}, "outputs": { "soybeans": 40 }, "duration": 3600 },
-			{ "id": "grow_sugarcane", "inputs": {}, "outputs": { "sugarcane": 80 }, "duration": 3600 },
-			{ "id": "grow_potatoes", "inputs": {}, "outputs": { "potatoes": 70 }, "duration": 3600 },
-			{ "id": "grow_vegetables", "inputs": {}, "outputs": { "vegetables": 50 }, "duration": 3600 },
-			{ "id": "grow_fruit", "inputs": {}, "outputs": { "fruit": 40 }, "duration": 3600 },
-			{ "id": "grow_coffee", "inputs": {}, "outputs": { "coffee_beans": 15 }, "duration": 3600 },
-			{ "id": "grow_cocoa", "inputs": {}, "outputs": { "cocoa_beans": 15 }, "duration": 3600 }
+			{ "id": "grow_wheat", "inputs": {}, "outputs": { "wheat": 60 }, "duration": 3600, "water_per_unit": 0.5, "fertilizer_per_unit": 0.05 },
+			{ "id": "grow_corn", "inputs": {}, "outputs": { "corn": 100 }, "duration": 3600, "water_per_unit": 0.37, "fertilizer_per_unit": 0.04 },
+			{ "id": "grow_rice", "inputs": {}, "outputs": { "rice": 75 }, "duration": 3600, "water_per_unit": 0.9, "fertilizer_per_unit": 0.04 },
+			{ "id": "grow_soybeans", "inputs": {}, "outputs": { "soybeans": 50 }, "duration": 3600, "water_per_unit": 0.7, "fertilizer_per_unit": 0.02, "fertilizer_boost": 0.1 },
+			{ "id": "grow_sugarcane", "inputs": {}, "outputs": { "sugarcane": 400 }, "duration": 3600, "water_per_unit": 0.1, "fertilizer_per_unit": 0.005 },
+			{ "id": "grow_potatoes", "inputs": {}, "outputs": { "potatoes": 430 }, "duration": 3600, "water_per_unit": 0.1, "fertilizer_per_unit": 0.016 },
+			{ "id": "grow_vegetables", "inputs": {}, "outputs": { "vegetables": 570 }, "duration": 3600, "water_per_unit": 0.08, "fertilizer_per_unit": 0.014 },
+			{ "id": "grow_fruit", "inputs": {}, "outputs": { "fruit": 110 }, "duration": 3600, "water_per_unit": 0.27, "fertilizer_per_unit": 0.018 },
+			{ "id": "grow_coffee", "inputs": {}, "outputs": { "coffee_beans": 6 }, "duration": 3600, "water_per_unit": 6, "fertilizer_per_unit": 0.33 },
+			{ "id": "grow_cocoa", "inputs": {}, "outputs": { "cocoa_beans": 3 }, "duration": 3600, "water_per_unit": 10.7, "fertilizer_per_unit": 0.33 }
 		],
 		"upgrades": [
 			{ "max_workers": 12 },
@@ -224,8 +224,8 @@
 		"materials": { "bricks": 600, "cement": 60, "steel": 15, "construction_materials": 30 },
 		"power_mw": 2,
 		"recipes": [
-			{ "id": "feed_from_corn", "inputs": { "corn": 40 }, "outputs": { "animal_feed": 40 }, "duration": 3600 },
-			{ "id": "feed_from_soy_meal", "inputs": { "soy_meal": 20 }, "outputs": { "animal_feed": 40 }, "duration": 3600 }
+			{ "id": "feed_from_corn", "inputs": { "corn": 100 }, "outputs": { "animal_feed": 100 }, "duration": 3600 },
+			{ "id": "feed_from_soy_meal", "inputs": { "corn": 75, "soy_meal": 25 }, "outputs": { "animal_feed": 100 }, "duration": 3600 }
 		],
 		"upgrades": [
 			{ "max_workers": 12 },
@@ -242,11 +242,11 @@
 		"water_per_hour": 20,
 		"switch_fee": 0.1,
 		"recipes": [
-			{ "id": "raise_cattle", "inputs": { "animal_feed": 40 }, "outputs": { "cattle": 4 }, "duration": 3600 },
-			{ "id": "raise_pigs", "inputs": { "animal_feed": 30 }, "outputs": { "pigs": 6 }, "duration": 3600 },
-			{ "id": "raise_chickens", "inputs": { "animal_feed": 20 }, "outputs": { "chickens": 30 }, "duration": 3600 },
-			{ "id": "milk_cows", "inputs": { "animal_feed": 30 }, "outputs": { "milk": 60 }, "duration": 3600 },
-			{ "id": "keep_hens", "inputs": { "animal_feed": 20 }, "outputs": { "eggs": 60 }, "duration": 3600 }
+			{ "id": "raise_cattle", "inputs": { "animal_feed": 300 }, "outputs": { "cattle": 1 }, "duration": 3600 },
+			{ "id": "raise_pigs", "inputs": { "animal_feed": 120 }, "outputs": { "pigs": 4 }, "duration": 3600 },
+			{ "id": "raise_chickens", "inputs": { "animal_feed": 80 }, "outputs": { "chickens": 200 }, "duration": 3600 },
+			{ "id": "milk_cows", "inputs": { "animal_feed": 70 }, "outputs": { "milk": 100 }, "duration": 3600 },
+			{ "id": "keep_hens", "inputs": { "animal_feed": 45 }, "outputs": { "eggs": 20 }, "duration": 3600 }
 		],
 		"upgrades": [
 			{ "max_workers": 12 },
@@ -278,7 +278,7 @@
 		"buildable": true, "max_workers": 4, "worker_type": "low_skilled",
 		"materials": { "bricks": 300, "cement": 30, "steel": 8, "construction_materials": 15 },
 		"recipes": [
-			{ "id": "keep_bees", "inputs": {}, "outputs": { "honey": 10, "beeswax": 2 }, "cost_share": { "honey": 0.85, "beeswax": 0.15 }, "duration": 3600 }
+			{ "id": "keep_bees", "inputs": {}, "outputs": { "honey": 30, "beeswax": 1 }, "cost_share": { "honey": 0.95, "beeswax": 0.05 }, "duration": 3600 }
 		],
 		"upgrades": [
 			{ "max_workers": 6 },
@@ -294,9 +294,9 @@
 		"materials": { "bricks": 1000, "cement": 100, "steel": 25, "construction_materials": 50 },
 		"power_mw": 3,
 		"recipes": [
-			{ "id": "mill_flour", "inputs": { "wheat": 40 }, "outputs": { "flour": 32 }, "duration": 3600 },
-			{ "id": "mill_cornmeal", "inputs": { "corn": 40 }, "outputs": { "cornmeal": 32 }, "duration": 3600 },
-			{ "id": "mill_rice", "inputs": { "rice": 40 }, "outputs": { "milled_rice": 30 }, "duration": 3600 }
+			{ "id": "mill_flour", "inputs": { "wheat": 40 }, "outputs": { "flour": 30 }, "duration": 3600 },
+			{ "id": "mill_cornmeal", "inputs": { "corn": 40 }, "outputs": { "cornmeal": 30 }, "duration": 3600 },
+			{ "id": "mill_rice", "inputs": { "rice": 40 }, "outputs": { "milled_rice": 26 }, "duration": 3600 }
 		],
 		"upgrades": [
 			{ "max_workers": 12 },
@@ -312,7 +312,7 @@
 		"materials": { "bricks": 1600, "cement": 160, "steel": 40, "construction_materials": 80 },
 		"power_mw": 4,
 		"recipes": [
-			{ "id": "bake_bread", "inputs": { "flour": 20 }, "outputs": { "bread": 15 }, "duration": 3600 }
+			{ "id": "bake_bread", "inputs": { "flour": 20 }, "outputs": { "bread": 28 }, "duration": 3600 }
 		],
 		"upgrades": [
 			{ "max_workers": 12 },
@@ -328,8 +328,8 @@
 		"materials": { "bricks": 1000, "cement": 100, "steel": 25, "construction_materials": 50 },
 		"power_mw": 3,
 		"recipes": [
-			{ "id": "press_soybeans", "inputs": { "soybeans": 40 }, "outputs": { "vegetable_oil": 8, "soy_meal": 30 }, "cost_share": { "vegetable_oil": 0.6, "soy_meal": 0.4 }, "duration": 3600 },
-			{ "id": "press_corn", "inputs": { "corn": 40 }, "outputs": { "vegetable_oil": 8 }, "duration": 3600 }
+			{ "id": "press_soybeans", "inputs": { "soybeans": 50 }, "outputs": { "vegetable_oil": 9, "soy_meal": 40 }, "cost_share": { "vegetable_oil": 0.6, "soy_meal": 0.4 }, "duration": 3600 },
+			{ "id": "press_corn", "inputs": { "corn": 100 }, "outputs": { "vegetable_oil": 4, "animal_feed": 90 }, "cost_share": { "vegetable_oil": 0.25, "animal_feed": 0.75 }, "duration": 3600 }
 		],
 		"upgrades": [
 			{ "max_workers": 12 },
@@ -345,7 +345,7 @@
 		"materials": { "bricks": 1000, "cement": 100, "steel": 25, "construction_materials": 50 },
 		"power_mw": 3,
 		"recipes": [
-			{ "id": "make_sugar", "inputs": { "sugarcane": 60 }, "outputs": { "sugar": 30 }, "duration": 3600 }
+			{ "id": "make_sugar", "inputs": { "sugarcane": 400 }, "outputs": { "sugar": 45 }, "duration": 3600 }
 		],
 		"upgrades": [
 			{ "max_workers": 12 },
@@ -364,8 +364,8 @@
 			{ "id": "make_pasta", "inputs": { "flour": 30 }, "outputs": { "pasta": 30 }, "duration": 3600 },
 			{ "id": "make_cereal", "inputs": { "cornmeal": 20, "sugar": 5 }, "outputs": { "cereal": 25 }, "duration": 3600 },
 			{ "id": "pack_rice", "inputs": { "milled_rice": 30 }, "outputs": { "packaged_rice": 30 }, "duration": 3600 },
-			{ "id": "make_chips", "inputs": { "potatoes": 30, "vegetable_oil": 3 }, "outputs": { "chips": 30 }, "duration": 3600 },
-			{ "id": "make_packaged_food", "inputs": { "vegetables": 30, "vegetable_oil": 3 }, "outputs": { "packaged_food": 30 }, "duration": 3600 }
+			{ "id": "make_chips", "inputs": { "potatoes": 120, "vegetable_oil": 10 }, "outputs": { "chips": 30 }, "duration": 3600 },
+			{ "id": "make_packaged_food", "inputs": { "vegetables": 35, "vegetable_oil": 2 }, "outputs": { "packaged_food": 30 }, "duration": 3600 }
 		],
 		"upgrades": [
 			{ "max_workers": 12 },
@@ -381,8 +381,8 @@
 		"materials": { "bricks": 1000, "cement": 100, "steel": 25, "construction_materials": 50 },
 		"power_mw": 3,
 		"recipes": [
-			{ "id": "make_candy", "inputs": { "sugar": 15 }, "outputs": { "candy": 30 }, "duration": 3600 },
-			{ "id": "make_chocolate", "inputs": { "cocoa_beans": 10, "sugar": 5 }, "outputs": { "chocolate": 20 }, "duration": 3600 }
+			{ "id": "make_candy", "inputs": { "sugar": 30 }, "outputs": { "candy": 30 }, "duration": 3600 },
+			{ "id": "make_chocolate", "inputs": { "cocoa_beans": 14, "sugar": 9 }, "outputs": { "chocolate": 20 }, "duration": 3600 }
 		],
 		"upgrades": [
 			{ "max_workers": 12 },
@@ -399,9 +399,9 @@
 		"power_mw": 3,
 		"water_per_hour": 20,
 		"recipes": [
-			{ "id": "make_juice", "inputs": { "fruit": 40 }, "outputs": { "juice": 40 }, "duration": 3600 },
-			{ "id": "make_soft_drinks", "inputs": { "fruit": 20, "sugar": 10 }, "outputs": { "soft_drinks": 60 }, "duration": 3600 },
-			{ "id": "roast_coffee", "inputs": { "coffee_beans": 15 }, "outputs": { "coffee": 15 }, "duration": 3600 }
+			{ "id": "make_juice", "inputs": { "fruit": 80 }, "outputs": { "juice": 40 }, "duration": 3600 },
+			{ "id": "make_soft_drinks", "inputs": { "fruit": 3, "sugar": 6 }, "outputs": { "soft_drinks": 60 }, "duration": 3600 },
+			{ "id": "roast_coffee", "inputs": { "coffee_beans": 6 }, "outputs": { "coffee": 5 }, "duration": 3600 }
 		],
 		"upgrades": [
 			{ "max_workers": 12 },
@@ -418,7 +418,7 @@
 		"power_mw": 3,
 		"recipes": [
 			{ "id": "can_fruit", "inputs": { "fruit": 30 }, "outputs": { "canned_fruit": 30 }, "duration": 3600 },
-			{ "id": "can_fish", "inputs": { "fish": 30 }, "outputs": { "canned_fish": 30 }, "duration": 3600 }
+			{ "id": "can_fish", "inputs": { "fish": 50, "vegetable_oil": 2 }, "outputs": { "canned_fish": 30 }, "duration": 3600 }
 		],
 		"upgrades": [
 			{ "max_workers": 12 },
@@ -434,8 +434,8 @@
 		"materials": { "bricks": 1000, "cement": 100, "steel": 25, "construction_materials": 50 },
 		"power_mw": 3,
 		"recipes": [
-			{ "id": "make_cheese", "inputs": { "milk": 60 }, "outputs": { "cheese": 10 }, "duration": 3600 },
-			{ "id": "make_butter", "inputs": { "milk": 60 }, "outputs": { "butter": 15 }, "duration": 3600 },
+			{ "id": "make_cheese", "inputs": { "milk": 100 }, "outputs": { "cheese": 10 }, "duration": 3600 },
+			{ "id": "make_butter", "inputs": { "milk": 100 }, "outputs": { "butter": 5 }, "duration": 3600 },
 			{ "id": "make_yogurt", "inputs": { "milk": 40 }, "outputs": { "yogurt": 40 }, "duration": 3600 }
 		],
 		"upgrades": [
@@ -452,9 +452,9 @@
 		"materials": { "bricks": 1000, "cement": 100, "steel": 25, "construction_materials": 50 },
 		"power_mw": 3,
 		"recipes": [
-			{ "id": "slaughter_cattle", "inputs": { "cattle": 4 }, "outputs": { "beef": 40, "hide": 4 }, "cost_share": { "beef": 0.9, "hide": 0.1 }, "duration": 3600 },
-			{ "id": "slaughter_pigs", "inputs": { "pigs": 6 }, "outputs": { "pork": 60 }, "duration": 3600 },
-			{ "id": "slaughter_chickens", "inputs": { "chickens": 30 }, "outputs": { "chicken": 45 }, "duration": 3600 }
+			{ "id": "slaughter_cattle", "inputs": { "cattle": 1 }, "outputs": { "beef": 25, "hide": 1 }, "cost_share": { "beef": 0.98, "hide": 0.02 }, "duration": 3600 },
+			{ "id": "slaughter_pigs", "inputs": { "pigs": 4 }, "outputs": { "pork": 30 }, "duration": 3600 },
+			{ "id": "slaughter_chickens", "inputs": { "chickens": 200 }, "outputs": { "chicken": 36 }, "duration": 3600 }
 		],
 		"upgrades": [
 			{ "max_workers": 12 },
@@ -471,8 +471,8 @@
 		"power_mw": 4,
 		"recipes": [
 			{ "id": "make_processed_meat", "inputs": { "beef": 30 }, "outputs": { "processed_meat": 30 }, "duration": 3600 },
-			{ "id": "make_sausage", "inputs": { "pork": 30 }, "outputs": { "sausage": 40 }, "duration": 3600 },
-			{ "id": "make_processed_chicken", "inputs": { "chicken": 30 }, "outputs": { "processed_chicken": 30 }, "duration": 3600 }
+			{ "id": "make_sausage", "inputs": { "pork": 30 }, "outputs": { "sausage": 36 }, "duration": 3600 },
+			{ "id": "make_processed_chicken", "inputs": { "chicken": 18, "flour": 6, "vegetable_oil": 3 }, "outputs": { "processed_chicken": 30 }, "duration": 3600 }
 		],
 		"upgrades": [
 			{ "max_workers": 12 },
@@ -488,8 +488,8 @@
 		"materials": { "bricks": 1000, "cement": 100, "steel": 25, "construction_materials": 50 },
 		"power_mw": 4,
 		"recipes": [
-			{ "id": "freeze_fish", "inputs": { "fish": 40 }, "outputs": { "frozen_fish": 40 }, "duration": 3600 },
-			{ "id": "pack_seafood", "inputs": { "shrimp": 20 }, "outputs": { "packaged_seafood": 20 }, "duration": 3600 }
+			{ "id": "freeze_fish", "inputs": { "fish": 40 }, "outputs": { "frozen_fish": 20 }, "duration": 3600 },
+			{ "id": "pack_seafood", "inputs": { "shrimp": 20 }, "outputs": { "packaged_seafood": 12 }, "duration": 3600 }
 		],
 		"upgrades": [
 			{ "max_workers": 12 },

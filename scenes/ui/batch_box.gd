@@ -1,7 +1,8 @@
 class_name BatchBox
 extends VBoxContainer
 ## A Farm, Mill or Bakery's batch (plan.md §5.1), inside its building window.
-## Idle: choose the bonus (more units for higher wages) and how long it works: step the finish
+## Idle: choose the bonus (more units for higher wages), fertilizer (a Plantation's crops: more
+## units for some fertilizer, plan.md §5.17) and how long it works: step the finish
 ## time an hour at a time, or All (as long as the ingredients and cash allow). The lines under it
 ## show what the batch makes and costs before the player starts it.
 ## With a batch: how far along it is, what's ready to collect, what's locked in, and Cancel.
@@ -10,16 +11,17 @@ extends VBoxContainer
 ## (for a fee) and a factory keeps its product for good.
 ## Shows numbers from Economy only; its buttons ask (signals) and main.gd acts.
 
-signal start_requested(building_id: String, recipe_id: String, hours: int, bonus: String)
+signal start_requested(building_id: String, recipe_id: String, hours: int, bonus: String, fertilize: bool)
 signal switch_requested(building_id: String, recipe_id: String)
 signal collect_requested(building_id: String)
 signal cancel_requested(building_id: String)
 
-const TITLES := {"units": "Makes:", "ingredients": "Ingredients:", "labor": "Labor:", "total": "Total cost:", "price": "Sells for:"}
+const TITLES := {"units": "Makes:", "ingredients": "Ingredients:", "labor": "Labor:", "water": "Water:", "per_unit": "Per unit:", "total": "Total cost:"}
 
 var building_id := ""
 var _hours := 0  # the length chosen for the next batch (0 = not chosen yet: offer the default)
 var _bonus := "none"  # the bonus chosen for the next batch
+var _fertilize := false  # fertilizer chosen for the next batch (only used where the recipe takes it)
 var _choice := ""  # the product picked for the first batch, before the building has one
 var _width := 400.0
 
@@ -27,6 +29,8 @@ var _width := 400.0
 var _setup: VBoxContainer
 var _product_buttons := {}  # recipe id -> its Button (only for buildings with several products)
 var _bonus_buttons := {}  # bonus level -> its Button
+var _fertilizer_row: HBoxContainer  # hidden when the recipe can't use fertilizer
+var _fertilizer_buttons := {}  # false / true -> its Button
 var _finish_text: Label
 var _lines := {}  # TITLES key -> its value Label
 var _start: Button
@@ -45,6 +49,7 @@ func setup(id: String, width: float) -> void:
 	_width = width
 	add_theme_constant_override("separation", 6)
 	_bonus = str(Economy.workers(Economy.building(id)).bonus)  # the last choice
+	_fertilize = bool(Economy.building(id).get("fertilize", false))  # the same
 	_hours = 0
 	_build_setup()
 	_build_running()
@@ -92,6 +97,22 @@ func _build_setup() -> void:
 			refresh())
 		row.add_child(button)
 		_bonus_buttons[level] = button
+	# Fertilizer: more units for some fertilizer from the Warehouse (taken with the ingredients).
+	_fertilizer_row = HBoxContainer.new()
+	_fertilizer_row.add_theme_constant_override("separation", 6)
+	_setup.add_child(_fertilizer_row)
+	var fertilizer_title := _label("Fertilizer:", 18)
+	fertilizer_title.custom_minimum_size.x = 70
+	_fertilizer_row.add_child(fertilizer_title)
+	for choice in [false, true]:
+		var button := Button.new()
+		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		UITheme.size_button(button, "small")
+		button.pressed.connect(func():
+			_fertilize = choice
+			refresh())
+		_fertilizer_row.add_child(button)
+		_fertilizer_buttons[choice] = button
 	# How long: step the finish time an hour at a time, or All.
 	var length := HBoxContainer.new()
 	length.add_theme_constant_override("separation", 6)
@@ -118,7 +139,7 @@ func _build_setup() -> void:
 	_start.custom_minimum_size.x = 300
 	_start.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	# Greyed when it can't start, but still tappable, so the player is told why.
-	_start.pressed.connect(func(): start_requested.emit(building_id, _recipe_id(Economy.building(building_id)), _hours, _bonus))
+	_start.pressed.connect(func(): start_requested.emit(building_id, _recipe_id(Economy.building(building_id)), _hours, _bonus, _fertilize))
 	_setup.add_child(_start)
 
 
@@ -203,7 +224,7 @@ func _on_product_pressed(recipe_id: String) -> void:
 
 func _most_hours() -> int:
 	var b := Economy.building(building_id)
-	return Economy.batch_max_hours(building_id, _recipe_id(b), _bonus)
+	return Economy.batch_max_hours(building_id, _recipe_id(b), _bonus, _fertilize)
 
 
 func _refresh_setup(b: Dictionary) -> void:
@@ -216,7 +237,8 @@ func _refresh_setup(b: Dictionary) -> void:
 	_hours = clampi(_hours, 1, limit)
 	for level in _bonus_buttons:
 		_bonus_buttons[level].theme_type_variation = "ChipOnButton" if level == _bonus else "ChipButton"
-	var q := Economy.batch_quote(b, _recipe_id(b), _hours, _bonus)
+	_refresh_fertilizer(b)
+	var q := Economy.batch_quote(b, _recipe_id(b), _hours, _bonus, _fertilize)
 	if q.is_empty():
 		return
 	var real_hours := float(q.seconds) / 3600.0
@@ -229,16 +251,55 @@ func _refresh_setup(b: Dictionary) -> void:
 		ingredients += float(line.cost)
 	_lines.ingredients.text = "%s ⋅ %s" % [", ".join(parts), UITheme.money(roundi(ingredients))] if not parts.is_empty() else "none"
 	_lines.labor.text = "%d workers ⋅ %s" % [int(q.workers), UITheme.money(int(q.wages))]
-	_lines.total.text = UITheme.money(roundi(float(q.total)))  # includes the water and power estimates
-	if q.units.size() > 1:  # by-products: each its own cost and price (plan.md §5.14)
-		_lines.price.text = _per_item(q.prices)
-	else:
-		var profit := int(q.price) - roundi(float(q.per_unit))
-		_lines.price.text = "%s each (%s %s)" % [UITheme.price(int(q.price)), UITheme.price(absi(profit)), "profit" if profit >= 0 else "loss"]
-	var check := Economy.can_start_batch(building_id, _recipe_id(b), _hours, _bonus)
+	# Water: only for buildings that use it (a Plantation's crop decides how much).
+	_lines.water.get_parent().visible = float(q.water_units) > 0.0
+	_lines.water.text = "%s units ⋅ %s" % [UITheme.number(roundi(float(q.water_units))), UITheme.money(roundi(float(q.water)))]
+	_refresh_per_unit(q)
+	_lines.total.text = UITheme.money(roundi(float(q.total)))  # includes the power estimate too
+	var check := Economy.can_start_batch(building_id, _recipe_id(b), _hours, _bonus, _fertilize)
 	_start.text = "Start %s h batch" % _amount(real_hours)
 	_start.theme_type_variation = "GoButton" if check.ok else "BackButton"
 	_start.tooltip_text = "" if check.ok else str(check.error)  # only says why it can't start
+
+
+## "Per Wheat: 0.5 water ⋅ 0.05 fertilizer": what each unit of this batch's main product takes
+## (plan.md §5.17.1). Fertilizer shows the crop's rate, like its button (the batch rounds its bags
+## up). Only for batches that use water or fertilizer.
+func _refresh_per_unit(q: Dictionary) -> void:
+	var made := float(q.units.get(q.output, 0))
+	var fertilizer := 0.0
+	for line in q.ingredients:
+		if line.res == Economy.fertilizer_item():
+			fertilizer = float(line.qty)
+	var row: Control = _lines.per_unit.get_parent()
+	row.visible = made > 0.0 and (float(q.water_units) > 0.0 or fertilizer > 0.0)
+	if not row.visible:
+		return
+	(row.get_child(0) as Label).text = "Per %s:" % BuildingInfo.resource_name(q.output)
+	var parts: Array[String] = []
+	if float(q.water_units) > 0.0:
+		parts.append("%s water" % _per_unit_amount(float(q.water_units) / made))
+	if fertilizer > 0.0:
+		parts.append("%s fertilizer" % _per_unit_amount(Economy.fertilizer_per_unit(Economy.building(building_id).type, str(q.recipe_id))))
+	_lines.per_unit.text = " ⋅ ".join(parts)
+
+
+## 0.5 -> "0.5", 0.0417 -> "0.042", 10.67 -> "10.7": small amounts keep 3 decimals.
+func _per_unit_amount(value: float) -> String:
+	return String.num(value, 1 if value >= 10.0 else (2 if value >= 1.0 else 3))
+
+
+## The fertilizer row: only for recipes that can use it; its "+25% ⋅ 0.05 each" button says the
+## boost and the fertilizer each unit made takes.
+func _refresh_fertilizer(b: Dictionary) -> void:
+	var per_unit := Economy.fertilizer_per_unit(b.type, _recipe_id(b))
+	_fertilizer_row.visible = per_unit > 0.0
+	if per_unit <= 0.0:
+		return
+	_fertilizer_buttons[false].text = "None"
+	_fertilizer_buttons[true].text = "+%d%% ⋅ %s each" % [roundi(Economy.fertilizer_boost(b.type, _recipe_id(b)) * 100.0), _per_unit_amount(per_unit)]
+	for choice in _fertilizer_buttons:
+		_fertilizer_buttons[choice].theme_type_variation = "ChipOnButton" if choice == _fertilize else "ChipButton"
 
 
 ## The product buttons: the one it makes (or the pick) in yellow.
@@ -316,16 +377,6 @@ func _amounts(items: Dictionary) -> String:
 	for res in items:
 		parts.append("%s %s" % [UITheme.number(int(items[res])), BuildingInfo.resource_name(res)])
 	return " + ".join(parts)
-
-
-## Cents per item: "$1.83" for one product, "Beef $42.48 ⋅ Hide $4.72" when it makes several.
-func _per_item(cents_each: Dictionary) -> String:
-	if cents_each.size() == 1:
-		return UITheme.price(roundi(float(cents_each.values()[0])))
-	var parts: Array[String] = []
-	for res in cents_each:
-		parts.append("%s %s" % [BuildingInfo.resource_name(res), UITheme.price(roundi(float(cents_each[res])))])
-	return " ⋅ ".join(parts)
 
 
 ## 14.0 -> "14", 1.5 -> "1.5".

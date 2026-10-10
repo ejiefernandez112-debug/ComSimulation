@@ -222,7 +222,7 @@ static func _status_now(b: Dictionary) -> Dictionary:
 			var cleaned := Economy.water_supply(b)
 			var full := float(Economy.level_stat(b, "water_supply"))
 			var water := Economy.water_summary()
-			var text := "Cleaning %s m³/h ⋅ your buildings use %s" % [UITheme.number(roundi(cleaned)), UITheme.number(roundi(float(water.used)))]
+			var text := "Cleaning %s water units/h ⋅ your buildings use %s" % [UITheme.number(roundi(cleaned)), UITheme.number(roundi(float(water.used)))]
 			return {"text": text, "progress": -1.0, "good": cleaned >= full - 0.001}
 		"service":
 			# A Clinic, Tavern, Chapel or Police Station (plan.md §5.23): how many it serves, and

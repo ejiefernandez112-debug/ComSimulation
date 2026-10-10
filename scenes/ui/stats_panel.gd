@@ -597,16 +597,16 @@ func _refresh_bills() -> void:
 		rate += " (next bracket at %s)" % UITheme.money(int(bracket.next_at))
 	_show("tax_rate", rate)
 	var water_flow := Economy.water_summary()  # own plants' water first, then the public supply
-	_show("water_now", "%s m³/h ⋅ %s from your plants, %s public" % [UITheme.number(roundi(float(water_flow.used))), UITheme.number(roundi(float(water_flow.from_own))), UITheme.number(roundi(float(water_flow.public)))])
+	_show("water_now", "%s units/h ⋅ %s from your plants, %s public" % [UITheme.number(roundi(float(water_flow.used))), UITheme.number(roundi(float(water_flow.from_own))), UITheme.number(roundi(float(water_flow.public)))])
 	var bill := Economy.water_bill()
-	_show("water_so_far", "%s m³ ⋅ %s" % [UITheme.number(roundi(float(bill.m3))), UITheme.money(int(bill.cost))])
+	_show("water_so_far", "%s units ⋅ %s" % [UITheme.number(roundi(float(bill.m3))), UITheme.money(int(bill.cost))])
 	_show("water_due", UITheme.duration(float(bill.due_at) - TimeService.now()))
 	var bills := Economy.water_bills()
 	if bills.is_empty():
 		_show("water_last", "none yet")
 	else:
 		var last: Dictionary = bills[-1]
-		_show("water_last", "%s for %s m³ (%s ago)" % [UITheme.money(int(last.cost)), UITheme.number(roundi(float(last.m3))), LineChart._ago(TimeService.now() - float(last.t))])
+		_show("water_last", "%s for %s units (%s ago)" % [UITheme.money(int(last.cost)), UITheme.number(roundi(float(last.m3))), LineChart._ago(TimeService.now() - float(last.t))])
 	if Economy.power_on():
 		var power_flow := Economy.power_summary()  # own plants first, then the public grid
 		_show("power_now", "%s ⋅ %s from your plants, %s from the grid" % [BuildingInfo.mw(float(power_flow.used)), BuildingInfo.mw(float(power_flow.from_own)), BuildingInfo.mw(float(power_flow.public))])

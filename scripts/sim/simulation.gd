@@ -1827,6 +1827,58 @@ static func bonus_output(data: Dictionary, level: String) -> float:
 	return float(data.config.get("bonus_output", {}).get(level, 0.0))
 
 
+## Units of water an hour this recipe uses at its normal output (no bonus, no fertilizer): its
+## "water_per_unit" times the units of its main product an hour when it has one (each Plantation
+## crop, plan.md §5.17.1), else its building's water_per_hour. Prices and standard costs use it.
+static func recipe_water(def: Dictionary, recipe: Dictionary) -> float:
+	if recipe.has("water_per_unit"):
+		return water_per_unit(recipe) * float(recipe.outputs.values()[0]) * 3600.0 / maxf(float(recipe.duration), 1.0)
+	return float(def.get("water_per_hour", 0.0))
+
+
+## Units of water each unit of this recipe's main product needs (0 = its building's water_per_hour
+## is used instead). A batch's water follows what it makes: a bonus or fertilizer's extra units
+## need their water too.
+static func water_per_unit(recipe: Dictionary) -> float:
+	return float(recipe.get("water_per_unit", 0.0))
+
+
+## Fertilizer (plan.md §5.17.1): a recipe with "fertilizer_per_unit" can use it, if the player
+## chooses, for fertilizer.boost more units (or the recipe's own "fertilizer_boost"). Every unit of
+## the main product the batch makes, extra ones included, takes that much of the item
+## (fertilizer.item in game_config.json), rounded up to whole bags for the batch.
+static func fertilizer_item(data: Dictionary) -> String:
+	return str(data.config.get("fertilizer", {}).get("item", ""))
+
+
+## Fertilizer each unit of this recipe's main product takes when fertilized (0 = it can't be).
+static func fertilizer_per_unit(data: Dictionary, recipe: Dictionary) -> float:
+	return float(recipe.get("fertilizer_per_unit", 0.0)) if fertilizer_item(data) != "" else 0.0
+
+
+## Extra share of units fertilizer makes for this recipe (0.25 = +25%); 0 if it can't use any.
+static func fertilizer_boost(data: Dictionary, recipe: Dictionary) -> float:
+	if fertilizer_per_unit(data, recipe) <= 0.0:
+		return 0.0
+	return float(recipe.get("fertilizer_boost", data.config.get("fertilizer", {}).get("boost", 0.0)))
+
+
+## Units of each output a batch of `hours` of this recipe makes, with `extra` more (a wage bonus
+## and fertilizer's boost: 0.35 = +35%). Rounded down.
+static func _batch_units(recipe: Dictionary, hours: int, extra: float) -> Dictionary:
+	var units := {}
+	for res in recipe.outputs:
+		units[res] = floori(int(recipe.outputs[res]) * hours * (1.0 + extra) + 0.000001)
+	return units
+
+
+## Whole bags of fertilizer a fertilized batch making `units` needs: every unit of the main product
+## times fertilizer_per_unit, rounded up (1,800 wheat x 0.05 = 90).
+static func fertilizer_needed(data: Dictionary, recipe: Dictionary, units: Dictionary) -> int:
+	var main := float(units.get(recipe.outputs.keys()[0], 0))
+	return maxi(ceili(main * fertilizer_per_unit(data, recipe) - 0.000001), 0)
+
+
 ## How a recipe's cost is split between the things it makes (by-products, plan.md §5.14): its
 ## "cost_share" ({item: share}, adding up to 1) when it has one, else by units, so every unit
 ## costs the same. E.g. 4 cattle -> 40 beef + 4 hides with cost_share beef 0.9, hide 0.1: the
@@ -1909,27 +1961,35 @@ static func _wage_with_bonus(data: Dictionary, b: Dictionary, level: String) -> 
 ## What a batch of `hours` of `recipe_id` with bonus `level` would make and cost, in cents
 ## (changes nothing): {"recipe_id", "hours", "bonus", "units" {res: qty}, "output" (main product),
 ## "count" (all units), "ingredients" [{"res", "qty", "each", "cost", "estimated"}], "wages",
-## "water", "power", "total", "per_unit", "price" (selling price each), "workers" (full crew), "wage_each"
+## "water" (cents), "water_units" (units of water it will use), "power", "total", "per_unit", "price"
+## (selling price each), "workers" (full crew), "wage_each"
 ## (dollars/h), "seconds" (work time at full speed), "finishes_at" (at today's workers; INF with
-## none), "estimated" (an ingredient isn't in stock: its standard cost was used)}.
+## none), "estimated" (an ingredient isn't in stock: its standard cost was used), "fertilize" (it
+## uses fertilizer: asked for and the recipe can; the fertilizer is one of its ingredients)}.
 ## {} if the building makes nothing or the recipe is unknown.
-static func batch_quote(state: Dictionary, data: Dictionary, b: Dictionary, recipe_id: String, hours: int, level: String, now: float) -> Dictionary:
+static func batch_quote(state: Dictionary, data: Dictionary, b: Dictionary, recipe_id: String, hours: int, level: String, now: float, fertilize := false) -> Dictionary:
 	var def: Dictionary = data.buildings.get(b.type, {})
 	var recipe := _recipe(def, recipe_id)
 	if recipe.is_empty() or recipe.get("outputs", {}).is_empty():
 		return {}
 	hours = maxi(hours, 1)
 	var real_hours := float(recipe.duration) * hours / 3600.0
-	var units := {}
-	for res in recipe.outputs:
-		units[res] = floori(int(recipe.outputs[res]) * hours * (1.0 + bonus_output(data, level)) + 0.000001)
-	var quote := {"recipe_id": recipe_id, "hours": hours, "bonus": level, "units": units,
+	fertilize = fertilize and fertilizer_per_unit(data, recipe) > 0.0
+	var extra := bonus_output(data, level) + (fertilizer_boost(data, recipe) if fertilize else 0.0)
+	var units := _batch_units(recipe, hours, extra)
+	var inputs := {}  # whole batch: the recipe's ingredients for every hour, and its fertilizer
+	for res in recipe.get("inputs", {}):
+		inputs[res] = int(recipe.inputs[res]) * hours
+	if fertilize:
+		var item := fertilizer_item(data)
+		inputs[item] = int(inputs.get(item, 0)) + fertilizer_needed(data, recipe, units)
+	var quote := {"recipe_id": recipe_id, "hours": hours, "bonus": level, "units": units, "fertilize": fertilize,
 		"output": recipe.outputs.keys()[0], "count": _total(units), "ingredients": [], "estimated": false,
 		"workers": _full_speed_workers(data, b), "wage_each": _wage_with_bonus(data, b, level),
 		"seconds": float(recipe.duration) * hours}
 	var total := 0.0
-	for res in recipe.get("inputs", {}):
-		var qty := int(recipe.inputs[res]) * hours
+	for res in inputs:
+		var qty := int(inputs[res])
 		var have := int(state.inventory.get(res, 0))
 		var each := average_cost(state, res) if have > 0 else standard_unit_cost(data, res)
 		quote.ingredients.append({"res": res, "qty": qty, "each": each, "cost": each * qty, "estimated": have <= 0})
@@ -1937,9 +1997,15 @@ static func batch_quote(state: Dictionary, data: Dictionary, b: Dictionary, reci
 		total += each * qty
 	# Wages: the full crew for the whole time, whatever the staffing (fewer workers just take longer).
 	quote["wages"] = cents(float(quote.workers) * float(quote.wage_each) * real_hours)
-	# Water: an estimate (it's metered as it's used). Own plants' spare water first, then public.
-	var water_per_hour := float(def.get("water_per_hour", 0.0))
-	quote["water"] = water_per_hour * real_hours * extra_water_price(state, data, water_per_hour, now) * 100.0
+	# Water: per unit made when the recipe says so (extra units need theirs too), else the
+	# building's per hour. An estimate: it's metered as it's used. Own plants' water first.
+	var water_units := float(def.get("water_per_hour", 0.0)) * real_hours
+	if water_per_unit(recipe) > 0.0:
+		water_units = water_per_unit(recipe) * float(units[quote.output])
+	var water_per_hour := water_units / maxf(real_hours, 0.000001)
+	quote["water"] = water_units * extra_water_price(state, data, water_per_hour, now) * 100.0
+	quote["water_units"] = water_units
+	quote["water_per_hour"] = water_per_hour  # what it draws while it works at full speed
 	# Power: an estimate too (the public grid's part is metered). Own plants' spare power first.
 	var mw := power_need(data, b)
 	quote["power"] = mw * real_hours * extra_power_price(state, data, mw, now) * 100.0
@@ -1962,7 +2028,7 @@ static func batch_quote(state: Dictionary, data: Dictionary, b: Dictionary, reci
 
 ## The longest batch the player could start now, in hours (0 = none): at most batch.max_hours,
 ## and only as long as the Warehouse's ingredients and the cash for the wages last.
-static func batch_max_hours(state: Dictionary, data: Dictionary, building_id: String, recipe_id: String, level: String) -> int:
+static func batch_max_hours(state: Dictionary, data: Dictionary, building_id: String, recipe_id: String, level: String, fertilize := false) -> int:
 	var b := find_building(state, building_id)
 	if b.is_empty():
 		return 0
@@ -1972,9 +2038,16 @@ static func batch_max_hours(state: Dictionary, data: Dictionary, building_id: St
 	if product_of(data, b) != "" and product_of(data, b) != recipe_id:
 		return 0  # set up for another product (can_start_batch says the same)
 	var most := batch_hours_limit(data)
-	for res in recipe.get("inputs", {}):
-		if int(recipe.inputs[res]) > 0:
-			most = mini(most, floori(float(state.inventory.get(res, 0)) / int(recipe.inputs[res])))
+	var inputs: Dictionary = recipe.get("inputs", {})
+	for res in inputs:
+		if int(inputs[res]) > 0:
+			most = mini(most, floori(float(state.inventory.get(res, 0)) / int(inputs[res])))
+	if fertilize and fertilizer_per_unit(data, recipe) > 0.0:
+		# The bags follow the units made, so count them the way batch_quote does.
+		var extra := bonus_output(data, level) + fertilizer_boost(data, recipe)
+		var bags := int(state.inventory.get(fertilizer_item(data), 0))
+		while most > 0 and fertilizer_needed(data, recipe, _batch_units(recipe, most, extra)) > bags:
+			most -= 1
 	var wages_per_hour := float(_full_speed_workers(data, b)) * _wage_with_bonus(data, b, level) * float(recipe.duration) / 3600.0 * 100.0
 	if wages_per_hour > 0.0:
 		var cash := float(state.profile.currency)
@@ -1985,7 +2058,7 @@ static func batch_max_hours(state: Dictionary, data: Dictionary, building_id: St
 
 ## Whether this batch could start now (changes nothing): {"ok", "error"} plus the batch_quote.
 ## The UI uses it to grey out Produce, and start_batch uses it too, so they always agree.
-static func can_start_batch(state: Dictionary, data: Dictionary, building_id: String, recipe_id: String, hours: int, level: String, now: float) -> Dictionary:
+static func can_start_batch(state: Dictionary, data: Dictionary, building_id: String, recipe_id: String, hours: int, level: String, now: float, fertilize := false) -> Dictionary:
 	var b := find_building(state, building_id)
 	if b.is_empty():
 		return _fail("Building not found.")
@@ -2003,7 +2076,7 @@ static func can_start_batch(state: Dictionary, data: Dictionary, building_id: St
 		return _fail("Unknown bonus.")
 	if hours < 1 or hours > batch_hours_limit(data):
 		return _fail("Pick between 1 and %d hours." % batch_hours_limit(data))
-	var quote := batch_quote(state, data, b, recipe_id, hours, level, now)
+	var quote := batch_quote(state, data, b, recipe_id, hours, level, now, fertilize)
 	if quote.is_empty():
 		return _fail("Unknown recipe.")
 	var chosen := product_of(data, b)  # once chosen, it only makes that (plan.md §5.21)
@@ -2012,7 +2085,10 @@ static func can_start_batch(state: Dictionary, data: Dictionary, building_id: St
 			return _fail("It's set up for %s. Switch it to %s first (%s)." % [_product_name(data, b.type, chosen), _product_name(data, b.type, recipe_id), _money_text(switch_fee(data, b))])
 		return _fail("A %s makes %s for good. Build another one to make %s." % [data.buildings[b.type].get("name", "building"), _product_name(data, b.type, chosen), _product_name(data, b.type, recipe_id)])
 	for item in quote.ingredients:
-		if int(state.inventory.get(item.res, 0)) < int(item.qty):
+		var have := int(state.inventory.get(item.res, 0))
+		if have < int(item.qty):
+			if item.res == fertilizer_item(data) and quote.fertilize:
+				return _fail("Not enough %s: this batch needs %d and you have %d. Buy more, or start it without fertilizer." % [_resource_name(data, item.res), int(item.qty), have])
 			return _fail("Not enough %s for %d hours." % [_resource_name(data, item.res), hours])
 	if state.profile.currency < int(quote.wages):
 		return _fail("Not enough money for the wages.")
@@ -2020,12 +2096,13 @@ static func can_start_batch(state: Dictionary, data: Dictionary, building_id: St
 
 
 ## Start a batch: the ingredients leave the Warehouse (with their cost tags) and the wages are paid
-## now, so the batch's cost is locked in; so is its bonus. Work starts now.
-static func start_batch(state: Dictionary, data: Dictionary, building_id: String, recipe_id: String, hours: int, level: String, now: float) -> Dictionary:
+## now, so the batch's cost is locked in; so are its bonus and fertilizer (taken with the
+## ingredients). Work starts now.
+static func start_batch(state: Dictionary, data: Dictionary, building_id: String, recipe_id: String, hours: int, level: String, now: float, fertilize := false) -> Dictionary:
 	var b := find_building(state, building_id)
 	if not b.is_empty():
 		settle(state, data, now)  # the last batch may have just finished
-	var check := can_start_batch(state, data, building_id, recipe_id, hours, level, now)
+	var check := can_start_batch(state, data, building_id, recipe_id, hours, level, now, fertilize)
 	if not check.ok:
 		return check
 	var inputs := {}
@@ -2040,8 +2117,10 @@ static func start_batch(state: Dictionary, data: Dictionary, building_id: String
 	for res in input_cost:
 		cost += float(input_cost[res])
 	b["bonus"] = level  # also the choice offered for the next batch
+	b["fertilize"] = fertilize  # the same: offered again next time
 	b["product"] = recipe_id  # the first batch chooses what it makes (plan.md §5.21)
-	b["batch"] = {"recipe_id": recipe_id, "hours": hours, "bonus": level, "units": check.units,
+	b["batch"] = {"recipe_id": recipe_id, "hours": hours, "bonus": level, "fertilized": bool(check.fertilize),
+		"water_per_hour": float(check.water_per_hour), "units": check.units,
 		"cost": cost, "wages": wages, "inputs": inputs, "input_cost": input_cost,
 		"unit_cost": _unit_costs(_recipe(data.buildings[b.type], recipe_id), check.units, cost),
 		"collected": {}, "made_hours": 0}
@@ -3142,6 +3221,15 @@ static func store_sells(data: Dictionary, type_id: String, resource_id: String) 
 	return sells.is_empty() or sells.has(item_category(data, resource_id))
 
 
+## Whether villagers can buy this item in some kind of store ("retail" buildings, e.g. food in a
+## Supermarket). Other items (crops, ingredients, materials) only sell to the Trading Post's trader.
+static func sold_in_stores(data: Dictionary, resource_id: String) -> bool:
+	for type_id in data.buildings:
+		if data.buildings[type_id].get("category", "") == "retail" and store_sells(data, type_id, resource_id):
+			return true
+	return false
+
+
 ## The items a store of `type_id` can sell, in resources.json order.
 static func store_products(data: Dictionary, type_id: String) -> Array[String]:
 	var out: Array[String] = []
@@ -3478,7 +3566,7 @@ static func _unit_price(data: Dictionary, resource_id: String, visiting: Diction
 			for input in recipe.get("inputs", {}):
 				cost += int(recipe.inputs[input]) * _unit_price(data, input, visiting) / 100.0
 			cost += int(def.get("max_workers", 0)) * _minimum_wage_of(data, def) * hours
-			cost += float(def.get("water_per_hour", 0.0)) * hours * float(data.config.get("water", {}).get("price_per_m3", 0.0))
+			cost += recipe_water(def, recipe) * hours * float(data.config.get("water", {}).get("price_per_m3", 0.0))
 			cost += float(def.get("power_mw", 0.0)) * hours * float(data.config.get("power", {}).get("price_per_mwh", 0.0))
 			cost += construction_value(data, type_id) / 100.0 / payback * hours
 			# By-products carry their cost_share of the batch (the same split as cost tags).
@@ -4144,10 +4232,14 @@ static func _wages_per_hour(state: Dictionary, data: Dictionary, now: float) -> 
 # water.billing_hours (12) the bill is charged at once, heavy users paying more for the part of
 # the cycle's m³ above each tier. Unpaid bills simply take cash below 0 (debt).
 
-## m³ of water per hour this building draws right now: its water_per_hour while producing, times
-## its speed (6 of 8 workers = 75% of it). 0 while built, halted, idle or suspended.
+## Units of water per hour this building draws right now: its batch's water_per_hour while
+## producing (a Plantation's crop and the units it makes decide it), times its speed (6 of 8
+## workers = 75% of it). 0 while being built, halted, idle or suspended.
 static func water_use(state: Dictionary, data: Dictionary, b: Dictionary, now: float) -> float:
-	var per_hour := float(data.buildings.get(b.type, {}).get("water_per_hour", 0.0))
+	var def: Dictionary = data.buildings.get(b.type, {})
+	var batch: Dictionary = b.get("batch", {})
+	# The batch's own rate (per unit made, locked in when it started); older batches: the recipe's.
+	var per_hour := float(batch.get("water_per_hour", recipe_water(def, _recipe(def, str(batch.get("recipe_id", b.get("product", "")))))))
 	if per_hour <= 0.0 or not is_built(b, now) or not is_producing(data, b):
 		return 0.0
 	return per_hour * building_speed(state, data, b, now)
@@ -4720,7 +4812,7 @@ static func _standard_unit_cost(data: Dictionary, resource_id: String, visiting:
 			for input in recipe.get("inputs", {}):
 				cost += int(recipe.inputs[input]) * _standard_unit_cost(data, input, visiting)
 			cost += int(def.get("max_workers", 0)) * _minimum_wage_of(data, def) * hours * 100.0
-			cost += float(def.get("water_per_hour", 0.0)) * hours * water_price(data) * 100.0
+			cost += recipe_water(def, recipe) * hours * water_price(data) * 100.0
 			cost += float(def.get("power_mw", 0.0)) * hours * utility_price(data, "power") * 100.0
 			visiting.erase(resource_id)
 			return cost * float(output_shares(recipe)[resource_id]) / maxf(float(recipe.outputs[resource_id]), 1)

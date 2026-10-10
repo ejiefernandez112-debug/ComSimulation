@@ -1080,6 +1080,71 @@ func test_hiring_away_matches_playing() -> void:
 	_check(_ready(away.buildings[4], "wheat") == 480 and _ready(away.buildings[5], "wheat") == 440, "the bonuses made more: Good +20%, Small +10%")
 
 
+## A field that grows two crops (plan.md §5.17.1): wheat needs 0.5 water a unit and, if fertilized,
+## 0.2 fertilizer a unit; rice needs 7 water a unit and can't be fertilized. Fertilizer costs $1 a
+## bag and gives +25% (the test data has no wage bonuses). An "hour" here is 60 s.
+func _field_data() -> Dictionary:
+	var data := _data()
+	data.resources["rice"] = {"name": "Rice"}
+	data.resources["fertilizer"] = {"name": "Fertilizer", "price": 1}
+	data.config["fertilizer"] = {"item": "fertilizer", "boost": 0.25}
+	data.config["water"] = {"price_per_m3": 2.0, "billing_hours": 1, "tiers": [{"from": 0, "extra": 0.0}]}
+	data.buildings["field"] = {"category": "extractor", "build_cost": 0, "buildable": true, "water_per_hour": 30,
+		"recipes": [{"id": "grow", "inputs": {}, "outputs": {"wheat": 10}, "duration": 60, "water_per_unit": 0.5, "fertilizer_per_unit": 0.2},
+			{"id": "grow_rice", "inputs": {}, "outputs": {"rice": 10}, "duration": 60, "water_per_unit": 7}]}
+	return data
+
+
+## Water is counted per unit made (plan.md §5.17.1): each crop its own amount, extra units from
+## fertilizer included; it's drawn while the batch works, and it's part of the crop's price.
+func test_water_per_unit() -> void:
+	var data := _field_data()
+	var state := Sim.new_game(data, T0)
+	var field := Sim.find_building(state, Sim.build(state, data, "field", Vector2i(5, 5), T0).building_id)
+	var rice := Sim.batch_quote(state, data, field, "grow_rice", 3, "none", T0)
+	_check(int(rice.units.rice) == 30 and is_equal_approx(float(rice.water_units), 210.0), "30 rice x 7 = 210 water")
+	Sim.start_batch(state, data, field.id, "grow_rice", 3, "none", T0)
+	_check(is_equal_approx(Sim.water_use(state, data, field, T0), 4200.0), "drawn while it works: 600 rice an hour (60 s hours) x 7")
+	var wheat := Sim.batch_quote(state, data, field, "grow", 4, "none", T0)
+	_check(is_equal_approx(float(wheat.water_units), 20.0), "40 wheat x 0.5 = 20 water (not the building's 30 an hour)")
+	state.inventory["fertilizer"] = 100
+	var fed := Sim.batch_quote(state, data, field, "grow", 4, "none", T0, true)
+	_check(int(fed.units.wheat) == 50 and is_equal_approx(float(fed.water_units), 25.0), "fertilized: 50 wheat need 25 water (the extra 10 need theirs too)")
+	var thirsty := Sim.unit_price(data, "rice")
+	data.buildings.field.recipes[1].erase("water_per_unit")
+	_check(Sim.unit_price(data, "rice") < thirsty, "rice's water is part of its price (without its own, the building's 30 an hour)")
+
+
+## Fertilizer (plan.md §5.17.1) is a choice: every unit made, extra ones included, takes its
+## fertilizer_per_unit (0.2 here), rounded up to whole bags, taken from the Warehouse like an
+## ingredient; the batch makes 25% more. Without all the bags it can't be fertilized.
+func test_fertilizer() -> void:
+	var data := _field_data()
+	var state := Sim.new_game(data, T0)
+	var field := Sim.find_building(state, Sim.build(state, data, "field", Vector2i(5, 5), T0).building_id)
+	var none := Sim.can_start_batch(state, data, field.id, "grow", 4, "none", T0, true)
+	_check(not none.ok and none.error == "Not enough Fertilizer: this batch needs 10 and you have 0. Buy more, or start it without fertilizer.", "50 wheat x 0.2 = 10 bags, and there are none: refused, saying how many")
+	_check(Sim.batch_max_hours(state, data, field.id, "grow", "none", true) == 0 and Sim.batch_max_hours(state, data, field.id, "grow", "none") == 1000, "fertilizer limits the batch only when chosen")
+	state.inventory["fertilizer"] = 10
+	Sim._costs(state, "inventory_cost")["fertilizer"] = 1000.0  # bought at $1 a bag
+	_check(Sim.batch_max_hours(state, data, field.id, "grow", "none", true) == 4, "10 bags: 4 hours (50 wheat); 5 hours would make 62 and need 13")
+	var three := Sim.batch_quote(state, data, field, "grow", 3, "none", T0, true)
+	_check(int(three.units.wheat) == 37 and int(three.ingredients[0].qty) == 8, "37 wheat x 0.2 = 7.4: rounded up to 8 bags")
+	var plain := Sim.batch_quote(state, data, field, "grow", 4, "none", T0)
+	_check(int(plain.units.wheat) == 40 and plain.ingredients.is_empty() and not plain.fertilize, "without fertilizer: 40 wheat, nothing taken")
+	var rice := Sim.batch_quote(state, data, field, "grow_rice", 4, "none", T0, true)
+	_check(int(rice.units.rice) == 40 and rice.ingredients.is_empty() and not rice.fertilize, "rice can't use fertilizer: the choice is ignored")
+	var started := Sim.start_batch(state, data, field.id, "grow", 4, "none", T0, true)
+	_check(started.ok and int(started.units.wheat) == 50, "fertilized: 4 hours x 10 x 1.25 = 50 wheat")
+	_check(int(state.inventory.get("fertilizer", 0)) == 0 and field.batch.fertilized and field.fertilize, "all 10 bags taken; the batch and the next choice remember it")
+	_check(is_equal_approx(float(field.batch.cost), 1000.0 + float(started.water)), "the bags' cost (10 x $1) is part of the batch's cost (with its water)")
+	Sim.settle(state, data, T0 + 1000)
+	_check(_ready(field, "wheat") == 50, "and it makes the 50")
+	data.buildings.field.recipes[0]["fertilizer_boost"] = 0.1
+	var own := Sim.batch_quote(state, data, field, "grow", 4, "none", T0, true)
+	_check(int(own.units.wheat) == 44 and int(own.ingredients[0].qty) == 9, "a crop's own fertilizer_boost (+10%) replaces the usual one: 44 wheat, 9 bags")
+
+
 ## The public water supply (plan.md §5.13): a meter records what buildings draw while they
 ## produce; every cycle the bill is charged at once (heavy users pay more for the extra).
 func test_water_supply() -> void:
@@ -1408,6 +1473,16 @@ func test_cost_tags() -> void:
 	_check(is_equal_approx(float(wet.batch.cost), 250.0), "the water it will use is part of its cost ($0.50 wages + 1 m³ x $2)")
 
 
+## Only items villagers buy in a store count as sold in stores (food in a Supermarket); crops,
+## ingredients and materials only sell to the trader (the Warehouse window says which, §5.22).
+func test_sold_in_stores() -> void:
+	var real := {"resources": GameDataScript.load_json("res://data/resources.json"),
+		"buildings": GameDataScript.load_json("res://data/buildings.json"),
+		"config": GameDataScript.load_json("res://data/game_config.json")}
+	_check(Sim.sold_in_stores(real, "bread") and Sim.sold_in_stores(real, "potatoes"), "real data: bread and potatoes are sold in stores")
+	_check(not Sim.sold_in_stores(real, "corn") and not Sim.sold_in_stores(real, "fertilizer") and not Sim.sold_in_stores(real, "hide"), "real data: corn, fertilizer and hides only go to the trader")
+
+
 ## Older saves get cost tags at the standard cost of making things.
 func test_old_save_gets_cost_tags() -> void:
 	var data := _bonus_data()
@@ -1430,9 +1505,9 @@ func test_old_save_gets_cost_tags() -> void:
 		"config": GameDataScript.load_json("res://data/game_config.json")}
 	# Plus each hour's power at the grid price (plan.md §5.5): a Mill 3 MW, a Bakery 4 MW.
 	var mwh := Sim.cents(float(real.config.power.price_per_mwh))
-	var flour := 750.0 + 3 * mwh / 32.0
-	var bread := (20 * flour + 12000.0 + 4 * mwh) / 15.0
-	_check(is_equal_approx(Sim.standard_unit_cost(real, "wheat"), 300.0) and is_equal_approx(Sim.standard_unit_cost(real, "flour"), flour) and is_equal_approx(Sim.standard_unit_cost(real, "bread"), bread), "real data: wheat $3.00, flour $7.50, bread $18.00 (plan.md §5.14), plus power")
+	var flour := 800.0 + 3 * mwh / 30.0
+	var bread := (20 * flour + 12000.0 + 4 * mwh) / 28.0
+	_check(is_equal_approx(Sim.standard_unit_cost(real, "wheat"), 300.0) and is_equal_approx(Sim.standard_unit_cost(real, "flour"), flour) and is_equal_approx(Sim.standard_unit_cost(real, "bread"), bread), "real data: wheat $3.00, flour $8.00, bread $10.00 (plan.md §5.14), plus power")
 
 
 ## Retail prices come from costs (plan.md §5.12): ingredients + standard wages + building share
@@ -1611,10 +1686,10 @@ func test_real_chain_corn_to_cereal() -> void:
 	Sim.settle(state, data, t)
 	t = _real_batch(state, data, corn, "grow_corn", 2, t)
 	t = _real_batch(state, data, cane, "grow_sugarcane", 1, t)
-	_check(int(state.inventory.corn) == 120 and int(state.inventory.sugarcane) == 80, "real chain: 120 corn and 80 sugarcane grown")
+	_check(int(state.inventory.corn) == 200 and int(state.inventory.sugarcane) == 400, "real chain: 200 corn and 400 sugarcane grown (1 hectare each)")
 	t = _real_batch(state, data, mill, "mill_cornmeal", 2, t)
 	t = _real_batch(state, data, sugar_mill, "make_sugar", 1, t)
-	_check(int(state.inventory.cornmeal) == 64 and int(state.inventory.sugar) == 30, "real chain: 64 cornmeal and 30 sugar")
+	_check(int(state.inventory.cornmeal) == 60 and int(state.inventory.sugar) == 45, "real chain: 80 corn -> 60 cornmeal, 400 cane -> 45 sugar")
 	_check(Sim.product_of(data, mill) == "mill_cornmeal" and not Sim.can_start_batch(state, data, mill.id, "mill_flour", 1, "none", t).ok, "real chain: this mill grinds corn for good")
 	t = _real_batch(state, data, factory, "make_cereal", 2, t)
 	_check(int(state.inventory.cereal) == 50, "real chain: 40 cornmeal + 10 sugar -> 50 cereal")
@@ -1642,11 +1717,11 @@ func test_real_chain_soy_oil_to_chips() -> void:
 	_real_build(state, data, "trading_post", t)
 	t += 3600.0
 	Sim.settle(state, data, t)
-	t = _real_batch(state, data, soy, "grow_soybeans", 1, t)
+	t = _real_batch(state, data, soy, "grow_soybeans", 2, t)
 	t = _real_batch(state, data, spuds, "grow_potatoes", 1, t)
-	var started := Sim.start_batch(state, data, press.id, "press_soybeans", 1, "none", t)
+	var started := Sim.start_batch(state, data, press.id, "press_soybeans", 2, "none", t)
 	var batch_cost := float(press.batch.cost)
-	_check(started.ok and int(started.units.vegetable_oil) == 8 and int(started.units.soy_meal) == 30, "real chain: 40 soybeans -> 8 oil + 30 soy meal")
+	_check(started.ok and int(started.units.vegetable_oil) == 18 and int(started.units.soy_meal) == 80, "real chain: 100 soybeans -> 18 oil + 80 soy meal")
 	while Sim.batch_running(press):
 		t += 3600.0
 		Sim.settle(state, data, t)
@@ -1654,13 +1729,13 @@ func test_real_chain_soy_oil_to_chips() -> void:
 	var oil_cost := float(state.inventory_cost.vegetable_oil)
 	var meal_cost := float(state.inventory_cost.soy_meal)
 	_check(absf(oil_cost + meal_cost - batch_cost) < 1.0 and absf(oil_cost - batch_cost * 0.6) < 1.0, "real chain: the oil carries 60% of the batch's cost, the meal 40%")
-	t = _real_batch(state, data, factory, "make_chips", 2, t)
-	_check(int(state.inventory.chips) == 60 and int(state.inventory.vegetable_oil) == 2, "real chain: 60 potatoes + 6 oil -> 60 chips")
+	t = _real_batch(state, data, factory, "make_chips", 1, t)
+	_check(int(state.inventory.chips) == 30 and int(state.inventory.vegetable_oil) == 8, "real chain: 120 potatoes + 10 oil -> 30 chips")
 	var made_for := float(state.inventory_cost.chips)
 	t = _real_sell_out(state, data, market, "chips", t)
 	_check(int(Sim.stats(state).sales_by_item.chips) > made_for, "real chain: chips sell for more than they cost to make")
-	var sold := Sim.trade_sell(state, data, "soy_meal", 30, t)
-	_check(sold.ok and int(sold.gross) == 30 * Sim.trade_price(data, "soy_meal", "sell") and not state.inventory.has("soy_meal"), "real chain: the soy meal sold to the trader")
+	var sold := Sim.trade_sell(state, data, "soy_meal", 80, t)
+	_check(sold.ok and int(sold.gross) == 80 * Sim.trade_price(data, "soy_meal", "sell") and not state.inventory.has("soy_meal"), "real chain: the soy meal sold to the trader")
 	_check(Sim.cash_check(state).ok, "real chain: cash check adds up")
 
 
@@ -1683,20 +1758,20 @@ func test_real_chain_feed_to_burgers() -> void:
 	_real_build(state, data, "trading_post", t)
 	t += 3600.0
 	Sim.settle(state, data, t)
-	t = _real_batch(state, data, corn, "grow_corn", 1, t)
-	t = _real_batch(state, data, feed, "feed_from_corn", 1, t)
-	_check(int(state.inventory.animal_feed) == 40, "real chain: 40 corn -> 40 animal feed")
-	t = _real_batch(state, data, ranch, "raise_cattle", 1, t)
-	_check(int(state.inventory.cattle) == 4, "real chain: 40 feed -> 4 cattle")
+	t = _real_batch(state, data, corn, "grow_corn", 6, t)
+	t = _real_batch(state, data, feed, "feed_from_corn", 6, t)
+	_check(int(state.inventory.animal_feed) == 600, "real chain: 600 corn -> 600 animal feed")
+	t = _real_batch(state, data, ranch, "raise_cattle", 2, t)
+	_check(int(state.inventory.cattle) == 2, "real chain: 600 feed -> 2 cattle")
 	_check(Sim.is_switchable(data, "ranch") and Sim.can_switch_product(state, data, ranch.id, "milk_cows").ok, "real chain: the ranch could switch to dairy cows, for a fee")
-	t = _real_batch(state, data, slaughter, "slaughter_cattle", 1, t)
-	_check(int(state.inventory.beef) == 40 and int(state.inventory.hide) == 4, "real chain: 4 cattle -> 40 beef + 4 hides")
+	t = _real_batch(state, data, slaughter, "slaughter_cattle", 2, t)
+	_check(int(state.inventory.beef) == 50 and int(state.inventory.hide) == 2, "real chain: 2 cattle -> 50 beef + 2 hides")
 	t = _real_batch(state, data, meat, "make_processed_meat", 1, t)
 	_check(int(state.inventory.processed_meat) == 30, "real chain: 30 beef -> 30 burgers")
 	var made_for := float(state.inventory_cost.processed_meat)
 	t = _real_sell_out(state, data, market, "processed_meat", t)
 	_check(int(Sim.stats(state).sales_by_item.processed_meat) > made_for, "real chain: burgers sell for more than they cost to make")
-	_check(Sim.trade_sell(state, data, "hide", 4, t).ok and not state.inventory.has("hide"), "real chain: the hides sold to the trader")
+	_check(Sim.trade_sell(state, data, "hide", 2, t).ok and not state.inventory.has("hide"), "real chain: the hides sold to the trader")
 	_check(Sim.cash_check(state).ok, "real chain: cash check adds up")
 
 
@@ -1713,12 +1788,12 @@ func test_real_chain_bought_beans_to_coffee() -> void:
 	var market := _real_build(state, data, "supermarket", t)
 	t += 3600.0
 	Sim.settle(state, data, t)
-	var bought := Sim.trade_buy(state, data, "coffee_beans", 30, t)
-	_check(bought.ok and int(bought.cost) == 30 * Sim.trade_price(data, "coffee_beans", "buy"), "real chain: 30 coffee beans bought from the trader at 150%")
+	var bought := Sim.trade_buy(state, data, "coffee_beans", 12, t)
+	_check(bought.ok and int(bought.cost) == 12 * Sim.trade_price(data, "coffee_beans", "buy"), "real chain: 12 coffee beans bought from the trader at 150%")
 	t = _real_batch(state, data, plant, "roast_coffee", 2, t)
-	_check(int(state.inventory.coffee) == 30, "real chain: 30 beans -> 30 coffee")
+	_check(int(state.inventory.coffee) == 10, "real chain: 12 beans -> 10 coffee (roasting loses a fifth)")
 	var made_for := float(state.inventory_cost.coffee)
-	_check(made_for / 30.0 < Sim.unit_price(data, "coffee"), "real chain: even with bought beans, a coffee costs less to make than it sells for")
+	_check(made_for / 10.0 < Sim.unit_price(data, "coffee"), "real chain: even with bought beans, a coffee costs less to make than it sells for")
 	t = _real_sell_out(state, data, market, "coffee", t)
 	_check(int(Sim.stats(state).sales_by_item.coffee) > made_for, "real chain: the coffee earns more than it cost")
 	_check(Sim.cash_check(state).ok, "real chain: cash check adds up")

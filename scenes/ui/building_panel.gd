@@ -5,7 +5,7 @@ extends ModalWindow
 ## (§5.16). Shows numbers from Economy only; the buttons ask main.gd to act (signals).
 
 signal collect_requested(building_id: String)
-signal start_batch_requested(building_id: String, recipe_id: String, hours: int, bonus: String)
+signal start_batch_requested(building_id: String, recipe_id: String, hours: int, bonus: String, fertilize: bool)
 signal switch_product_requested(building_id: String, recipe_id: String)
 signal cancel_batch_requested(building_id: String)
 signal move_requested(building_id: String)
@@ -132,7 +132,7 @@ func _build_rows(b: Dictionary, def: Dictionary) -> void:
 		_fill_recipe_row(r)
 		_batch_box = BatchBox.new()
 		_batch_box.setup(building_id, UITheme.WINDOW_WIDTH - 70)
-		_batch_box.start_requested.connect(func(id, recipe_id, hours, bonus): start_batch_requested.emit(id, recipe_id, hours, bonus))
+		_batch_box.start_requested.connect(func(id, recipe_id, hours, bonus, fertilize): start_batch_requested.emit(id, recipe_id, hours, bonus, fertilize))
 		_batch_box.switch_requested.connect(func(id, recipe_id): switch_product_requested.emit(id, recipe_id))
 		_batch_box.collect_requested.connect(func(id): collect_requested.emit(id))
 		_batch_box.cancel_requested.connect(func(id): cancel_batch_requested.emit(id))
@@ -248,7 +248,7 @@ func _build_upgrade() -> void:
 ## "12 workers", "room for 20,000 goods": what the next level changes.
 func _upgrade_changes(b: Dictionary, next: Dictionary) -> String:
 	var parts: Array[String] = []
-	var names := {"capacity": "room for %s goods", "shelves": "%s shelves", "households": "%s households", "water_supply": "cleans %s m³ of water an hour",
+	var names := {"capacity": "room for %s goods", "shelves": "%s shelves", "households": "%s households", "water_supply": "cleans %s units of water an hour",
 		"power_supply": "makes %s MW", "power_radius": "reaches %s tiles", "service_capacity": "serves %s people"}
 	if next.has("max_workers"):
 		parts.append("%d workers" % int(next.max_workers))
@@ -371,7 +371,7 @@ func _refresh_workers(b: Dictionary, def: Dictionary) -> void:
 	if _water_text:
 		# What its water costs: own plants' water at their price, the rest at the public price.
 		var m3 := Economy.water_use(b)
-		_water_text.text = "%s m³/h ⋅ %s / hour" % [UITheme.number(roundi(m3)), UITheme.dollars(Economy.water_cost_per_hour(b))]
+		_water_text.text = "%s units/h ⋅ %s / hour" % [UITheme.number(roundi(m3)), UITheme.dollars(Economy.water_cost_per_hour(b))]
 	if _power_text:
 		# Needs its MW while it runs; what that costs: own plants' power first, then the grid.
 		var on := str(b.get("power", "")) == "on"
@@ -385,7 +385,7 @@ func _refresh_workers(b: Dictionary, def: Dictionary) -> void:
 	elif def.category == "storage":
 		_rate_text.text = "%s of %s" % [UITheme.number(Economy.storage_capacity(b)), UITheme.number(int(Economy.level_stat(b, "capacity")))]
 	elif def.category == "utility":
-		_rate_text.text = "%s of %s m³/h" % [UITheme.number(roundi(Economy.water_supply(b))), UITheme.number(int(Economy.level_stat(b, "water_supply")))]
+		_rate_text.text = "%s of %s water units/h" % [UITheme.number(roundi(Economy.water_supply(b))), UITheme.number(int(Economy.level_stat(b, "water_supply")))]
 	elif def.category == "service":
 		_rate_text.text = "%s of %s people" % [UITheme.number(roundi(Economy.service_places(b))), UITheme.number(int(Economy.level_stat(b, "service_capacity")))]
 	# A note only when workers are missing (otherwise nothing needs saying).

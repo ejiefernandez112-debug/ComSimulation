@@ -130,6 +130,6 @@ func _refresh() -> void:
 		var r := BuildingInfo.recipe_of(b)
 		_produce.set_icon(BuildingInfo.output_of(r))
 		_produce.set_caption("New batch")
-		_produce.set_style("GoButton" if Economy.batch_max_hours(building_id, r.id, Economy.workers(b).bonus) > 0 else "BackButton")
+		_produce.set_style("GoButton" if Economy.batch_max_hours(building_id, r.id, Economy.workers(b).bonus, bool(b.get("fertilize", false))) > 0 else "BackButton")
 
 	_build.visible = def.category == "civic"

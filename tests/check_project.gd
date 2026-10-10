@@ -33,14 +33,14 @@ const BUILDING_KEYS := ["name", "category", "description", "menu_tab", "build_co
 ## What a level in "upgrades" may change (plus an optional fixed "cost" and own "time"), and the
 ## least each may be.
 const UPGRADE_STATS := {"max_workers": 0, "capacity": 1, "shelves": 1, "households": 1, "water_supply": 1, "power_supply": 1, "power_radius": 1, "service_capacity": 1}
-const RECIPE_KEYS := ["id", "inputs", "outputs", "duration", "cost_share"]
+const RECIPE_KEYS := ["id", "inputs", "outputs", "duration", "cost_share", "water_per_unit", "fertilizer_per_unit", "fertilizer_boost"]
 const RESOURCE_KEYS := ["name", "tier", "appetite", "price", "category", "unit"]
 const CONFIG_KEYS := ["starting_cash", "starting_population", "population_growth_seconds", "move_in_group_size", "move_in_only_for_jobs", "move_in_needs_home", "life", "housing", "happiness", "grid_size", "autosave_seconds",
 	"welcome_back_after_seconds", "cancel_refund_in_progress", "batch",
 	"stats_sample_seconds", "stats_history_size", "money_log_minutes", "money_log_size", "pricing", "water", "sales_tax_window_hours",
 	"sales_tax_brackets", "market_fee", "retail", "staffing_levels", "default_staffing", "wage_bonuses",
 	"bonus_output", "default_bonus", "worker_types", "island", "starting_buildings", "construction", "roads", "power",
-	"item_categories", "trade"]
+	"item_categories", "trade", "fertilizer"]
 ## Every setting a sound in data/sounds.json may use, and the buses it may play on (plan.md §5.24).
 const SOUND_KEYS := ["file", "bus", "volume_db", "pitch_jitter", "min_gap", "when"]
 const SOUND_BUSES := ["UI", "Alerts"]
@@ -315,6 +315,13 @@ func _check_producer(data: Dictionary, _id: String, def: Dictionary, where: Stri
 			_fail("%s: recipe id used twice in this building" % at)
 		ids[recipe.get("id", "")] = true
 		_number_at_least(recipe, "duration", 0.001, at, true)
+		_number_at_least(recipe, "water_per_unit", 0.0, at, false)
+		# Fertilizer (plan.md §5.17.1): bags of the item game_config.json names, per unit made.
+		if recipe.has("fertilizer_per_unit"):
+			_number_at_least(recipe, "fertilizer_per_unit", 0.000001, at, true)
+			if not data.resources.has(str(data.config.get("fertilizer", {}).get("item", ""))):
+				_fail("%s: uses fertilizer, but game_config.json fertilizer.item isn't in resources.json" % at)
+		_number_at_least(recipe, "fertilizer_boost", 0.0, at, false)
 		if _is_number(recipe.get("duration")) and not is_equal_approx(float(recipe.duration), BATCH_HOUR):
 			_fail("%s: duration must be %d (one hour of work: batch lengths are counted in them)" % [at, int(BATCH_HOUR)])
 		if recipe.get("outputs", {}).is_empty():
@@ -351,6 +358,8 @@ func _check_resources(data: Dictionary) -> void:
 				made[res] = true
 			for res in recipe.get("inputs", {}):
 				used[res] = true
+			if recipe.has("fertilizer_per_unit"):  # fertilized batches take it (plan.md §5.17.1)
+				used[str(data.config.get("fertilizer", {}).get("item", ""))] = true
 		for res in data.buildings[id].get("materials", {}):  # building materials (plan.md §5.15)
 			used[res] = true
 	for res in data.resources:

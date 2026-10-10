@@ -144,7 +144,7 @@ These are cheap now and very expensive to retrofit later. Include them in instru
 |---|---|---|---|
 | Wheat Farm | Extractor (no ingredients) | → 60 Wheat | 1,440 Wheat |
 | Flour Mill | Processor A | 40 Wheat → 32 Flour | 960 Wheat → 768 Flour |
-| Bakery | Processor B | 20 Flour → 15 Bread (Final) | 480 Flour → 360 Bread |
+| Bakery | Processor B | 20 Flour → 28 Bread (Final; 15 until 2026-10-10, §5.21 "Real ratios") | 480 Flour → 672 Bread |
 
 _Changed 2026-10-05 for production batches (§5.1): every recipe is one hour of work, and output per hour was cut to a tenth of the old rates (600 Wheat / 320 Flour / 144 Bread an hour), so a 24 h batch fits a 10,000 Warehouse. Wages and water per hour stayed, so cost per unit and the cost-based prices went up about ×10, and profit per hour stayed about the same. Shop appetites were cut to a tenth too (§5.16). No building storage or queue any more. Live values are in `data/buildings.json`._
 
@@ -507,7 +507,7 @@ A coastal building, inspired by Tropico's docks. Unlocked later in the game (whe
 The first **utility** (electricity, §5.5, will work the same way and reuse the same rules).
 - **Source: the government's public water supply**, piped in from outside the village. *(Since 2026-10-05 players can also build their own Water Treatment Plants, §5.13.1; the public supply covers whatever they don't.)*
 - **A flow, not a good:** buildings use a steady number of **m³ per hour** while they work; nothing is stored or carried. Automatic, no buttons
-- **Who uses it** (`water_per_hour` in `buildings.json`, PLACEHOLDERS): **Wheat Farm 30 m³/h** (irrigation). Bakery: TBD (Section 11). Flour Mill: none
+- **Who uses it** (`water_per_hour` in `buildings.json`, PLACEHOLDERS): **Wheat Farm 30 m³/h** (irrigation; since 2026-10-10 each Plantation crop has its own, and the screens say "units of water" instead of m³, §5.17.1). Bakery: TBD (Section 11). Flour Mill: none
 - **Only while producing**, the same rule as wages and power: a halted, idle or suspended building uses none. A building at part speed (short of workers) uses that share (6 of 8 workers = 75% of its water)
 - **Unlimited supply, heavy users pay more** (decided 2026-10-02): nobody is ever cut off, so water never slows a building down. The price per m³ is tiered on the company's total use per billing cycle, like the tax brackets: the first **1,200 m³ per cycle** (100 m³/h over 12 h) at the base price, anything above at **+25%** (`water` in `game_config.json`)
 - **Base price ~$2 per m³** (PLACEHOLDER). Later it can drift slowly (market mood), like the electricity price
@@ -732,7 +732,7 @@ The Retail building (selling to the village) is the **Supermarket** (`supermarke
 - **More store types later** (decided 2026-10-02), each selling its own category, e.g. a **Hardware Store** for Planks, Bricks and Cement once construction materials exist
 - Rules: `Simulation.can_stock_shelf`, `stock_shelf`, `can_clear_shelf`, `clear_shelf`, `stock_preview`, `_settle_retail`; window: `building_panel.gd` (Shelves + "Put on a shelf"). The Retailer's instant `sell` stays in the rules (tests use it) but no screen calls it
 
-### 5.17 Plantation & Fruits (planned 2026-10-02; a single Plantation with generic Fruit built 2026-10-05, §5.21)
+### 5.17 Plantation & Fruits (planned 2026-10-02; a single Plantation with generic Fruit built 2026-10-05, §5.21; real yields per hectare, water per crop and fertilizer built 2026-10-10, on trial, §5.17.1)
 
 > **2026-10-05:** the Wheat Farm became the **Plantation**: one building that grows one crop at a time (wheat, corn, rice, soybeans, sugarcane, potatoes, vegetables, fruit, coffee and cocoa beans) and switches for a fee (§5.21). Fruit is one generic item for now; the island fruits below may replace it later.
 
@@ -740,6 +740,32 @@ The Retail building (selling to the village) is the **Supermarket** (`supermarke
 - **Fresh fruit is a finished product:** sold straight to customers at the Supermarket (§5.16) for local consumption. **Processing is optional, never forced** (decided 2026-10-02); unlike raw Wheat, fruit doesn't need a processor to earn money
 - **Fruit vs. wheat is balanced by demand** (decided 2026-10-02): fruit needs one building to earn, wheat needs a Farm + Mill. If everyone grows fruit, fruit floods and Flour/Bread get scarce, so their prices and demand rise. Needs demand in the game: dynamic pricing (Section 11) and, from Phase 4, other companies buying
 - **Processing ideas for later** (optional extra value, not needed to sell): Juice Factory (Mango/Pineapple juice, Lemonade), Banana Bread (a second Bakery recipe: Flour + Banana), Coconut Oil and Coconut Vinegar (Oil Mill / Vinegar Plant), Banana Chips (Banana + Coconut Oil), Dried Mango, Pickled Papaya (Papaya + Vinegar), Canned Pineapple (needs cans from Steel)
+
+#### 5.17.1 One Plantation = one hectare: real yields, water per crop, fertilizer (decided and built 2026-10-10, on trial)
+The user asked for each crop's output to follow real life, with **1 Plantation = 1 hectare**. Different crops give very different amounts per hectare (they also noted rice might out-yield corn: it doesn't, corn gives about 5.8 t/ha against rice's 4.7, but rice needs about twice the water).
+- **1 unit = 10 kg** of any crop, so units compare fairly. **Wheat stays at 60 units/h** as the anchor (its price and old saves don't change), so **1 hour of work ≈ 20 days on a real field**
+- **Yield:** each crop's units per hour follow its real yield per hectare per day of growing (world averages). The user chose the **full real ratios** (sugarcane 400, cocoa 3), then fixing the factories (below)
+- **Water per unit (changed 2026-10-10, the user: "same with water"):** each crop's `water_per_unit` in its recipe, from its real water need per tonne, scaled so wheat needs 0.5 a unit (30 an hour). It's counted on **every unit the batch makes**, so a wage bonus or fertilizer's extra units need their water too (a fertilized 24 h wheat batch: 1,800 wheat = 900 water). It still comes from the public supply and your Water Treatment Plants and is paid on the water bill, so it never runs short; the batch keeps its rate (`batch.water_per_hour`) while it works. Per hectare most crops land at 30–46 an hour; rice, grown in flooded fields, needs 68. On screen water is counted in **units of water** (1 unit = the old m³; the bill, price and Water Treatment Plants are unchanged)
+- **Fertilizer (optional), per unit made (changed 2026-10-10, the user: "tied to how many crop they produce, not per hour"):** a **Fertilizer** button in the batch window ("None" / "+25% ⋅ 0.05 each"), shown only for crops that can use it. Fertilized, **every unit the batch makes, the extra 25% included, takes the crop's `fertilizer_per_unit`** (wheat 0.05: 1,800 wheat = 90 bags), rounded up to whole bags for the batch and taken from the Warehouse with the ingredients (their cost goes into the batch's cost per unit). **Without all the bags in the Warehouse it can't be fertilized**: "Not enough Fertilizer: this batch needs 90 and you have 50. Buy more, or start it without fertilizer." (All picks the longest batch the bags allow.) It makes **+25%** units (`game_config.json` `fertilizer.boost`; soybeans +10%, they make their own nitrogen) and adds to the wage bonus. Amounts follow real fertilizer use per tonne of crop. **Fertilizer** is a new item (category Materials, a 10 kg bag at a fixed **$5**, about a real bag's price); nothing makes it yet, so it's **bought at the Trading Post** (at its usual 1.5× markup) until the Fertilizer Plant of Wave 4. Each Plantation remembers the last choice. The batch window's "Per Wheat:" line shows both rates ("0.5 water ⋅ 0.05 fertilizer")
+- **Shop appetites** for the crops sold straight to villagers (Potatoes 0.7 → 4.3, Vegetables 0.5 → 5.7, Fruit 0.4 → 1.1) grew with their yields, so one Plantation still feeds about 100 villagers and its hour of work still earns about the same
+
+  | Crop | Real yield / ha | Units / h (was) | Water / h (normal) | Water per unit | Fertilizer per unit |
+  |---|---|---|---|---|---|
+  | Wheat | 3.5 t, ~4 months | **60** (60) | 30 | 0.5 | 0.05 |
+  | Corn | 5.8 t, ~4 months | **100** (60) | 37 | 0.37 | 0.04 |
+  | Rice | 4.7 t, ~4½ months | **75** (50) | **68** | 0.9 | 0.04 |
+  | Soybeans | 2.8 t, ~3½ months | **50** (40) | 35 | 0.7 | 0.02 (+10%) |
+  | Sugarcane | 70 t, 12 months | **400** (80) | 40 | 0.1 | 0.005 |
+  | Potatoes | 21 t, ~3 months | **430** (70) | 43 | 0.1 | 0.016 |
+  | Vegetables | 22 t, ~2½ months | **570** (50) | 46 | 0.08 | 0.014 |
+  | Fruit | ~20 t a year | **110** (40) | 30 | 0.27 | 0.018 |
+  | Coffee beans | ~1 t a year | **6** (15) | 36 | 6 | 0.33 |
+  | Cocoa beans | ~0.5 t a year | **3** (15) | 32 | 10.7 | 0.33 |
+
+  Prices follow by themselves (§5.12: cost ÷ units): corn gets cheaper ($3.89; wheat $6.22), coffee beans dearer ($64.41), cocoa beans $125.86, sugarcane $0.99, vegetables $0.72. Fertilizer pays on every crop, but barely on the bulky cheap ones: a fertilized 24 h batch of wheat spends about $1,035 more (90 bags at the trader's $7.50 + the extra units' water) for 360 more wheat (about $2,240); vegetables spend about $2,350 for about $2,460 more; cocoa about $610 for about $2,270. All PLACEHOLDERS, in `buildings.json` (`wheat_farm` recipes)
+- **Later: fertilizer quality** (the user's idea): the player upgrades to better fertilizer for a bigger boost (e.g. Basic +25%, Improved +35%, Premium +50%). Planned as more fertilizer items or levels in `fertilizer`; not built
+- **Factories fixed too (2026-10-10):** every factory recipe now follows real conversion ratios (§5.21, "Real ratios")
+- **Code:** `Simulation.recipe_water`, `water_per_unit`, `fertilizer_item`, `fertilizer_per_unit`, `fertilizer_needed`, `fertilizer_boost`, `_batch_units`; `batch_quote` / `can_start_batch` / `start_batch` / `batch_max_hours` take an optional `fertilize`; the batch keeps `fertilized` and `water_per_hour`, the building `fertilize` (no save version change: all optional; older batches use the recipe's water). Tests `test_water_per_unit`, `test_fertilizer`
 
 ### 5.18 Housing types, households, wealth & rent (planned and built 2026-10-03, on trial)
 
@@ -893,40 +919,42 @@ The user asked to add about 150 items in 15 groups of chains (agriculture, lives
 - **Demand stays per item** (people × appetite), with smaller appetites for the new foods (one building's output feeds about 100 villagers, against about 40 for flour and bread). A shared food budget, where more kinds of food don't mean more eating, is an option if the money grows too fast
 - **Icons:** one hand-drawn SVG per new item (same style as wheat/flour/bread). **Buildings** are placeholder boxes until their Blender models are made
 
+**Real ratios (2026-10-10, the user: "if it's unrealistic then we need to fix it"):** after the Plantation moved to real yields per hectare (§5.17.1), every factory recipe was checked against real conversion figures, with 1 unit = 10 kg (or 10 L) and animals and hides counted one per unit. Where real figures and the old numbers disagreed (60 cane made 30 sugar; 15 sugar made 30 candy; flour made *less* bread by weight; 4 cattle ate only 40 feed), the recipe was fixed, and where it was easy a supplier now matches one consumer (one corn Plantation → one Feed Mill; one cane Plantation → one Sugar Mill). Bakery: **20 Flour → 28 Bread** (water is added). Shop appetites moved with each building's new output (Bread 0.67, Sugar 0.45, Coffee 0.05, Milk 1.0, Eggs 0.2, Honey 0.3, Butter 0.05, Beef 0.25, Pork 0.3, Chicken 0.36, Sausages 0.36, Frozen Fish 0.2, Packaged Seafood 0.12, Flour 0.3), so one building still feeds about as many villagers. Meat is now much dearer (a steer eats ~3 t of feed), as in real life. Fishery catches are unchanged.
+
 **Wave 1A content** (all numbers PLACEHOLDERS, from the price formula §5.12; live in `data/*.json`):
 
 | Building | One hour of work | Notes |
 |---|---|---|
-| **Plantation** (was Wheat Farm) | 60 Wheat / 60 Corn / 50 Rice / 40 Soybeans / 80 Sugarcane / 70 Potatoes / 50 Vegetables / 40 Fruit / 15 Coffee Beans / 15 Cocoa Beans | one crop at a time; switch fee 10% |
-| **Grain Mill** (was Flour Mill) | 40 Wheat → 32 Flour · 40 Corn → 32 Cornmeal · 40 Rice → 30 Milled Rice | existing mills stay flour mills |
-| **Oil Press** | 40 Soybeans → 8 Cooking Oil + 30 Soy Meal · 40 Corn → 8 Cooking Oil | soy meal feeds animals in 1B |
-| **Sugar Mill** | 60 Sugarcane → 30 Sugar | |
-| **Food Factory** | 30 Flour → 30 Pasta · 20 Cornmeal + 5 Sugar → 25 Cereal · 30 Milled Rice → 30 Packaged Rice · 30 Potatoes + 3 Oil → 30 Chips · 30 Vegetables + 3 Oil → 30 Packaged Food | |
-| **Confectionery** | 15 Sugar → 30 Candy · 10 Cocoa Beans + 5 Sugar → 20 Chocolate | |
-| **Beverage Plant** | 40 Fruit → 40 Juice · 20 Fruit + 10 Sugar → 60 Soft Drinks · 15 Coffee Beans → 15 Coffee | uses 20 m³ water/h |
+| **Plantation** (was Wheat Farm) | 60 Wheat / 100 Corn / 75 Rice / 50 Soybeans / 400 Sugarcane / 430 Potatoes / 570 Vegetables / 110 Fruit / 6 Coffee Beans / 3 Cocoa Beans (real yields per hectare since 2026-10-10, §5.17.1; were 60/60/50/40/80/70/50/40/15/15) | one crop at a time; switch fee 10%; water and optional fertilizer per crop |
+| **Grain Mill** (was Flour Mill) | 40 Wheat → 30 Flour · 40 Corn → 30 Cornmeal · 40 Rice → 26 Milled Rice | existing mills stay flour mills; flour ~75%, milled rice ~65% of the paddy |
+| **Oil Press** | 50 Soybeans → 9 Cooking Oil + 40 Soy Meal · 100 Corn → 4 Cooking Oil + 90 Animal Feed | soy ~18% oil; corn only ~4% oil, the rest feed (oil 25% of the cost) |
+| **Sugar Mill** | 400 Sugarcane → 45 Sugar | ~11% of the cane; one mill per cane Plantation |
+| **Food Factory** | 30 Flour → 30 Pasta · 20 Cornmeal + 5 Sugar → 25 Cereal · 30 Milled Rice → 30 Packaged Rice · 120 Potatoes + 10 Oil → 30 Chips · 35 Vegetables + 2 Oil → 30 Packaged Food | chips: ~4 kg of potatoes a kg, a third of it oil |
+| **Confectionery** | 30 Sugar → 30 Candy · 14 Cocoa Beans + 9 Sugar → 20 Chocolate | candy is almost all sugar; dark chocolate ~55% cocoa |
+| **Beverage Plant** | 80 Fruit → 40 Juice · 3 Fruit + 6 Sugar → 60 Soft Drinks · 6 Coffee Beans → 5 Coffee | uses 20 units of water/h; juice ~half the weight of the fruit; roasting loses ~20% |
 | **Cannery** | 30 Fruit → 30 Canned Fruit | canned fish in 1B |
 
 **Wave 1B content** (PLACEHOLDERS):
 
 | Building | One hour of work | Notes |
 |---|---|---|
-| **Feed Mill** (Farming tab) | 40 Corn → 40 Animal Feed · 20 Soy Meal → 40 Animal Feed | soy meal from the Oil Press goes twice as far |
-| **Ranch** | 40 Feed → 4 Cattle · 30 Feed → 6 Pigs · 20 Feed → 30 Chickens · 30 Feed → 60 Milk · 20 Feed → 60 Eggs | one kind of animal at a time; switch fee 10% |
+| **Feed Mill** (Farming tab) | 100 Corn → 100 Animal Feed · 75 Corn + 25 Soy Meal → 100 Animal Feed | one per corn Plantation; real feed is a corn + soy meal mix |
+| **Ranch** | 300 Feed → 1 Cattle · 120 Feed → 4 Pigs · 80 Feed → 200 Chickens · 70 Feed → 100 Milk · 45 Feed → 20 Eggs | one kind of animal at a time; switch fee 10%; a steer eats ~3 t of feed |
 | **Fishery** | 40 Fish · or 20 Shrimp | switch fee 10%; any tile for now |
-| **Apiary** | 10 Honey + 2 Beeswax | by-product: the wax carries 15% of the cost |
-| **Dairy** | 60 Milk → 10 Cheese · 60 Milk → 15 Butter · 40 Milk → 40 Yogurt | |
-| **Slaughterhouse** | 4 Cattle → 40 Beef + 4 Hides · 6 Pigs → 60 Pork · 30 Chickens → 45 Chicken | hides carry 10% of the cost; sold to the trader until leather (Wave 3) |
-| **Meat Plant** | 30 Beef → 30 Burgers · 30 Pork → 40 Sausages · 30 Chicken → 30 Chicken Nuggets | |
-| **Fish Plant** | 40 Fish → 40 Frozen Fish · 20 Shrimp → 20 Packaged Seafood | |
-| **Cannery** (+1) | 30 Fish → 30 Canned Fish | |
+| **Apiary** | 30 Honey + 1 Beeswax | by-product: the wax carries 5% of the cost |
+| **Dairy** | 100 Milk → 10 Cheese · 100 Milk → 5 Butter · 40 Milk → 40 Yogurt | 10 L of milk per kg of cheese, ~20 per kg of butter |
+| **Slaughterhouse** | 1 Cattle → 25 Beef + 1 Hide · 4 Pigs → 30 Pork · 200 Chickens → 36 Chicken | hides carry 2% of the cost; sold to the trader until leather (Wave 3) |
+| **Meat Plant** | 30 Beef → 30 Burgers · 30 Pork → 36 Sausages · 18 Chicken + 6 Flour + 3 Oil → 30 Chicken Nuggets | nuggets ~60% chicken, with batter and frying oil |
+| **Fish Plant** | 40 Fish → 20 Frozen Fish · 20 Shrimp → 12 Packaged Seafood | fillets ~half the fish |
+| **Cannery** (+1) | 50 Fish + 2 Oil → 30 Canned Fish | |
 
-The animal chain is the interconnection the user asked for: Plantation (corn or soybeans) → Oil Press / Feed Mill → Ranch → Slaughterhouse → Meat Plant → Supermarket. Example prices: Animal Feed $16.47, Cattle $286.82, Beef $42.44, Hide $47.16, Burgers $73.71, Cheese $168.29.
+The animal chain is the interconnection the user asked for: Plantation (corn or soybeans) → Oil Press / Feed Mill → Ranch → Slaughterhouse → Meat Plant → Supermarket. Example prices (since the real ratios of 2026-10-10): Animal Feed $8.81, Cattle $3,374.17, Beef $172.43, Hide $87.97, Burgers $219.94, Cheese $189.73.
 
 Sold in Supermarkets (food): Potatoes, Vegetables, Fruit, Sugar, Pasta, Cereal, Packaged Rice, Chips, Packaged Food, Candy, Chocolate, Juice, Soft Drinks, Coffee, Canned Fruit, Milk, Eggs, Fish, Shrimp, Honey, Cheese, Butter, Yogurt, Beef, Pork, Chicken, Burgers, Sausages, Chicken Nuggets, Canned Fish, Frozen Fish, Packaged Seafood (plus Flour and Bread). Animals (Cattle, Pigs, Chickens), Animal Feed, Hides and Beeswax go into other buildings or to the trader.
 
-**Tested end to end** with the real data (`tests/test_simulation.gd`, "Whole production chains"): Corn + Sugarcane → Cereal; Soybeans → Oil + Soy Meal, Potatoes + Oil → Chips (meal to the trader); Corn → Feed → Cattle → Beef + Hides → Burgers (hides to the trader); and Coffee Beans bought from the trader → Coffee. Each sells out in a Supermarket for more than it cost to make. Crops and ingredients (Corn, Rice, Soybeans, Sugarcane, Coffee/Cocoa Beans, Cornmeal, Milled Rice, Cooking Oil, Soy Meal) go into other buildings, or to the Trading Post (§5.22). Example prices: Wheat $5.98, Coffee Beans $23.92, Cooking Oil $75.77, Soy Meal $13.47, Pasta $57.03, Coffee $70.31.
+**Tested end to end** with the real data (`tests/test_simulation.gd`, "Whole production chains"): Corn + Sugarcane → Cereal; Soybeans → Oil + Soy Meal, Potatoes + Oil → Chips (meal to the trader); Corn → Feed → Cattle → Beef + Hides → Burgers (hides to the trader); and Coffee Beans bought from the trader → Coffee. Each sells out in a Supermarket for more than it cost to make. Crops and ingredients (Corn, Rice, Soybeans, Sugarcane, Coffee/Cocoa Beans, Cornmeal, Milled Rice, Cooking Oil, Soy Meal) go into other buildings, or to the Trading Post (§5.22). Example prices: Wheat $6.22, Flour $30.87, Bread $57.97, Coffee Beans $64.41, Cooking Oil $71.78, Soy Meal $10.77, Pasta $62.65, Coffee $224.68.
 
-**Open:** sprites for the new buildings; whether rice and coffee should need more water than wheat (water is per building now, not per crop); island geography (fishing on the coast, mines in the hills) is not a rule yet: any building goes on any tile.
+**Open:** sprites for the new buildings; the factories' recipes after the real Plantation yields (§5.17.1); (water per crop was decided and built 2026-10-10, §5.17.1); island geography (fishing on the coast, mines in the hills) is not a rule yet: any building goes on any tile.
 
 ### 5.22 Trading Post (built 2026-10-05, on trial)
 Before it, nothing could be bought and only finished food could be sold, so a half-finished chain earned nothing and players couldn't specialise. The user chose a simple trader in its own building:
@@ -1269,6 +1297,25 @@ A hidden dev menu (key combo on PC, secret tap sequence on mobile) for testing t
 Both are functional, self-contained HTML/JS artifacts used to validate the trading-mechanic math and UX before porting logic into Godot.
 
 ## 15. Revision Log
+
+**2026-10-10 (water and fertilizer per unit made):**
+- The user: fertilizer is "tied to how many crop they produce per unit, not per hour", and "same with water". Chosen: both are counted on every unit a batch makes, the extra 25% from fertilizer included (wheat: 0.05 fertilizer and 0.5 water each, so a fertilized 24 h batch of 1,800 wheat takes 90 bags and 900 water). Recipes have `fertilizer_per_unit` and `water_per_unit` instead of amounts per hour (§5.17.1).
+- Without all the bags in the Warehouse a batch can't be fertilized; the message says how many it needs and how many there are. Water still comes from the supply and the bill (the user's choice), so it never runs short.
+- The Fertilizer button says "+25% ⋅ 0.05 each"; the "Per Wheat:" line shows the same rates.
+- **Warehouse window, every item** (the user asked why "made for $2.10 each" didn't match "worth $21,473"): the row now says what the stock **cost** ("cost $2.10 each ($11,592)", the average over all its batches and purchases) and what it **sells for**: the village price for items a store can sell ("sells for $57.97 each ($17,391)"), else what the Trading Post's trader pays ("trader pays $2.33 each ($12,862)"; crops, ingredients and materials can't go on a shelf). The old "worth" used the village price even for corn, which no shop sells. Rule: `Simulation.sold_in_stores`.
+
+**2026-10-10 (factories at real ratios):**
+- After the real Plantation yields, the user chose to fix every unrealistic factory recipe (§5.21 "Real ratios"): e.g. Sugar Mill 400 cane → 45 sugar (was 60 → 30), candy 30 sugar → 30 (was 15 → 30), Bakery 20 flour → 28 bread (was 15), Ranch 300 feed → 1 cattle (was 40 → 4), Slaughterhouse 1 cattle → 25 beef + 1 hide, Beverage Plant 6 coffee beans → 5 coffee, corn in the Oil Press now gives 4 oil + 90 animal feed, nuggets need flour and oil.
+- Shop appetites followed each building's new output. Prices follow by themselves: bread $105 → $58, cattle $282 → $3,374, beef $43 → $172, coffee $118 → $225.
+- The real-chain tests were updated to the new amounts; every chain still sells for more than it costs.
+- Batch window (the user's request): a **Water** line shows the units of water the batch will use and their cost ("720 units ⋅ $1,440"; also in the Start dialog), and the "Sells for" line (price and profit per unit) is gone. A **"Per Wheat:"** line (named after the crop or product) shows what each unit of the batch takes: "0.5 water", and with fertilizer "0.4 water ⋅ 0.04 fertilizer" (the boost makes more units from the same water and bags).
+
+**2026-10-10 (Plantation = 1 hectare: real yields, water per crop, fertilizer):**
+- The user asked for each crop's output per hour to follow real life, with one Plantation as one hectare, plus water and fertilizer per crop (§5.17.1). Decided: 1 unit = 10 kg, wheat stays 60/h as the anchor, the **full real ratios** (corn 100, rice 75, sugarcane 400, potatoes 430, vegetables 570, fruit 110, coffee 6, cocoa 3).
+- **Water per crop** (recipe `water_per_hour`; rice 68, the rest 30–46), and on screen water is counted in **units** instead of m³ (the user: "lets use unit of water").
+- **Fertilizer**, optional: a new item (fixed $5, bought at the Trading Post until Wave 4's plant), a "Fertilizer" choice in the batch window for +25% (soybeans +10%). Later the user wants upgradable fertilizer quality for a bigger boost (planned).
+- Shop appetites for Potatoes, Vegetables and Fruit grew with their yields, so one Plantation still feeds about 100 villagers.
+- Next (the user's choice): fix the factories' recipes to real ratios and to the new crop amounts.
 
 **2026-10-09 (code check-up: bug fixes and dead code):**
 - The user asked for a check of the whole project for bugs and organisation. All three test scripts passed before and after (1,571 checks; 50 random games, no problems; every old save loads).

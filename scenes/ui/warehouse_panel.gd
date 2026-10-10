@@ -1,13 +1,14 @@
 extends ModalWindow
 ## The Warehouse window (the Warehouse button in the top-left corner): everything the company has
-## in stock, how much room all warehouses have together, and what the goods are worth. Selling
-## happens at a Supermarket or the Trading Post, not here. Only shows Economy's numbers.
+## in stock, how much room all warehouses have together, and for each item what it cost you and
+## what it sells for. Selling happens at a Supermarket or the Trading Post, not here. Only shows
+## Economy's numbers.
 
 var _room_text: Label
 var _room_bar: ProgressBar
 var _list: VBoxContainer
 var _shown: Array[String] = []  # the goods the rows are for, in order
-var _rows := {}  # resource id -> {"tag", "qty", "worth"}: the labels _refresh updates
+var _rows := {}  # resource id -> {"cost", "sells", "qty"}: the labels _refresh updates
 
 
 func _ready() -> void:
@@ -68,13 +69,24 @@ func _refresh() -> void:
 	for res in items:
 		var qty := int(inventory[res])
 		var labels: Dictionary = _rows[res]
-		labels.tag.text = "made for %s each" % UITheme.price(roundi(Economy.average_cost(res)))
+		# What it cost you: the average of all its batches and purchases (its cost tag, §5.14).
+		var cost := Economy.average_cost(res)
+		labels.cost.text = "cost %s each (%s)" % [UITheme.price(roundi(cost)), UITheme.money(roundi(cost * qty))]
+		# What it sells for: the village price in a store, or what the trader pays for the rest
+		# (crops, ingredients and materials can't go on a shelf, §5.22).
+		if Economy.sold_in_stores(res):
+			var price := Economy.unit_price(res)
+			labels.sells.text = "sells for %s each (%s)" % [UITheme.price(price), UITheme.money(price * qty)]
+		else:
+			var paid := Economy.trade_price(res, "sell")
+			labels.sells.text = "trader pays %s each (%s)" % [UITheme.price(paid), UITheme.money(paid * qty)]
 		labels.qty.text = UITheme.number(qty)
-		labels.worth.text = "worth %s" % UITheme.money(qty * Economy.unit_price(res))
 
 
-## [icon] Wheat (made for $0.30 each) ... 1,250   worth $800 (the numbers that
-## change are filled in by _refresh).
+## [icon] Corn                                5,520
+##        cost $2.10 each ($11,592)
+##        trader pays $2.33 each ($12,862)
+## (the numbers are filled in by _refresh).
 func _row(res: String) -> PanelContainer:
 	var box := PanelContainer.new()
 	box.theme_type_variation = "Inset"
@@ -82,21 +94,19 @@ func _row(res: String) -> PanelContainer:
 	row.add_theme_constant_override("separation", 12)
 	box.add_child(row)
 	row.add_child(UITheme.icon_rect(res, 36))
-	# The name, with its cost tag underneath: what this stock cost you to make or buy (§5.14).
+	# The name, then what this stock cost you to make or buy (§5.14) and what it sells for.
 	var names := VBoxContainer.new()
 	names.add_theme_constant_override("separation", -4)
 	names.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	row.add_child(names)
 	names.add_child(_label(BuildingInfo.resource_name(res), 20))
-	var tag := _label("", 14)
-	names.add_child(tag)
+	var cost := _label("", 14)
+	names.add_child(cost)
+	var sells := _label("", 14)
+	names.add_child(sells)
 	var qty := _label("", 20)
 	row.add_child(qty)
-	var worth := _label("", 16)
-	worth.custom_minimum_size.x = 130
-	worth.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	row.add_child(worth)
-	_rows[res] = {"tag": tag, "qty": qty, "worth": worth}
+	_rows[res] = {"cost": cost, "sells": sells, "qty": qty}
 	return box
 
 
