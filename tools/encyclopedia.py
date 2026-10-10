@@ -86,7 +86,7 @@ CATEGORY_NAMES = {
 }
 CHANGE_NAMES = {
 	"max_workers": "{} workers", "capacity": "room for {}", "shelves": "{} shelves", "households": "{} households",
-	"power_supply": "makes {} MW", "power_radius": "power reaches {} tiles", "water_supply": "cleans {} m³/h",
+	"power_supply": "makes {} MW", "power_radius": "power reaches {} tiles", "water_supply": "cleans {} units of water/h",
 }
 
 
@@ -166,10 +166,13 @@ def infobox_of(b: dict, cfg: dict, tab: str, starts: int, levels: list) -> list:
 	if b.get("power_radius"):
 		power.append(f"its power reaches {b['power_radius']} tiles around it")
 	water = []
-	if b.get("water_per_hour"):
-		water.append(f"uses {number(b['water_per_hour'])} m³ an hour while making a batch")
+	per_unit = [float(r["water_per_unit"]) for r in b.get("recipes", []) if r.get("water_per_unit")]
+	if per_unit:  # each crop its own, per unit made (plan.md §5.17.1)
+		water.append(f"each product needs its own water for every unit made ({number(min(per_unit))}–{number(max(per_unit))} units of water a unit; see Production)")
+	elif b.get("water_per_hour"):
+		water.append(f"uses {number(b['water_per_hour'])} units of water an hour while making a batch")
 	if b.get("water_supply"):
-		water.append(f"cleans {number(b['water_supply'])} m³ an hour (with all its workers) for your buildings")
+		water.append(f"cleans {number(b['water_supply'])} units of water an hour (with all its workers) for your buildings")
 	if b.get("road_hub"):
 		road = "every road starts here"
 	elif workers:
@@ -203,6 +206,21 @@ def more_info_of(b: dict, cfg: dict, resources: dict, levels: list) -> list:
 	if recipes:
 		table = [[resources.get(next(iter(r["outputs"]), ""), {}).get("name", r.get("id", "")),
 			items(r.get("inputs", {})), items(r.get("outputs", {}))] for r in recipes]
+		head = ["Product", "Uses (per hour of work)", "Makes (per hour of work)"]
+		# Water and fertilizer per unit made (a Plantation's crops, plan.md §5.17.1).
+		fert = cfg.get("fertilizer", {})
+		boost = float(fert.get("boost", 0))
+		per_unit_water = any(r.get("water_per_unit") for r in recipes)
+		per_unit_fert = any(r.get("fertilizer_per_unit") for r in recipes)
+		if per_unit_water:
+			head.append("Water per unit")
+			for row, r in zip(table, recipes):
+				row.append(number(r["water_per_unit"]) if r.get("water_per_unit") else "–")
+		if per_unit_fert:
+			head.append("Fertilizer per unit (if used)")
+			for row, r in zip(table, recipes):
+				own = float(r.get("fertilizer_boost", boost))
+				row.append(f"{number(r['fertilizer_per_unit'])} (+{round(own * 100)}%)" if r.get("fertilizer_per_unit") else "–")
 		rows = []
 		if len(recipes) > 1:
 			rows.append(["Products", f"{len(recipes)} to choose from; set up for one at a time (its first batch picks it, free)"])
@@ -213,8 +231,14 @@ def more_info_of(b: dict, cfg: dict, resources: dict, levels: list) -> list:
 			else:
 				rows.append(["Switching", "keeps its product for good: build another one to make something else"])
 		rows.append(["Batches", "you choose how many hours (each hour of work makes the amounts below)"])
-		sections.append({"title": "Production", "rows": rows,
-			"head": ["Product", "Uses (per hour of work)", "Makes (per hour of work)"], "table": table})
+		if per_unit_water:
+			rows.append(["Water", "counted on every unit the batch makes, extra units from a bonus or fertilizer included; it comes from the water supply (or your Water Treatment Plants) and is paid on the water bill, so it never runs short"])
+		if per_unit_fert:
+			item = resources.get(fert.get("item", ""), {})
+			price = float(item.get("price", 0))
+			buy = float(cfg.get("trade", {}).get("buy_share", 1))
+			rows.append(["Fertilizer", f"optional, chosen for each batch: +{round(boost * 100)}% units (or the crop's own boost). Every unit made, the extra ones too, takes the amount below, rounded up to whole bags and taken from the Warehouse when the batch starts; without all the bags it can't be fertilized. {item.get('name', 'Fertilizer')} is bought at the Trading Post (${price * buy:,.2f} a bag; normal price ${price:,.2f})"])
+		sections.append({"title": "Production", "rows": rows, "head": head, "table": table})
 	if "shelves" in b or b.get("sells"):
 		cats = b.get("sells", [])
 		names = [r.get("name", k) for k, r in resources.items()

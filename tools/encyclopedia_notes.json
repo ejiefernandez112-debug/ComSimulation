@@ -63,6 +63,26 @@
 			]
 		}
 	},
+	"wheat_farm": {
+		"plan": "plan.md §5.17, §5.17.1 and §5.21",
+		"summary": "Your farm: one Plantation is one hectare of land. It grows one crop at a time, as much as a real hectare gives (1 unit = 10 kg), using water for every unit it grows; fertilizer is optional for 25% more.",
+		"features": [
+			{ "status": "trial", "since": "2026-10-05", "text": "Grows one crop at a time: wheat, corn, rice, soybeans, sugarcane, potatoes, vegetables, fruit, coffee or cocoa beans. Its first batch picks the crop for free; switching later costs 10% of what it's worth, while it has no batch." },
+			{ "status": "trial", "since": "2026-10-10", "text": "Real yields per hectare (1 unit = 10 kg; wheat stays 60 an hour, so 1 hour of work ≈ 20 days on a real field): corn 100, rice 75, soybeans 50, sugarcane 400, potatoes 430, vegetables 570, fruit 110, coffee beans 6, cocoa beans 3 an hour." },
+			{ "status": "trial", "since": "2026-10-10", "text": "Water per unit made: each crop its own amount (wheat 0.5, rice 0.9, cocoa beans 10.7), counted on every unit the batch makes. It comes from the water supply and is paid on the water bill, so it never runs short." },
+			{ "status": "trial", "since": "2026-10-10", "text": "Fertilizer, optional (the batch window's Fertilizer button): +25% units (soybeans +10%). Every unit made, the extra ones too, takes the crop's fertilizer (wheat 0.05: 1,800 wheat = 90 bags), rounded up to whole bags. Without all the bags the batch can't be fertilized. Bought at the Trading Post until a Fertilizer Plant exists." },
+			{ "status": "trial", "since": "2026-10-10", "text": "The batch window shows the water (\"720 units ⋅ $1,440\") and what each unit takes (\"Per Wheat: 0.5 water ⋅ 0.05 fertilizer\")." },
+			{ "status": "planned", "since": "2026-10-10", "text": "Better fertilizer: upgrade its quality for a bigger boost (e.g. Basic +25%, Improved +35%, Premium +50%)." },
+			{ "status": "planned", "since": "2026-10-05", "text": "A Fertilizer Plant (Wave 4: phosphate and potash), so fertilizer can be made on the island." }
+		]
+	},
+	"warehouse": {
+		"plan": "plan.md §5.14 and §5.15",
+		"summary": "Where your goods are kept. All warehouses share one stock; the Warehouse button (top left) lists everything in it.",
+		"features": [
+			{ "status": "trial", "since": "2026-10-10", "text": "The Warehouse window shows, for every item, what it cost you (\"cost $2.10 each ($11,592)\": the average of all its batches and purchases) and what it sells for: the village price in a store (\"sells for $57.97 each\"), or, for crops, ingredients and materials no shop sells, what the Trading Post's trader pays (\"trader pays $2.33 each\")." }
+		]
+	},
 	"supermarket": {
 		"plan": "plan.md §5.16",
 		"summary": "Your shop. People of the village buy the food you put on its shelves, a little every hour, and you are paid when a shelf sells out. It is the only way to turn food into money in the village (the Trading Post buys anything, but cheaply).",
