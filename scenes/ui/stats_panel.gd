@@ -19,14 +19,11 @@ const PEOPLE_FLOW := [["moved_in", "Moved in"], ["born", "Born"], ["grew_up", "G
 const RANGES := [[900.0, "15 min"], [3600.0, "1 hour"], [21600.0, "6 hours"]]
 const AVERAGE_OVER := 600.0  # rate graphs (cash flow, production) show 10-minute averages
 
-var _tab := "production"
 var _cash_view := "money"  # CASH_VIEWS: the Cash tab's view shown
 var _cash_view_buttons := {}
 var _cash_sections := {}  # view id -> the Cash tab's sections it shows
 var _graph := "cash"
 var _range := 3600.0
-var _pages := {}  # tab id -> its page
-var _tab_buttons := {}
 var _graph_buttons := {}
 var _range_buttons := {}
 var _values := {}  # name -> Label whose text _refresh updates
@@ -40,15 +37,16 @@ var _money := preload("res://scenes/ui/money_pages.gd").new(self)  # Balance tab
 
 func _ready() -> void:
 	super()
-	var tabs := _button_row(content, TABS, _tab_buttons, _select_tab)
-	tabs.add_theme_constant_override("separation", 4)
-	_pages.production = _production_page()
-	_pages.people = _people_page()
-	_pages.happiness = _happiness_page()
-	_pages.cash = _cash_page()
-	_pages.balance = _page()
-	_money.build_balance(_pages.balance)
-	_pages.graphs = _graphs_page()
+	use_page("production", _production_page())
+	use_page("people", _people_page())
+	use_page("happiness", _happiness_page())
+	use_page("cash", _cash_page())
+	var balance := _page()
+	_money.build_balance(balance)
+	use_page("balance", balance)
+	use_page("graphs", _graphs_page())
+	set_tabs(TABS)  # the tab buttons under the title strip (ModalWindow)
+	tab_selected.connect(func(_id): _refresh())
 	Economy.changed.connect(_refresh)
 
 
@@ -57,18 +55,9 @@ func _ready() -> void:
 func show_stats(tab := "", view := "") -> void:
 	if _cash_sections.has(view):
 		_select_cash_view(view)
-	_select_tab(tab if _pages.has(tab) else _tab)
+	select_tab(tab if tab != "" else shown_tab)  # none yet: the first tab (Goods)
 	open("Statistics")
 	_refresh()
-
-
-func _select_tab(id: String) -> void:
-	_tab = id
-	for key in _pages:
-		_pages[key].visible = key == id
-	_highlight(_tab_buttons, id)
-	_refresh()
-	_layout.call_deferred()  # the window resizes to the new page
 
 
 # --- Pages ---------------------------------------------------------------------
@@ -295,7 +284,7 @@ func _graphs_page() -> VBoxContainer:
 func _refresh() -> void:
 	if not visible:
 		return
-	match _tab:
+	match shown_tab:
 		"production":
 			_refresh_production()
 		"people":

@@ -9,6 +9,7 @@ signal happiness_pressed  # the happiness block was tapped: main.gd shows the br
 const MARGIN := 12  # space between the strip and the screen's edges
 const BAR_WIDTH := 76.0  # the small fill bars under the numbers
 const TOAST_TOP := 76  # messages appear below the strip
+const TOAST_LAYER := 2  # messages are drawn on this layer, in front of every window (the UI is layer 1)
 
 var _cash: Label
 var _shown_cash := NAN  # what the cash label shows (NAN = nothing yet); it counts up/down to the real amount
@@ -26,17 +27,23 @@ func _ready() -> void:
 	set_anchors_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_build_resources()
+	# The messages get a layer of their own, drawn above the rest of the UI (which is on layer 1),
+	# so an open window and the dimmed map behind it never cover them. They don't catch taps.
+	var toast_layer := CanvasLayer.new()
+	toast_layer.layer = TOAST_LAYER
+	add_child(toast_layer)
 	_toast_box = VBoxContainer.new()
 	_toast_box.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP, Control.PRESET_MODE_MINSIZE, TOAST_TOP)
 	_toast_box.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	_toast_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(_toast_box)
+	toast_layer.add_child(_toast_box)
 	Economy.changed.connect(_refresh)
 	_refresh()
 
 
 ## A short message at the top of the screen that fades away. Bad news gets a red warning sign.
 func toast(text: String, bad := false) -> void:
+	_toast_box.theme = _ui_theme()  # its own layer doesn't pass the look down: hand it over (it can change: blur setting)
 	var pill := PanelContainer.new()
 	pill.theme_type_variation = "HudPill"
 	UITheme.frost(pill)
@@ -63,6 +70,16 @@ func toast(text: String, bad := false) -> void:
 	fade.tween_interval(1.8)
 	fade.tween_property(pill, "modulate:a", 0.0, 0.5)
 	fade.tween_callback(pill.queue_free)
+
+
+## The game's look (theme), from the nearest parent that has one (main.gd sets it on the UI root).
+func _ui_theme() -> Theme:
+	var node: Node = self
+	while node is Control:
+		if (node as Control).theme:
+			return (node as Control).theme
+		node = node.get_parent()
+	return null
 
 
 func _build_resources() -> void:

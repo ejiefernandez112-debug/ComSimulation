@@ -1,10 +1,20 @@
 class_name UITheme
-## The game's look, in one place: "Harbor Glass", a calm, realistic city-builder style (the user
-## asked for something like Cities: Skylines II, 2026-10-06). Dark slate glass panels with a thin
-## light rim and small rounded corners, one blue highlight colour, white line icons and the Overpass
-## font (assets/fonts/, SIL Open Font License). Everything is drawn by Godot (no picture files), so
-## a colour change here restyles the whole game. main.gd applies the theme to all of the UI, so
-## every Button, Label and panel picks it up automatically.
+## The game's look: "Harbor Glass", a calm, realistic city-builder style (the user asked for
+## something like Cities: Skylines II, 2026-10-06). Dark slate glass panels with a thin light rim
+## and small rounded corners, one blue highlight colour, white line icons and the Overpass font
+## (assets/fonts/, SIL Open Font License).
+##
+## The look lives in one Godot theme file, assets/ui/game_theme.tres (since 2026-10-11; before, this
+## script drew it from data/ui_look.json). Open it in the Godot editor and the Theme panel at the
+## bottom shows every type: pick one (Button, GoButton, PanelContainer, SmallLabel...) and change its
+## colours, borders, corners, padding and text sizes; every window follows. main.gd puts the theme on
+## all of the UI, and scenes laid out in the editor carry it too, so they look right while you work.
+## Two extra types in the file hold what the code needs:
+##   "Palette" colours the code paints with: good / warn / bad numbers, rims and dividers, the shade
+##     behind windows, the glass when the blur is off (glass_solid, glass_high_solid)...
+##   "Sizes"   button sizes (small / normal / big: width, height, text), tiles, window widths
+## Text colours come from the label types themselves (Label = body text, SmallLabel = notes) and
+## text sizes from each label type's font size.
 ##
 ## Buttons all have the same shape; their colour says what they do (set theme_type_variation):
 ##   "" (glass)       a normal action
@@ -23,81 +33,54 @@ class_name UITheme
 ##
 ## Panels over the map are frosted glass (frost()): the map behind them is blurred, as in the
 ## mockup. Settings → Frosted glass turns the blur off (phones start with it off); the glass is
-## then more solid.
+## then more solid (the Palette's glass_solid colours). A theme file can't blur, so that stays here.
 
 const ICONS := "res://assets/ui/icons/"
-const FONT_FILE := "res://assets/fonts/Overpass-Medium.ttf"
-const BOLD_FONT_FILE := "res://assets/fonts/Overpass-Bold.ttf"
-## The look's colours and sizes live in data/ui_look.json (change them live in the game:
-## Developer window → Look). Every setting the file has, by section; tests/check_project.gd checks
-## the file against this list. Its "icons" section is extra: {icon name: the icon drawn instead}.
-const LOOK_FILE := "res://data/ui_look.json"
-const LOOK_KEYS := {
-	"colors": ["glass", "glass_solid", "glass_high", "glass_high_solid", "edge", "edge_strong", "well",
-		"hover", "text", "text_dim", "text_faint", "accent", "accent_high", "good", "warn", "bad",
-		"outline", "dim", "dim_light", "button", "go", "go_rim", "danger", "danger_rim", "chip_on", "chip_on_rim"],
-	"shapes": ["button_radius", "chip_radius", "window_radius", "inset_radius", "rim_width",
-		"window_padding", "button_padding", "window_shadow"],
-	"text": ["small", "body", "heading", "big", "title", "map", "tooltip", "tag"],
-	"buttons": ["small_width", "small_height", "small_font", "normal_width", "normal_height", "normal_font",
-		"big_width", "big_height", "big_font", "round_icon", "round_action", "icon_on_button"],
-	"windows": ["window_width", "build_panel_width", "build_panel_height", "build_details_width",
-		"build_card_width", "build_card_height", "building_card_width", "toolbar_button", "screen_button"],
-}
+const THEME_FILE := "res://assets/ui/game_theme.tres"
+## What the theme file's "Palette" and "Sizes" types must have (tests/check_project.gd checks it).
+const PALETTE_KEYS := ["text_faint", "accent_high", "good", "warn", "bad", "outline", "edge", "edge_strong",
+	"dim", "dim_light", "glass_solid", "glass_high_solid"]
+const SIZE_KEYS := ["small_width", "small_height", "small_font", "normal_width", "normal_height", "normal_font",
+	"big_width", "big_height", "big_font", "round_icon", "round_action", "tag_text", "window_width",
+	"build_panel_width", "build_panel_height", "build_details_width", "build_card_width", "build_card_height",
+	"building_card_width", "toolbar_button", "screen_button"]
+## Glass panels that turn solid when the blur is off: theme type -> the Palette colour they take.
+const SOLID_GLASS := {"PanelContainer": "glass_solid", "Panel": "glass_solid", "HudPill": "glass_solid",
+	"HudBar": "glass_solid", "TooltipPanel": "glass_high_solid"}
 
-# Palette (from data/ui_look.json "colors", set by apply_look()).
-## Windows, bars and the HUD: dark slate glass. Frosted (the map behind is blurred, see frost()),
-## it is see-through; without the blur (Settings, or phones) it is more solid ("_SOLID") so words
-## stay easy to read over the busy map.
-static var GLASS: Color
-static var GLASS_SOLID: Color
-static var GLASS_HIGH: Color  # tooltips and side tabs: a shade lighter
-static var GLASS_HIGH_SOLID: Color
-static var EDGE: Color  # the thin light rim around glass
-static var EDGE_STRONG: Color  # outlines of empty buttons, chips and text boxes
-static var WELL: Color  # sunken boxes inside windows
-static var HOVER: Color  # under the pointer
-static var TEXT: Color  # body text, titles and numbers
-static var TEXT_DIM: Color  # small notes and captions
+# Colours (the Palette, and the label types' text colours), read from the theme file.
+static var TEXT: Color  # body text, titles and numbers (Label)
+static var TEXT_DIM: Color  # small notes and captions (SmallLabel)
 static var TEXT_FAINT: Color  # hints and empty text boxes
-static var ACCENT: Color  # the one highlight colour: Go buttons, picked choices, selection
-static var ACCENT_HIGH: Color
+static var ACCENT_HIGH: Color  # the highlight colour, light
 static var GOOD: Color  # good news (in windows and over the map)
 static var WARN: Color  # "not quite right"
 static var BAD: Color  # bad news / warnings
 static var OUTLINE: Color  # dark outline for text and signs straight over the map
+static var EDGE: Color  # the thin light rim around glass, and dividers
+static var EDGE_STRONG: Color  # stronger lines (dividers between parts of a bar)
 static var DIM: Color  # dims the map behind a window in the middle of the screen (and phone sheets)
-static var DIM_LIGHT: Color  # behind a window docked at the side: lighter, so the map stays in view
+static var DIM_LIGHT: Color  # a lighter dim (no window uses it since 2026-10-11: they all sit in the middle)
 
-# Shapes ("shapes").
-static var RADIUS: int  # buttons
-static var CHIP_RADIUS: int  # choice chips: rounder
-static var WINDOW_RADIUS: int  # windows, cards and the HUD
-static var INSET_RADIUS: int  # sunken boxes and small glass pills
-static var RIM: int  # how thick the light rims are
-static var WINDOW_PADDING: int  # space inside a window's edge
-static var BUTTON_PADDING: int  # space left and right of a button's words
-static var WINDOW_SHADOW: int  # the soft shadow under windows and glass bars (0 = none: cheaper to draw)
+# Shapes and text sizes, read from the theme's own types.
+static var RADIUS: int  # button corners (Button)
+static var WINDOW_PADDING: int  # space inside a window's edge (PanelContainer)
+static var SIZE_SMALL: int  # SmallLabel
+static var SIZE_BODY: int  # Label
+static var SIZE_HEADING: int  # HeadingLabel
+static var SIZE_BIG: int  # BigLabel
+static var SIZE_TITLE: int  # TitleLabel
+static var SIZE_MAP: int  # OutlineLabel: words straight over the map
+static var SIZE_TOOLTIP: int  # TooltipLabel
+static var SIZE_TAG: int  # status tags ("● WORKING"; Sizes tag_text)
 
-# Text sizes ("text"): every label uses one of these (through its variation).
-static var SIZE_SMALL: int
-static var SIZE_BODY: int
-static var SIZE_HEADING: int
-static var SIZE_BIG: int
-static var SIZE_TITLE: int
-static var SIZE_MAP: int  # words straight over the map
-static var SIZE_TOOLTIP: int
-static var SIZE_TAG: int  # status tags ("● WORKING")
-
-# Buttons ("buttons").
+# Buttons and windows (the "Sizes" type).
 ## Button sizes: minimum width and height, and font size, for "small", "normal" and "big".
 static var SIZES := {}
 ## Tile buttons (RoundButton): icon-only ones (close ✕, ✓) and the building card's, with a caption.
 static var ROUND_ICON_SIZE: float
 static var ROUND_ACTION_SIZE: float
-static var BUTTON_ICON: int  # icons on buttons stay this small next to the words
-
-# Windows ("windows").
+static var BUTTON_ICON: int  # icons on buttons stay this small next to the words (Button icon_max_width)
 static var WINDOW_WIDTH: float  # windows (ModalWindow) on wide screens
 static var BUILD_PANEL_WIDTH: float  # the Build panel on wide screens (smaller if the screen is)
 static var BUILD_PANEL_HEIGHT: float
@@ -106,12 +89,6 @@ static var BUILD_CARD_SIZE: Vector2  # one building card in the Build panel
 static var BUILDING_CARD_WIDTH: float  # the card at the bottom when a building is picked
 static var TOOLBAR_BUTTON: float  # the bottom toolbar's category buttons
 static var SCREEN_BUTTON: float  # the screen buttons in the top-left corner
-
-## Button colours: variation -> [fill, rim, text colour] (made by apply_look()). Filled buttons
-## (Go, Danger, the picked chip) light up a little towards the top, like the glass catching the light.
-static var BUTTONS := {}
-const FILLED := ["GoButton", "DangerButton", "ChipOnButton"]
-const CHIPS := ["ChipButton", "ChipOnButton"]
 
 ## Frosted glass: a panel with this material blurs the map behind it. Only the panel's body is
 ## frosted (it is the only part drawn at least half solid); its faint rim (and shadow, if any) are
@@ -132,306 +109,111 @@ void fragment() {
 	COLOR = vec4(mix(COLOR.rgb, frosted, body), mix(COLOR.a, 1.0, body));
 }"
 
-static var look := {}  # data/ui_look.json as now (with any changes made live in the Look page)
-static var _icon_swaps := {}  # icon name -> the icon drawn instead ("icons")
-static var _font: Font
-static var _bold: Font
+static var _theme: Theme  # the theme file, as loaded
 static var _icons := {}  # icon name -> texture: looked up once (checking the files is slow on phones)
 static var _frosted := true  # the blur is on (Settings "glass_blur"); build() and frost() follow it
 static var _frost: ShaderMaterial
-static var _glass: Color
-static var _glass_high: Color
 
 
 static func _static_init() -> void:
-	apply_look(load_look())
+	_read(theme_file())
 
 
-## data/ui_look.json as it is in the file.
-static func load_look() -> Dictionary:
-	return preload("res://scripts/autoload/game_data.gd").load_json(LOOK_FILE)
+## The theme file, loaded once. Godot's own font is added behind ours, for symbols Overpass doesn't
+## have (✓); it's built in, so the file can't hold it.
+static func theme_file() -> Theme:
+	if _theme == null:
+		_theme = load(THEME_FILE)
+		var fonts: Array[Font] = [_theme.default_font]
+		for type in _theme.get_type_list():
+			for name in _theme.get_font_list(type):
+				fonts.append(_theme.get_font(name, type))
+		for font in fonts:
+			if font != null and font.fallbacks.is_empty() and font != ThemeDB.fallback_font:
+				font.fallbacks = [ThemeDB.fallback_font]
+	return _theme
 
 
-## Takes the look's colours and sizes from `new_look` (data/ui_look.json's shape). Windows made
-## after this use them; build() a new theme to restyle the ones already on screen.
-static func apply_look(new_look: Dictionary) -> void:
-	look = new_look
-	GLASS = _look_color("glass")
-	GLASS_SOLID = _look_color("glass_solid")
-	GLASS_HIGH = _look_color("glass_high")
-	GLASS_HIGH_SOLID = _look_color("glass_high_solid")
-	EDGE = _look_color("edge")
-	EDGE_STRONG = _look_color("edge_strong")
-	WELL = _look_color("well")
-	HOVER = _look_color("hover")
-	TEXT = _look_color("text")
-	TEXT_DIM = _look_color("text_dim")
-	TEXT_FAINT = _look_color("text_faint")
-	ACCENT = _look_color("accent")
-	ACCENT_HIGH = _look_color("accent_high")
-	GOOD = _look_color("good")
-	WARN = _look_color("warn")
-	BAD = _look_color("bad")
-	OUTLINE = _look_color("outline")
-	DIM = _look_color("dim")
-	DIM_LIGHT = _look_color("dim_light")
-	RADIUS = _look_int("shapes", "button_radius")
-	CHIP_RADIUS = _look_int("shapes", "chip_radius")
-	WINDOW_RADIUS = _look_int("shapes", "window_radius")
-	INSET_RADIUS = _look_int("shapes", "inset_radius")
-	RIM = _look_int("shapes", "rim_width")
-	WINDOW_PADDING = _look_int("shapes", "window_padding")
-	BUTTON_PADDING = _look_int("shapes", "button_padding")
-	WINDOW_SHADOW = _look_int("shapes", "window_shadow")
-	SIZE_SMALL = _look_int("text", "small")
-	SIZE_BODY = _look_int("text", "body")
-	SIZE_HEADING = _look_int("text", "heading")
-	SIZE_BIG = _look_int("text", "big")
-	SIZE_TITLE = _look_int("text", "title")
-	SIZE_MAP = _look_int("text", "map")
-	SIZE_TOOLTIP = _look_int("text", "tooltip")
-	SIZE_TAG = _look_int("text", "tag")
+## Reads the colours and sizes the code needs from the theme.
+static func _read(t: Theme) -> void:
+	TEXT = t.get_color("font_color", "Label")
+	TEXT_DIM = t.get_color("font_color", "SmallLabel")
+	TEXT_FAINT = _palette(t, "text_faint")
+	ACCENT_HIGH = _palette(t, "accent_high")
+	GOOD = _palette(t, "good")
+	WARN = _palette(t, "warn")
+	BAD = _palette(t, "bad")
+	OUTLINE = _palette(t, "outline")
+	EDGE = _palette(t, "edge")
+	EDGE_STRONG = _palette(t, "edge_strong")
+	DIM = _palette(t, "dim")
+	DIM_LIGHT = _palette(t, "dim_light")
+	var button_box := t.get_stylebox("normal", "Button")
+	RADIUS = (button_box as StyleBoxFlat).corner_radius_top_left if button_box is StyleBoxFlat else 4
+	WINDOW_PADDING = roundi(t.get_stylebox("panel", "PanelContainer").content_margin_left)
+	SIZE_BODY = t.get_font_size("font_size", "Label")
+	SIZE_SMALL = t.get_font_size("font_size", "SmallLabel")
+	SIZE_HEADING = t.get_font_size("font_size", "HeadingLabel")
+	SIZE_BIG = t.get_font_size("font_size", "BigLabel")
+	SIZE_TITLE = t.get_font_size("font_size", "TitleLabel")
+	SIZE_MAP = t.get_font_size("font_size", "OutlineLabel")
+	SIZE_TOOLTIP = t.get_font_size("font_size", "TooltipLabel")
+	SIZE_TAG = _size(t, "tag_text")
 	SIZES = {}
 	for size in ["small", "normal", "big"]:
-		SIZES[size] = {"min": Vector2(_look_int("buttons", size + "_width"), _look_int("buttons", size + "_height")),
-			"font": _look_int("buttons", size + "_font")}
-	ROUND_ICON_SIZE = _look_int("buttons", "round_icon")
-	ROUND_ACTION_SIZE = _look_int("buttons", "round_action")
-	BUTTON_ICON = _look_int("buttons", "icon_on_button")
-	WINDOW_WIDTH = _look_int("windows", "window_width")
-	BUILD_PANEL_WIDTH = _look_int("windows", "build_panel_width")
-	BUILD_PANEL_HEIGHT = _look_int("windows", "build_panel_height")
-	BUILD_DETAILS_WIDTH = _look_int("windows", "build_details_width")
-	BUILD_CARD_SIZE = Vector2(_look_int("windows", "build_card_width"), _look_int("windows", "build_card_height"))
-	BUILDING_CARD_WIDTH = _look_int("windows", "building_card_width")
-	TOOLBAR_BUTTON = _look_int("windows", "toolbar_button")
-	SCREEN_BUTTON = _look_int("windows", "screen_button")
-	BUTTONS = {
-		"Button": [_look_color("button"), EDGE, TEXT],
-		"GoButton": [_look_color("go"), _look_color("go_rim"), Color.WHITE],
-		"DangerButton": [_look_color("danger"), _look_color("danger_rim"), Color.WHITE],
-		"BackButton": [Color(0, 0, 0, 0), EDGE_STRONG, TEXT_DIM],
-		"IconButton": [Color(0, 0, 0, 0), Color(0, 0, 0, 0), TEXT_DIM],
-		"ChipOnButton": [_look_color("chip_on"), _look_color("chip_on_rim"), Color.WHITE],
-		"ChipButton": [Color(0, 0, 0, 0), EDGE_STRONG, TEXT_DIM],
-	}
-	_icon_swaps = look.get("icons", {})
-	_icons.clear()
+		SIZES[size] = {"min": Vector2(_size(t, size + "_width"), _size(t, size + "_height")), "font": _size(t, size + "_font")}
+	ROUND_ICON_SIZE = _size(t, "round_icon")
+	ROUND_ACTION_SIZE = _size(t, "round_action")
+	BUTTON_ICON = t.get_constant("icon_max_width", "Button")
+	WINDOW_WIDTH = _size(t, "window_width")
+	BUILD_PANEL_WIDTH = _size(t, "build_panel_width")
+	BUILD_PANEL_HEIGHT = _size(t, "build_panel_height")
+	BUILD_DETAILS_WIDTH = _size(t, "build_details_width")
+	BUILD_CARD_SIZE = Vector2(_size(t, "build_card_width"), _size(t, "build_card_height"))
+	BUILDING_CARD_WIDTH = _size(t, "building_card_width")
+	TOOLBAR_BUTTON = _size(t, "toolbar_button")
+	SCREEN_BUTTON = _size(t, "screen_button")
 
 
-static func _look_color(key: String) -> Color:
-	var text := str(look.get("colors", {}).get(key, ""))
-	if not Color.html_is_valid(text):
-		push_error("data/ui_look.json: colors.%s isn't a colour like \"#2f9cf0\"" % key)
+static func _palette(t: Theme, key: String) -> Color:
+	if not t.has_color(key, "Palette"):
+		push_error("%s: the Palette type has no colour '%s'" % [THEME_FILE, key])
 		return Color.MAGENTA
-	return Color.html(text)
+	return t.get_color(key, "Palette")
 
 
-static func _look_int(section: String, key: String) -> int:
-	var value: Variant = look.get(section, {}).get(key)
-	if not (value is float or value is int):
-		push_error("data/ui_look.json: %s.%s is missing" % [section, key])
+static func _size(t: Theme, key: String) -> int:
+	if not t.has_constant(key, "Sizes"):
+		push_error("%s: the Sizes type has no constant '%s'" % [THEME_FILE, key])
 		return 10
-	return roundi(value)
+	return t.get_constant(key, "Sizes")
 
 
-## Builds the theme. Call once (main.gd does), and again when the "glass_blur" setting changes:
-## frosted glass is see-through, plain glass more solid.
+## The theme for the UI. main.gd calls it once, and again when the "glass_blur" setting changes:
+## frosted glass is the file's see-through glass; without the blur, a copy whose glass panels take
+## the Palette's more solid colours, so words stay easy to read over the busy map.
 static func build(frosted := true) -> Theme:
 	_frosted = frosted
-	_glass = GLASS if frosted else GLASS_SOLID
-	_glass_high = GLASS_HIGH if frosted else GLASS_HIGH_SOLID
-	var t := Theme.new()
-	t.default_font = font()
-	t.default_font_size = SIZE_BODY
-	_labels(t)
-	_buttons(t)
-	_panels(t)
-	_bars(t)
-	return t
+	var t := theme_file()
+	if frosted:
+		return t
+	var solid: Theme = t.duplicate()
+	for type in SOLID_GLASS:
+		if t.has_stylebox("panel", type) and t.get_stylebox("panel", type) is StyleBoxFlat:
+			var box: StyleBoxFlat = t.get_stylebox("panel", type).duplicate()
+			box.bg_color = _palette(t, SOLID_GLASS[type])
+			solid.set_stylebox("panel", type, box)
+	return solid
 
 
-static func _labels(t: Theme) -> void:
-	t.set_color("font_color", "Label", TEXT)
-	t.set_font_size("font_size", "Label", SIZE_BODY)
-	t.set_type_variation("BodyLabel", "Label")
-	_label_style(t, "SmallLabel", SIZE_SMALL, TEXT_DIM)
-	_label_style(t, "HeadingLabel", SIZE_HEADING, TEXT, true)
-	_label_style(t, "BigLabel", SIZE_BIG, TEXT, true)
-	_label_style(t, "TitleLabel", SIZE_TITLE, TEXT, true)
-	# White text with a dark outline and a soft shadow: readable over the map.
-	_label_style(t, "OutlineLabel", SIZE_MAP, TEXT, true)
-	t.set_color("font_outline_color", "OutlineLabel", OUTLINE)
-	t.set_constant("outline_size", "OutlineLabel", 6)
-	t.set_color("font_shadow_color", "OutlineLabel", Color(OUTLINE, 0.4))
-	t.set_constant("shadow_offset_x", "OutlineLabel", 0)
-	t.set_constant("shadow_offset_y", "OutlineLabel", 2)
-	t.set_constant("shadow_outline_size", "OutlineLabel", 6)
-	# Tooltips: a small glass note.
-	t.set_stylebox("panel", "TooltipPanel", _flat(_glass_high, EDGE_STRONG, RADIUS, RIM, 8))
-	t.set_color("font_color", "TooltipLabel", TEXT)
-	t.set_font_size("font_size", "TooltipLabel", SIZE_TOOLTIP)
-
-
-static func _label_style(t: Theme, variation: String, size: int, color: Color, bold := false) -> void:
-	t.set_type_variation(variation, "Label")
-	t.set_font_size("font_size", variation, size)
-	t.set_color("font_color", variation, color)
-	if bold:
-		t.set_font("font", variation, bold_font())
-
-
-static func _buttons(t: Theme) -> void:
-	t.set_font("font", "Button", bold_font())
-	t.set_font_size("font_size", "Button", SIZES.normal.font)
-	t.set_constant("h_separation", "Button", 8)
-	t.set_constant("icon_max_width", "Button", BUTTON_ICON)  # icons on buttons stay small next to the words
-	for variation in BUTTONS:
-		if variation != "Button":
-			t.set_type_variation(variation, "Button")
-		var spec: Array = BUTTONS[variation]
-		_button(t, variation, spec[0], spec[1], variation in FILLED, CHIP_RADIUS if variation in CHIPS else RADIUS)
-		var text: Color = spec[2]
-		for state in ["font_color", "font_focus_color"]:
-			t.set_color(state, variation, text)
-		# Grey text lights up under the pointer.
-		for state in ["font_hover_color", "font_pressed_color", "font_hover_pressed_color"]:
-			t.set_color(state, variation, TEXT if text == TEXT_DIM else text)
-		t.set_color("font_disabled_color", variation, Color(TEXT, 0.38))
-		t.set_constant("outline_size", variation, 0)
-
-	# Clickable cards (build menu entries): a faint glass tile.
-	t.set_type_variation("CardButton", "Button")
-	var card := _flat(Color(1, 1, 1, 0.05), EDGE, WINDOW_RADIUS, RIM, 8)
-	t.set_stylebox("normal", "CardButton", card)
-	t.set_stylebox("hover", "CardButton", _filled(card, Color(1, 1, 1, 0.1)))
-	t.set_stylebox("pressed", "CardButton", _filled(card, Color(1, 1, 1, 0.03)))
-	t.set_stylebox("hover_pressed", "CardButton", _filled(card, Color(1, 1, 1, 0.03)))
-	t.set_stylebox("disabled", "CardButton", card)
-	t.set_stylebox("focus", "CardButton", StyleBoxEmpty.new())
-	# The blue outline around the chosen card (a Panel laid over it), with a faint blue wash.
-	t.set_type_variation("CardRing", "Panel")
-	var ring := _flat(Color(ACCENT, 0.12), ACCENT_HIGH, WINDOW_RADIUS, 2, 0)
-	t.set_stylebox("panel", "CardRing", ring)
-
-
-## A soft shadow under a glass box (none when `size` is 0, which is also cheaper to draw).
-static func _add_shadow(box: StyleBoxFlat, darkness: float, size: int, drop: float) -> void:
-	if size <= 0:
-		return
-	box.shadow_color = Color(0, 0, 0, darkness)
-	box.shadow_size = size
-	box.shadow_offset = Vector2(0, drop)
-
-
-static func _panels(t: Theme) -> void:
-	# Windows: dark glass with a thin light rim (and a soft shadow underneath when window_shadow in
-	# ui_look.json is above 0; it's 0 since 2026-10-07, to save drawing).
-	var window := _flat(_glass, EDGE, WINDOW_RADIUS, RIM, WINDOW_PADDING)
-	window.content_margin_top = 12
-	_add_shadow(window, 0.35, WINDOW_SHADOW, 6)
-	t.set_stylebox("panel", "PanelContainer", window)
-	t.set_stylebox("panel", "Panel", window)
-	# The strip across the top of every window (title + close button). It reaches out over the
-	# window's own padding (expand margins), so its faint band and the line under it run edge to edge.
-	t.set_type_variation("TitleBar", "PanelContainer")
-	var strip := _flat(Color(1, 1, 1, 0.035), EDGE, 0, 0, 0)
-	strip.border_width_bottom = 1
-	strip.corner_radius_top_left = WINDOW_RADIUS
-	strip.corner_radius_top_right = WINDOW_RADIUS
-	strip.expand_margin_left = WINDOW_PADDING
-	strip.expand_margin_right = WINDOW_PADDING
-	strip.expand_margin_top = 12
-	strip.content_margin_bottom = 8
-	t.set_stylebox("panel", "TitleBar", strip)
-	# Sunken boxes inside windows (sections, rows of details).
-	t.set_type_variation("Inset", "PanelContainer")
-	t.set_stylebox("panel", "Inset", _flat(WELL, EDGE, INSET_RADIUS, RIM, 10))
-	# Small glass boxes over the map: the warehouse chips under the HUD and the short messages.
-	t.set_type_variation("HudPill", "PanelContainer")
-	var pill := _flat(_glass, EDGE, INSET_RADIUS, RIM, 4)
-	pill.content_margin_left = 8
-	pill.content_margin_right = 10
-	_add_shadow(pill, 0.3, WINDOW_SHADOW / 2, 2)
-	t.set_stylebox("panel", "HudPill", pill)
-	# Glass bars over the map: the HUD's numbers, the bottom toolbar.
-	t.set_type_variation("HudBar", "PanelContainer")
-	var bar := _flat(_glass, EDGE, WINDOW_RADIUS, RIM, 6)
-	bar.content_margin_left = 10
-	bar.content_margin_right = 10
-	_add_shadow(bar, 0.32, WINDOW_SHADOW, 4)
-	t.set_stylebox("panel", "HudBar", bar)
-	# Status tags ("BUY $750", "WORKING"): a small dark box with a faint rim, words in small capitals.
-	t.set_type_variation("Tag", "PanelContainer")
-	var tag := _flat(Color(0, 0, 0, 0.3), EDGE_STRONG, RADIUS, RIM, 3)
-	tag.content_margin_left = 8
-	tag.content_margin_right = 8
-	t.set_stylebox("panel", "Tag", tag)
-	# Text boxes (developer tools): a dark well that outlines in blue while typing.
-	var field := _flat(Color(0, 0, 0, 0.3), EDGE_STRONG, RADIUS, RIM, 8)
-	field.content_margin_left = 10
-	field.content_margin_right = 10
-	var focused := _flat(Color(0, 0, 0, 0), ACCENT, RADIUS, 2, 8)
-	focused.draw_center = false  # drawn over the normal box
-	t.set_stylebox("normal", "LineEdit", field)
-	t.set_stylebox("focus", "LineEdit", focused)
-	t.set_color("font_color", "LineEdit", TEXT)
-	t.set_color("font_placeholder_color", "LineEdit", TEXT_FAINT)
-	t.set_color("caret_color", "LineEdit", ACCENT_HIGH)
-	t.set_color("selection_color", "LineEdit", Color(ACCENT, 0.35))
-
-
-static func _bars(t: Theme) -> void:
-	# Scroll bars inside windows: a thin light handle on a faint track.
-	for bar in ["VScrollBar", "HScrollBar"]:
-		var track := _flat(Color(1, 1, 1, 0.04), Color(0, 0, 0, 0), 4, 0, 4)
-		t.set_stylebox("scroll", bar, track)
-		t.set_stylebox("grabber", bar, _flat(Color(1, 1, 1, 0.22), Color(0, 0, 0, 0), 4, 0, 0))
-		t.set_stylebox("grabber_highlight", bar, _flat(Color(1, 1, 1, 0.32), Color(0, 0, 0, 0), 4, 0, 0))
-		t.set_stylebox("grabber_pressed", bar, _flat(Color(1, 1, 1, 0.4), Color(0, 0, 0, 0), 4, 0, 0))
-
-	# Sliders (amount pickers): a thin track that fills with blue up to the handle.
-	var groove := _flat(Color(1, 1, 1, 0.18), Color(0, 0, 0, 0), 3, 0, 0)
-	groove.content_margin_top = 2
-	groove.content_margin_bottom = 2
-	t.set_stylebox("slider", "HSlider", groove)
-	t.set_stylebox("grabber_area", "HSlider", _filled(groove, ACCENT))
-	t.set_stylebox("grabber_area_highlight", "HSlider", _filled(groove, ACCENT_HIGH))
-
-	# Progress bars: a faint track with a flat coloured fill (blue). Other fills are variations.
-	t.set_stylebox("background", "ProgressBar", _flat(Color(1, 1, 1, 0.12), Color(0, 0, 0, 0), 3, 0, 0))
-	t.set_stylebox("fill", "ProgressBar", _flat(ACCENT, Color(0, 0, 0, 0), 3, 0, 0))
-	t.set_color("font_color", "ProgressBar", TEXT)
-	for pair in [["GoldBar", WARN], ["BlueBar", Color("7cc4f0")], ["BrownBar", Color("c9a26a")], ["GreenBar", GOOD], ["RedBar", BAD]]:
-		t.set_type_variation(pair[0], "ProgressBar")
-		t.set_stylebox("fill", pair[0], _flat(pair[1], Color(0, 0, 0, 0), 3, 0, 0))
-
-
-## The game font: Overpass Medium. Symbols it doesn't have (✓) come from Godot's own font.
+## The game font (Overpass Medium): the theme's default font.
 static func font() -> Font:
-	if _font == null:
-		_font = _overpass(FONT_FILE)
-	return _font
+	return theme_file().default_font
 
 
-## Overpass Bold, for titles, headings, numbers and buttons.
+## Overpass Bold, for titles, headings, numbers and buttons: the theme's heading font.
 static func bold_font() -> Font:
-	if _bold == null:
-		_bold = _overpass(BOLD_FONT_FILE)
-	return _bold
-
-
-static func _overpass(path: String) -> Font:
-	var tuned := FontVariation.new()
-	tuned.base_font = load(path)
-	# Digits all the same width ("tnum"), so numbers that change don't wobble and columns line up.
-	tuned.opentype_features = {TextServerManager.get_primary_interface().name_to_tag("tnum"): 1}
-	# Overpass sits a little high in its line; this nudges it down a pixel so text looks centred
-	# in buttons and bars (the line stays the same height).
-	tuned.spacing_top = 1
-	tuned.spacing_bottom = -1
-	tuned.fallbacks = [ThemeDB.fallback_font]
-	return tuned
+	return theme_file().get_font("font", "HeadingLabel")
 
 
 # --- Builders: every screen makes its buttons, labels and boxes with these -----------
@@ -604,11 +386,10 @@ static func pop_in(control: Control, from := 0.97) -> void:
 	pop.tween_property(control, "modulate:a", 1.0, 0.12)
 
 
-## An icon from assets/ui/icons/ (or the one ui_look.json "icons" draws in its place), or the
-## plain item icon if that one doesn't exist yet.
+## An icon from assets/ui/icons/, or the plain item icon if that one doesn't exist yet.
 static func icon(icon_name: String) -> Texture2D:
 	if not _icons.has(icon_name):
-		var path := ICONS + str(_icon_swaps.get(icon_name, icon_name)) + ".svg"
+		var path := ICONS + icon_name + ".svg"
 		_icons[icon_name] = load(path) if ResourceLoader.exists(path) else load(ICONS + "item.svg")
 	return _icons[icon_name]
 
@@ -671,38 +452,6 @@ static func clock(unix: float, now: float) -> String:
 
 
 # --- Style helpers -------------------------------------------------------------------
-
-## One button look: normal, a lighter hover, a darker pressed (its text sinks a pixel, as if
-## pushed in) and a faint grey disabled one, which is the same for every colour.
-static func _button(t: Theme, type: String, fill: Color, rim: Color, filled: bool, radius: int) -> void:
-	var normal := _flat(fill, rim, radius, RIM, 6)
-	normal.content_margin_left = BUTTON_PADDING
-	normal.content_margin_right = BUTTON_PADDING
-	var hover: StyleBoxFlat
-	var pressed: StyleBoxFlat
-	if filled:
-		normal = _lit(normal, fill, rim)
-		hover = _lit(normal, fill.lightened(0.1), rim.lightened(0.1))
-		pressed = _filled(normal, fill.darkened(0.12))
-		pressed.border_color = fill
-	else:
-		hover = _filled(normal, Color(1, 1, 1, fill.a + 0.07))
-		pressed = _filled(normal, Color(1, 1, 1, 0.04))
-	pressed.content_margin_top += 1
-	pressed.content_margin_bottom -= 1
-	var disabled := _flat(Color(1, 1, 1, 0.05), EDGE, radius, RIM, 6)
-	disabled.content_margin_left = BUTTON_PADDING
-	disabled.content_margin_right = BUTTON_PADDING
-	if type == "IconButton":
-		disabled.draw_center = false
-		disabled.border_color = Color(0, 0, 0, 0)
-	t.set_stylebox("normal", type, normal)
-	t.set_stylebox("hover", type, hover)
-	t.set_stylebox("pressed", type, pressed)
-	t.set_stylebox("hover_pressed", type, pressed)
-	t.set_stylebox("disabled", type, disabled)
-	t.set_stylebox("focus", type, StyleBoxEmpty.new())
-
 
 ## A copy of a box with another fill colour.
 static func _filled(box: StyleBoxFlat, fill: Color) -> StyleBoxFlat:

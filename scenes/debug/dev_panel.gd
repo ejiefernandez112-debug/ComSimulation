@@ -12,14 +12,13 @@ extends ModalWindow
 ##   only; "Copy as JSON" puts the changed blocks on the clipboard to paste into the file).
 ## - People: adults in or out, children added or grown up at once.
 ## - Buildings & items: finish all construction now, put items in the warehouse.
-## - Look: the game's colours, shapes, text, button and window sizes and icons
-##   (data/ui_look.json), changed live; Save writes the file (when the game runs from Godot).
+## (The game's look is edited in the Godot editor since 2026-10-11: assets/ui/game_theme.tres.)
 ## A red "DEV" tag shows on screen while any developer change is on.
 
 const QUICK_ADD := [1000, 10000, 100000]
 const RENT_STEPS := [-1, 1, 10]  # dollars an hour per button
 const SKIPS := [[600, "10 min"], [3600, "1 h"], [21600, "6 h"], [86400, "24 h"]]
-const PAGES := [["money", "Money & time"], ["happiness", "Happiness"], ["tuning", "Tuning"], ["people", "People"], ["build", "Buildings & items"], ["look", "Look"]]
+const PAGES := [["money", "Money & time"], ["happiness", "Happiness"], ["tuning", "Tuning"], ["people", "People"], ["build", "Buildings & items"]]
 const LOCK_STEPS := [-10, -1, 1, 10]  # percentage points per button
 const ADULT_STEPS := [-10, -1, 1, 10]
 const CHILD_STEPS := [1, 10]
@@ -27,47 +26,7 @@ const ITEM_STEPS := [10, 100, 1000]
 const TAPS_TO_OPEN := 5
 const TAP_WINDOW_MS := 2000  # the taps must all land within this time
 const CORNER := Vector2(280, 70)  # the top-right area holding the cash bar
-## The Look page's rows. Colours: data/ui_look.json "colors" setting -> its name. Sizes: [section,
-## title, shows only after Rebuild windows, {setting: [name, smallest, biggest]}].
-const LOOK_COLORS := {
-	"glass": "Window glass", "glass_solid": "Window glass (blur off)", "glass_high": "Tooltip glass",
-	"glass_high_solid": "Tooltip glass (blur off)", "edge": "Rim", "edge_strong": "Strong rim (outlines)",
-	"well": "Sunken boxes", "hover": "Under the pointer", "text": "Text", "text_dim": "Notes text",
-	"text_faint": "Hint text", "accent": "Highlight", "accent_high": "Highlight (light)",
-	"good": "Good news", "warn": "Warning", "bad": "Bad news", "outline": "Outline over the map",
-	"dim": "Shade behind windows", "dim_light": "Shade behind side windows", "button": "Normal button",
-	"go": "Go button", "go_rim": "Go button rim", "danger": "Danger button", "danger_rim": "Danger button rim",
-	"chip_on": "Picked choice", "chip_on_rim": "Picked choice rim",
-}
-const LOOK_NUMBERS := [
-	["shapes", "Shapes", false, {
-		"button_radius": ["Button corners", 0, 30], "chip_radius": ["Choice chip corners", 0, 30],
-		"window_radius": ["Window corners", 0, 30], "inset_radius": ["Box corners", 0, 30],
-		"rim_width": ["Rim thickness", 0, 6], "window_padding": ["Space inside windows", 0, 40],
-		"button_padding": ["Space beside button words", 0, 40], "window_shadow": ["Shadow (windows, bars; 0 = none)", 0, 40]}],
-	["text", "Text sizes", false, {
-		"small": ["Small notes", 8, 40], "body": ["Body text", 8, 40], "heading": ["Headings", 8, 40],
-		"big": ["Big numbers", 8, 48], "title": ["Window titles", 8, 48], "map": ["Words over the map", 8, 40],
-		"tooltip": ["Tooltips", 8, 40], "tag": ["Status tags", 8, 32]}],
-	["buttons", "Buttons", true, {
-		"small_width": ["Small: width", 0, 400], "small_height": ["Small: height", 20, 120], "small_font": ["Small: text", 8, 40],
-		"normal_width": ["Normal: width", 0, 400], "normal_height": ["Normal: height", 20, 120], "normal_font": ["Normal: text", 8, 40],
-		"big_width": ["Big: width", 0, 500], "big_height": ["Big: height", 20, 140], "big_font": ["Big: text", 8, 48],
-		"round_icon": ["Icon tiles (close, tick)", 24, 120], "round_action": ["Tiles with a caption", 24, 140],
-		"icon_on_button": ["Icons on buttons", 12, 64]}],
-	["windows", "Windows", true, {
-		"window_width": ["Window width", 300, 1000], "build_panel_width": ["Build panel width", 500, 1600],
-		"build_panel_height": ["Build panel height", 200, 800], "build_details_width": ["Build details width", 200, 700],
-		"build_card_width": ["Building card width", 80, 300], "build_card_height": ["Building card height", 80, 300],
-		"building_card_width": ["Picked building card width", 250, 700],
-		"toolbar_button": ["Bottom toolbar buttons", 32, 120], "screen_button": ["Top-left screen buttons", 24, 100]}],
-]
-const ICON_TILE := 40.0
-
 var _message: Label
-var _pages := {}  # page id -> VBoxContainer
-var _tabs := {}  # page id -> Button
-var _page := "money"
 var _cash: Label
 var _amount: LineEdit
 var _rent_labels := {}  # home type id -> Label showing its rent
@@ -81,13 +40,7 @@ var _items: OptionButton
 var _item_ids: Array[String] = []
 var _dev_tag: Label
 var _taps: Array = []  # times of recent taps on the cash bar (ms)
-var _look := {}  # the look being edited (data/ui_look.json's shape)
-var _look_file := {}  # data/ui_look.json as last loaded or saved (to mark changed sizes with *)
-var _look_inputs := {}  # "section.key" -> its ColorPickerButton, or [HSlider, value Label]
-var _look_timer: Timer  # restyles the screen a moment after the last change (sliders send many)
-var _icon_names: Array[String] = []
-var _icon_pick: OptionButton  # which icon to change
-var _icon_now: TextureRect  # what it's drawn as now
+
 
 
 func _ready() -> void:
@@ -96,25 +49,16 @@ func _ready() -> void:
 	hint.theme_type_variation = "SmallLabel"
 	hint.modulate.a = 0.75
 	content.add_child(hint)
-	var tabs := HFlowContainer.new()
-	tabs.add_theme_constant_override("h_separation", 6)
-	tabs.add_theme_constant_override("v_separation", 6)
-	content.add_child(tabs)
-	for page in PAGES:
-		var tab := _button(page[1], "ChipButton", _show_page.bind(page[0]))
-		tabs.add_child(tab)
-		_tabs[page[0]] = tab
 	_message = _text("")
 	content.add_child(_message)
-	_pages.money = _money_page()
-	_pages.happiness = _happiness_page()
-	_pages.tuning = _tuning_page()
-	_pages.people = _people_page()
-	_pages.build = _build_page()
-	_pages.look = _look_page()
-	for id in _pages:
-		content.add_child(_pages[id])
-	_show_page(_page)
+	use_page("money", _money_page())
+	use_page("happiness", _happiness_page())
+	use_page("tuning", _tuning_page())
+	use_page("people", _people_page())
+	use_page("build", _build_page())
+	set_tabs(PAGES)  # the tab buttons under the title strip (ModalWindow)
+	tab_selected.connect(func(_id): _refresh())
+	select_tab("money")
 	_make_dev_tag()
 	Economy.changed.connect(_refresh)
 	Economy.changed.connect(_refresh_dev_tag)
@@ -125,7 +69,7 @@ func show_dev(page := "") -> void:
 	_message.text = ""
 	open("Developer")
 	if page != "":
-		_show_page(page)
+		select_tab(page)
 	_refresh()
 
 
@@ -144,14 +88,6 @@ func _input(event: InputEvent) -> void:
 			if _taps.size() >= TAPS_TO_OPEN:
 				_taps.clear()
 				show_dev()
-
-
-func _show_page(id: String) -> void:
-	_page = id
-	for page_id in _pages:
-		_pages[page_id].visible = page_id == id
-		_tabs[page_id].theme_type_variation = "ChipOnButton" if page_id == id else "ChipButton"
-	_refresh()
 
 
 # --- Building the pages (once) ----------------------------------------------------
@@ -263,11 +199,11 @@ func _people_page() -> VBoxContainer:
 	box.add_child(_people)
 	box.add_child(_small("Not counted as moving in or away. Taking adults away lets the jobless go first, then workers."))
 	var adults := _row(box)
-	adults.add_child(_text("Adults"))
+	adults.add_child(_row_name("Adults"))
 	for step in ADULT_STEPS:
 		adults.add_child(_button("%+d" % step, "ChipOnButton" if step > 0 else "ChipButton", func(): _apply(Economy.dev_add_adults(step), "%+d adults" % step)))
 	var children := _row(box)
-	children.add_child(_text("Children"))
+	children.add_child(_row_name("Children"))
 	for step in CHILD_STEPS:
 		children.add_child(_button("+%d" % step, "ChipOnButton", func(): _apply(Economy.dev_add_children(step), "+%d children" % step)))
 	children.add_child(_button("Grow up now", "", func(): _apply(Economy.dev_children_grow_up(), "Every child grew up; any with no job waiting left the island")))
@@ -292,98 +228,6 @@ func _build_page() -> VBoxContainer:
 	var add := _row(items)
 	for qty in ITEM_STEPS:
 		add.add_child(_button("+%d" % qty, "ChipOnButton", _add_item.bind(qty)))
-	return page
-
-
-func _look_page() -> VBoxContainer:
-	var page := _page_box()
-	_look_file = UITheme.load_look()
-	_look = UITheme.look.duplicate(true)  # with changes not saved yet, after Rebuild windows
-	UITheme.apply_look(_look)
-	_look_timer = Timer.new()
-	_look_timer.one_shot = true
-	_look_timer.wait_time = 0.15
-	_look_timer.timeout.connect(_restyle)
-	add_child(_look_timer)
-	var top := _section(page, "Look")
-	top.add_child(_small("The game's colours and sizes (data/ui_look.json). Colours, shapes and text sizes change at once; button and window sizes and icons show after Rebuild windows. Save writes the file when the game runs from Godot; elsewhere it copies the file's text instead."))
-	var buttons := _row(top)
-	buttons.add_child(_button("Save", "GoButton", _save_look))
-	buttons.add_child(_button("Rebuild windows", "", _rebuild_windows))
-	buttons.add_child(_button("Copy as JSON", "", func():
-		DisplayServer.clipboard_set(_look_json())
-		_message.text = "Copied: paste it over everything in data/ui_look.json."))
-	buttons.add_child(_button("Undo changes", "DangerButton", _undo_look))
-
-	var colors := _section(page, "Colours")
-	colors.add_child(_small("Tap a colour to change it. The picker's A (alpha) is how solid it is."))
-	for key in LOOK_COLORS:
-		var line := _row(colors)
-		line.add_child(_look_name(LOOK_COLORS[key]))
-		var picker := ColorPickerButton.new()
-		picker.custom_minimum_size = Vector2(120, UITheme.SIZES.small.min.y)
-		picker.edit_alpha = true
-		picker.color = Color.html(str(_look.colors[key]))
-		picker.color_changed.connect(_set_look_color.bind(key))
-		line.add_child(picker)
-		_look_inputs["colors." + key] = picker
-
-	for group in LOOK_NUMBERS:
-		var box := _section(page, group[1])
-		if group[2]:
-			box.add_child(_small("Shows after Rebuild windows."))
-		var rows: Dictionary = group[3]
-		for key in rows:
-			var line := _row(box)
-			line.add_child(_look_name(rows[key][0]))
-			var slider := HSlider.new()
-			slider.min_value = rows[key][1]
-			slider.max_value = rows[key][2]
-			slider.step = 1
-			slider.custom_minimum_size.x = 130
-			slider.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-			slider.value = float(_look[group[0]][key])
-			line.add_child(slider)
-			var value := _text("")
-			value.custom_minimum_size.x = 60
-			value.autowrap_mode = TextServer.AUTOWRAP_OFF
-			line.add_child(value)
-			slider.value_changed.connect(_set_look_number.bind(group[0], key))
-			_look_inputs[group[0] + "." + key] = [slider, value]
-			_show_look_number(group[0], key)
-
-	var icons := _section(page, "Icons")
-	icons.add_child(_small("Pick an icon, then tap the one to draw in its place. Shows after Rebuild windows."))
-	for file in DirAccess.get_files_at(UITheme.ICONS):
-		var icon_name := file.trim_suffix(".remap").trim_suffix(".import").trim_suffix(".svg")
-		if file.contains(".svg") and not _icon_names.has(icon_name):
-			_icon_names.append(icon_name)
-	var pick_row := _row(icons)
-	_icon_pick = OptionButton.new()
-	_icon_pick.custom_minimum_size.y = UITheme.SIZES.small.min.y
-	_icon_pick.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	for icon_name in _icon_names:
-		_icon_pick.add_item(icon_name)
-	_icon_pick.item_selected.connect(func(_i: int): _show_icon_swap())
-	pick_row.add_child(_icon_pick)
-	pick_row.add_child(UITheme.label("drawn as", "SmallLabel"))
-	_icon_now = UITheme.icon_rect("item", ICON_TILE)
-	pick_row.add_child(_icon_now)
-	pick_row.add_child(_button("Put back", "BackButton", _swap_icon.bind("")))
-	var grid := HFlowContainer.new()
-	grid.add_theme_constant_override("h_separation", 4)
-	grid.add_theme_constant_override("v_separation", 4)
-	icons.add_child(grid)
-	for icon_name in _icon_names:
-		var tile := UITheme.button("", "", "small")
-		tile.custom_minimum_size = Vector2(ICON_TILE + 8, ICON_TILE + 8)
-		tile.icon = load(UITheme.ICONS + icon_name + ".svg")
-		tile.expand_icon = true
-		tile.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		tile.tooltip_text = icon_name
-		tile.pressed.connect(_swap_icon.bind(icon_name))
-		grid.add_child(tile)
-	_show_icon_swap()
 	return page
 
 
@@ -433,7 +277,7 @@ func _refresh_dev_tag() -> void:
 func _refresh() -> void:
 	if not visible:
 		return
-	match _page:
+	match shown_tab:
 		"money":
 			_cash.text = "Now: %s" % UITheme.money(Economy.currency())
 			for type_id in _rent_labels:
@@ -479,116 +323,6 @@ func _refresh_tuning() -> void:
 	for i in mini(_band_titles.size(), bands.size()):
 		var top := "100" if i + 1 >= bands.size() else str(Economy.happiness_percent(float(bands[i + 1].from)) - 1)
 		_band_titles[i].text = "%s %d–%s%%" % [str(bands[i].get("name", "Mood")), Economy.happiness_percent(float(bands[i].from)), top]
-
-
-# --- Look --------------------------------------------------------------------------
-
-func _set_look_color(color: Color, key: String) -> void:
-	_look.colors[key] = "#" + color.to_html(color.a < 1.0)
-	_look_timer.start()
-
-
-func _set_look_number(value: float, section: String, key: String) -> void:
-	_look[section][key] = roundi(value)
-	_show_look_number(section, key)
-	_look_timer.start()
-
-
-## A size's value next to its slider (* = not what the file has).
-func _show_look_number(section: String, key: String) -> void:
-	var file_value: Variant = _look_file.get(section, {}).get(key)
-	var changed: bool = file_value == null or roundi(file_value) != int(_look[section][key])
-	_look_inputs[section + "." + key][1].text = "%d%s" % [int(_look[section][key]), " *" if changed else ""]
-
-
-## Restyles everything on screen with the edited look (the theme is built again).
-func _restyle() -> void:
-	UITheme.apply_look(_look)
-	var main := get_tree().current_scene
-	if main.has_method("restyle"):
-		main.restyle()
-
-
-## Makes every window again (the scene is loaded again), so sizes and icons show; this window
-## opens again on the Look page.
-func _rebuild_windows() -> void:
-	UITheme.apply_look(_look)
-	var main := get_tree().current_scene
-	if main.has_method("rebuild_windows"):
-		main.rebuild_windows()
-
-
-## Back to what data/ui_look.json has.
-func _undo_look() -> void:
-	_look_file = UITheme.load_look()
-	_look = _look_file.duplicate(true)
-	for path in _look_inputs:
-		var section := String(path).get_slice(".", 0)
-		var key := String(path).get_slice(".", 1)
-		var input: Variant = _look_inputs[path]
-		if input is ColorPickerButton:
-			input.color = Color.html(str(_look.colors[key]))
-		else:
-			input[0].set_value_no_signal(float(_look[section][key]))
-			_show_look_number(section, key)
-	_restyle()
-	_show_icon_swap()
-	_message.text = "Back to data/ui_look.json (Rebuild windows to see sizes and icons)."
-
-
-## Draws the picked icon as `icon_name` instead ("" = its own picture again).
-func _swap_icon(icon_name: String) -> void:
-	if _icon_pick.selected < 0:
-		return
-	var slot := _icon_names[_icon_pick.selected]
-	var icons: Dictionary = _look.get("icons", {})
-	if icon_name == "" or icon_name == slot:
-		icons.erase(slot)
-	else:
-		icons[slot] = icon_name
-	_look["icons"] = icons
-	UITheme.apply_look(_look)
-	_show_icon_swap()
-	_message.text = "%s is drawn as %s: Rebuild windows to see it everywhere." % [slot, icons.get(slot, slot)]
-
-
-func _show_icon_swap() -> void:
-	if _icon_pick.selected >= 0:
-		_icon_now.texture = UITheme.icon(_icon_names[_icon_pick.selected])
-
-
-## Writes data/ui_look.json (only possible while the game runs from Godot); otherwise copies it.
-func _save_look() -> void:
-	var file := FileAccess.open(UITheme.LOOK_FILE, FileAccess.WRITE) if OS.has_feature("editor") else null
-	if file == null:
-		DisplayServer.clipboard_set(_look_json())
-		_message.text = "This copy of the game can't write its own files: the look was copied instead. Paste it over everything in data/ui_look.json."
-		return
-	file.store_string(_look_json())
-	file.close()
-	_look_file = _look.duplicate(true)
-	for path in _look_inputs:
-		if not _look_inputs[path] is ColorPickerButton:
-			_show_look_number(String(path).get_slice(".", 0), String(path).get_slice(".", 1))
-	_message.text = "Saved data/ui_look.json."
-
-
-## The edited look as data/ui_look.json's text (its "_about" note kept, settings in file order).
-func _look_json() -> String:
-	var raw: Variant = JSON.parse_string(FileAccess.get_file_as_string(UITheme.LOOK_FILE))
-	var out := {}
-	if raw is Dictionary and raw.has("_about"):
-		out["_about"] = raw._about
-	for section in _look:
-		out[section] = _look[section]
-	return JSON.stringify(out, "\t", false) + "\n"
-
-
-func _look_name(text: String) -> Label:
-	var label := _text(text)
-	label.custom_minimum_size.x = 150
-	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	return label
 
 
 # --- Actions ----------------------------------------------------------------------
@@ -777,7 +511,7 @@ func _pct(share: float) -> String:
 func _page_box() -> VBoxContainer:
 	var page := VBoxContainer.new()
 	page.add_theme_constant_override("separation", 10)
-	flow_page(page)  # a long page carries on in a panel beside the window
+	content.add_child(page)
 	return page
 
 
@@ -820,6 +554,14 @@ func _button(text: String, variation: String, action: Callable) -> Button:
 
 func _text(text: String) -> Label:
 	return UITheme.wrapped(text, UITheme.WINDOW_WIDTH - 70)
+
+
+## A row's name on the left, taking the room the buttons beside it leave (it doesn't wrap, so it
+## doesn't make the window wider).
+func _row_name(text: String) -> Label:
+	var label := UITheme.label(text)
+	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	return label
 
 
 func _small(text: String) -> Label:

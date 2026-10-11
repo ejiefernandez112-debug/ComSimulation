@@ -2,10 +2,16 @@ class_name ModalWindow
 extends Control
 ## A pop-up window over the game: a dark glass panel with the title strip across its top (title +
 ## close ✕, UITheme.title_bar) that fades in. Every pop-up window uses this, so they all look the
-## same. Wide screens (PC) dock the window along the left edge, so the map stays in view, with the
-## map dimmed only a little; small questions ("Are you sure?", "Welcome back!") sit in the middle
-## instead (docked = false). Tall (phone) screens get a sheet along the bottom (plan.md §6).
+## same. Wide screens (PC, phone held sideways) show it in the middle of the screen, with the map
+## dimmed behind it; tall (phone held upright) screens get a sheet along the bottom (plan.md §6).
 ## BuildingPanel and SettingsPanel build on this: they fill `content` with their own rows.
+##
+## Tabs: a window with more than one page puts its pages in `content` with add_page() (or
+## use_page()) and its tab buttons under the title strip with set_tabs(); select_tab() shows one
+## page. Every page is made as tall as the tallest one, so the window keeps one size while
+## switching tabs.
+## `footer`: rows added to it stay at the bottom of the window under every tab, and never move to
+## an extra panel (e.g. a building's Move / Demolish buttons).
 ##
 ## No scroll bar on wide screens: when the rows don't fit the window's height, the ones that don't
 ## fit move to a second glass panel beside it (a third, and so on, while the screen is wide enough).
@@ -14,15 +20,13 @@ extends Control
 ## even that doesn't fit (or on a phone held upright) do the rows scroll.
 
 signal closed
+signal tab_selected(id: String)  # a tab was picked (or picked in code): show its numbers
 
 const SHEET_TOP := 0.35  # on tall screens the sheet covers the bottom 65%
-const GAP := 12  # space between a docked window and the screen's edges
-## A docked window starts below the screen buttons in the top-left corner (menu_bar.gd).
-const DOCK_TOP := 72.0
+const GAP := 12  # space between the window and the screen's edges
 const FRAME_HEIGHT := 84.0  # the title strip and the window's edges: what's left over is for the rows
 ## The most of the screen's height a window may take (more rows go on to an extra panel beside it),
-## so the map stays in view: docked at the side, and in the middle of the screen.
-const MAX_DOCKED_HEIGHT := 0.72
+## so the map stays in view.
 const MAX_MIDDLE_HEIGHT := 0.8
 ## For this long after opening, tapping outside doesn't close the window: a quick second tap (a
 ## double-tap on the building that opened it) would otherwise shut it straight away.
@@ -33,8 +37,8 @@ const ROW_GAP := 8  # space between rows, in the window and in the extra panels
 const GROUP := "modal_windows"
 
 var content: VBoxContainer
-## Wide screens: dock along the left edge (true) or sit in the middle (false). Set it in _init().
-var docked := true
+var footer: VBoxContainer  # rows always at the bottom of the window (hidden while empty)
+var shown_tab := ""  # the tab whose page is shown ("" = the window has no tabs)
 var _opened_at_ms := 0  # when the window last opened (milliseconds since the game started)
 var _title: Label
 var _dim: ColorRect
@@ -45,6 +49,9 @@ var _panels: Array[PanelContainer] = []
 var _columns: Array[VBoxContainer] = []
 var _last_rows: Array[Control] = []  # the rows and where they went at the last layout
 var _last_place: Array[int] = []
+var _tab_bar: HFlowContainer  # the tab buttons, under the title strip (hidden with fewer than 2)
+var _tab_buttons := {}  # tab id -> its button
+var _tab_pages := {}  # tab id -> its page in `content`
 
 
 func _ready() -> void:
@@ -55,6 +62,8 @@ func _ready() -> void:
 		_use_scene_frame()
 	else:
 		_make_frame()
+	_make_tab_bar()
+	_make_footer()
 	hide()
 	resized.connect(_layout)
 	content.minimum_size_changed.connect(_queue_layout)  # rows grew, shrank, showed or hid
@@ -112,6 +121,7 @@ func open(title_text: String) -> void:
 	if not visible:  # opening again while open (another building) just refreshes it
 		Sfx.play("panel_open")
 	show()
+	_measure_pages.call_deferred()  # once the window that opened has filled in its rows
 	_layout()
 	_layout.call_deferred()  # again once new text has been measured
 	UITheme.pop_in(_window)
@@ -124,10 +134,12 @@ func close() -> void:
 		closed.emit()
 
 
-## Empties `content` (and the extra panels), ready to be filled again.
+## Empties `content` (and the extra panels and the footer), ready to be filled again. Its pages
+## go too.
 func clear_content() -> void:
 	_last_rows.clear()
-	var boxes: Array[Control] = [content]
+	_tab_pages.clear()
+	var boxes: Array[Control] = [content, footer]
 	boxes.append_array(_columns)
 	for box in boxes:
 		for child in box.get_children():
@@ -156,7 +168,10 @@ func _queue_layout() -> void:
 
 
 func _relayout() -> void:
-	if not visible or size.x < size.y:
+	if not visible:
+		return
+	_even_pages()
+	if size.x < size.y:
 		return  # a phone's sheet keeps its size and scrolls
 	var rows := _flow_rows()
 	if rows == _last_rows and _flow_place(rows) == _last_place and _sizes_fit():
@@ -180,9 +195,17 @@ func _sizes_fit() -> bool:
 ## allows (then they go on to an extra panel, or scroll on a phone).
 func _room() -> float:
 	var tall := size.x < size.y
-	if docked and not tall:
-		return minf(size.y - DOCK_TOP - GAP, size.y * MAX_DOCKED_HEIGHT) - FRAME_HEIGHT
-	return size.y * (1.0 - SHEET_TOP if tall else MAX_MIDDLE_HEIGHT) - FRAME_HEIGHT
+	return size.y * (1.0 - SHEET_TOP if tall else MAX_MIDDLE_HEIGHT) - _frame_height()
+
+
+## The title strip, the tab buttons and the footer (when shown) and the window's edges.
+func _frame_height() -> float:
+	var height := FRAME_HEIGHT
+	var gap := float(_scroll.get_parent().get_theme_constant("separation"))
+	for part: Control in [_tab_bar, footer]:
+		if part and part.visible:
+			height += part.get_combined_minimum_size().y + gap
+	return height
 
 
 ## Which panel each row goes in (see _flow_plan). Once the rows need more than one panel anyway,
@@ -192,17 +215,17 @@ func _flow_place(rows: Array[Control]) -> Array[int]:
 	var room := _room()
 	var place := _flow_plan(rows, room, room)
 	if place.is_empty() or int(place.back()) > 0:
-		var full := (size.y - DOCK_TOP - GAP if docked else size.y - 2.0 * GAP) - FRAME_HEIGHT
-		place = _flow_plan(rows, full, full + FRAME_HEIGHT - 2.0 * UITheme.WINDOW_PADDING)
+		var full := size.y - 2.0 * GAP - _frame_height()
+		place = _flow_plan(rows, full, full + _frame_height() - 2.0 * UITheme.WINDOW_PADDING)
 	return place
 
 
 func _layout() -> void:
 	if not visible:
 		return
+	footer.visible = footer.get_child_count() > 0
+	_even_pages()
 	var tall := size.x < size.y
-	var side := docked and not tall
-	_dim.color = UITheme.DIM_LIGHT if side else UITheme.DIM
 	var room := _room()
 	var columns := 1
 	if not tall:
@@ -225,21 +248,143 @@ func _layout() -> void:
 		_window.offset_right = 0
 		_window.offset_top = 0
 		_window.offset_bottom = 0
-	elif side:
-		# Wide screen (PC / landscape): docked along the left edge, below the screen buttons and
-		# clear of the HUD in the top-right corner.
-		_window.custom_minimum_size.x = UITheme.WINDOW_WIDTH
-		_window.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT, Control.PRESET_MODE_MINSIZE, GAP)
-		_window.position.y = DOCK_TOP
-		_window.grow_horizontal = Control.GROW_DIRECTION_END
-		_window.grow_vertical = Control.GROW_DIRECTION_END
 	else:
-		# Wide screen, small question: a window in the middle.
+		# Wide screen (PC / landscape): a window in the middle.
 		_window.custom_minimum_size.x = UITheme.WINDOW_WIDTH
 		_window.set_anchors_and_offsets_preset(Control.PRESET_CENTER, Control.PRESET_MODE_MINSIZE)
 		_window.grow_horizontal = Control.GROW_DIRECTION_BOTH
 		_window.grow_vertical = Control.GROW_DIRECTION_BOTH
-	_place_flow_panels(0 if tall else maxi(columns, 1), side)
+	_place_flow_panels(0 if tall else maxi(columns, 1))
+
+
+# --- Tabs --------------------------------------------------------------------------
+
+## The row for the tab buttons, between the title strip and the rows (it wraps onto a second
+## line when the names don't fit). Hidden until set_tabs() gives it two tabs or more.
+func _make_tab_bar() -> void:
+	_tab_bar = HFlowContainer.new()
+	_tab_bar.add_theme_constant_override("h_separation", 4)
+	_tab_bar.add_theme_constant_override("v_separation", 4)
+	_tab_bar.hide()
+	var column := _scroll.get_parent()
+	column.add_child(_tab_bar)
+	column.move_child(_tab_bar, _scroll.get_index())
+
+
+## The footer, under the rows: whatever is in it stays at the bottom of the window.
+func _make_footer() -> void:
+	footer = VBoxContainer.new()
+	footer.add_theme_constant_override("separation", ROW_GAP)
+	footer.hide()
+	var column := _scroll.get_parent()
+	column.add_child(footer)
+	column.move_child(footer, _scroll.get_index() + 1)
+
+
+## A new, empty page for tab `id`, at the end of `content`. Its rows may move to an extra panel
+## beside the window one by one (flow_page).
+func add_page(id: String) -> VBoxContainer:
+	var page := VBoxContainer.new()
+	page.add_theme_constant_override("separation", ROW_GAP)
+	content.add_child(page)
+	use_page(id, page)
+	return page
+
+
+## Uses a container already in `content` (e.g. one laid out in the editor) as tab `id`'s page.
+func use_page(id: String, page: Control) -> void:
+	flow_page(page)
+	_tab_pages[id] = page
+
+
+## The tab buttons: `tabs` is [[id, name], ...], in order. Only tabs that have a page get a button;
+## with fewer than two, no buttons show.
+func set_tabs(tabs: Array) -> void:
+	for button in _tab_bar.get_children():
+		_tab_bar.remove_child(button)
+		button.queue_free()
+	_tab_buttons.clear()
+	for item in tabs:
+		if not _tab_pages.has(item[0]):
+			continue
+		var button := Button.new()
+		button.text = item[1]
+		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		UITheme.size_button(button, "small")
+		button.custom_minimum_size.x = 0
+		button.pressed.connect(select_tab.bind(item[0]))
+		_tab_bar.add_child(button)
+		_tab_buttons[item[0]] = button
+	_tab_bar.visible = _tab_buttons.size() > 1
+
+
+## Shows tab `id`'s page (the first page if `id` has none) and lights up its button.
+func select_tab(id: String) -> void:
+	if not _tab_pages.has(id):
+		if _tab_pages.is_empty():
+			return
+		id = _tab_pages.keys()[0]
+	shown_tab = id
+	for key in _tab_pages:
+		_tab_pages[key].visible = key == id
+	for key in _tab_buttons:
+		_tab_buttons[key].theme_type_variation = "ChipOnButton" if key == id else "ChipButton"
+	tab_selected.emit(id)
+	_layout.call_deferred()
+
+
+## Rows that wrap (HFlowContainer: item buttons, crop buttons) only know their height while they
+## are on screen: hidden, they count as 0 tall. So on opening, every page shows for the first frame
+## (the window is still invisible then, fading in) and each row's height is noted (_rows_height);
+## then only the chosen tab's page shows.
+func _measure_pages() -> void:
+	if _tab_pages.size() < 2 or not _tab_pages.has(shown_tab):
+		return
+	for key in _tab_pages:
+		_tab_pages[key].visible = true
+	await get_tree().process_frame
+	if not visible or not _tab_pages.has(shown_tab):
+		return  # closed, or filled again, in the meantime
+	for key in _tab_pages:
+		_rows_height(_tab_pages[key])  # notes each row's height while all are on screen
+	select_tab(shown_tab)
+
+
+## Every page gets the height of the tallest one, so the window keeps one size while switching
+## tabs. Never more than the window has room for: then rows still move to an extra panel.
+func _even_pages() -> void:
+	if _tab_pages.size() < 2:
+		return
+	var tallest := 0.0
+	for id in _tab_pages:
+		tallest = maxf(tallest, _rows_height(_tab_pages[id]))
+	# The room for a page: the window's room for rows, less the other rows (not on a page).
+	var room := _room()
+	for child in content.get_children():
+		if child is Control and child.visible and not child.has_meta("flow_page"):
+			room -= child.get_combined_minimum_size().y + ROW_GAP
+	var height := floorf(minf(tallest, maxf(room, 0.0)))
+	for id in _tab_pages:
+		if _tab_pages[id].custom_minimum_size.y != height:
+			_tab_pages[id].custom_minimum_size.y = height  # the window lays itself out again
+
+
+## How tall a page's rows are together (shown rows only, including any out in an extra panel).
+## A row on screen is measured and its height noted; a row on a hidden page counts as at least
+## its height when it was last on screen (see _measure_pages).
+func _rows_height(page: Control) -> float:
+	var total := 0.0
+	var count := 0
+	for row in _flow_children(page):
+		if row.visible:
+			var height := row.get_combined_minimum_size().y
+			if row.is_visible_in_tree():
+				row.set_meta("seen_height", height)
+			else:
+				height = maxf(height, float(row.get_meta("seen_height", 0.0)))
+			total += height
+			count += 1
+	return total + ROW_GAP * maxi(count - 1, 0)
 
 
 # --- Extra panels beside the window ----------------------------------------------
@@ -373,10 +518,10 @@ func _add_flow_panel() -> void:
 
 
 ## Shows the extra panels that have rows (count includes the window), side by side to the right of
-## the window and level with it; a centred window moves left so they're centred together.
-func _place_flow_panels(count: int, side: bool) -> void:
+## the window and level with it; the window moves left so they're centred together.
+func _place_flow_panels(count: int) -> void:
 	var width := _window.size.x
-	if not side and count > 1:
+	if count > 1:
 		_window.position.x = roundf((size.x - count * width - (count - 1) * GAP) / 2.0)
 	for i in _panels.size():
 		var panel := _panels[i]

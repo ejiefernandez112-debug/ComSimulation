@@ -27,6 +27,7 @@ var _width := 400.0
 
 # Idle: setting up the next batch.
 var _setup: VBoxContainer
+var _products: HFlowContainer  # the product buttons (null when it makes one thing)
 var _product_buttons := {}  # recipe id -> its Button (only for buildings with several products)
 var _bonus_buttons := {}  # bonus level -> its Button
 var _fertilizer_row: HBoxContainer  # hidden when the recipe can't use fertilizer
@@ -66,6 +67,7 @@ func _build_setup() -> void:
 		products.add_theme_constant_override("h_separation", 6)
 		products.add_theme_constant_override("v_separation", 6)
 		_setup.add_child(products)
+		_products = products
 		for r in recipes:
 			var out := BuildingInfo.output_of(r)
 			var button := Button.new()
@@ -178,6 +180,14 @@ func _build_running() -> void:
 	_running.add_child(_cancel)
 
 
+## The product buttons (null when it makes one thing), taken out of the box so the window can
+## show them somewhere else (the building window's Info tab). They still hide during a batch.
+func take_products() -> HFlowContainer:
+	if _products and _products.get_parent() == _setup:
+		_setup.remove_child(_products)
+	return _products
+
+
 ## Brings the box up to date (the building window calls this on every Economy change).
 func refresh() -> void:
 	var b := Economy.building(building_id)
@@ -186,6 +196,8 @@ func refresh() -> void:
 	var has := Economy.has_batch(b)
 	_setup.visible = not has
 	_running.visible = has
+	if _products and _products.visible == has:
+		_products.visible = not has
 	if has:
 		_refresh_running(b)
 	else:

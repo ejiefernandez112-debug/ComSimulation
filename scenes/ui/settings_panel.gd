@@ -3,6 +3,7 @@ extends ModalWindow
 ## through the Settings autoload, which remembers it between sessions.
 ## Laid out in the Godot editor: open scenes/ui/settings_panel.tscn to move, add or restyle rows.
 ## This script only connects the buttons, found by their unique names (the % in the scene tree).
+## Three tabs: each is a page in the scene (%SoundPage, %DisplayPage, %GamePage).
 
 ## "Start over" was pressed; main asks "Are you sure?" before anything is thrown away.
 signal new_game_requested
@@ -16,6 +17,8 @@ const SWITCHES := {
 	"glass_blur": ["GlassButton", "On", "Off"],
 	"fullscreen": ["FullscreenButton", "On", "Off"],
 }
+## The tabs, in order: [id, name on the button, its page's unique name in the scene].
+const TABS := [["sound", "Sound", "SoundPage"], ["display", "Display", "DisplayPage"], ["game", "Game", "GamePage"]]
 
 
 func _ready() -> void:
@@ -33,6 +36,10 @@ func _ready() -> void:
 	%QuitButton.visible = Settings.can_go_fullscreen()
 	%StartOverButton.pressed.connect(new_game_requested.emit)
 	%QuitButton.pressed.connect(func(): get_tree().quit())
+	for tab in TABS:
+		use_page(tab[0], get_node("%" + tab[2]))
+	set_tabs(TABS)
+	select_tab("sound")
 
 
 func show_settings() -> void:

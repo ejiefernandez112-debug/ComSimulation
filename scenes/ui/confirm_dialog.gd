@@ -6,10 +6,6 @@ extends ModalWindow
 var _on_yes := Callable()
 
 
-func _init() -> void:
-	docked = false  # a small question: in the middle of the screen, not docked at the side
-
-
 ## money: coins given back; goods: {resource: qty} given back. Either can be empty/0.
 ## no_text / yes_variation: the "no" button's words and the "yes" button's colour (red for
 ## things that can't be undone, blue for a go-ahead like starting a batch).

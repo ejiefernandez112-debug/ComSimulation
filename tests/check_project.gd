@@ -135,27 +135,23 @@ func _check_data() -> void:
 	_check_sounds(GameDataScript.load_json("res://data/sounds.json"))
 
 
-## data/ui_look.json (the look, read by scenes/ui/ui_theme.gd): every setting UITheme.LOOK_KEYS
-## lists is there, colours are colours, sizes are numbers, and swapped icons exist.
+## assets/ui/game_theme.tres (the look, edited in the Godot editor; scenes/ui/ui_theme.gd reads it):
+## its "Palette" type has every colour and its "Sizes" type every size UITheme needs.
 func _check_look() -> void:
-	var look := GameDataScript.load_json("res://data/ui_look.json")
-	var keys: Dictionary = load("res://scenes/ui/ui_theme.gd").LOOK_KEYS
-	_unknown_keys(look, keys.keys() + ["icons"], "ui_look.json")
-	for section in keys:
-		var values: Dictionary = look.get(section, {})
-		_unknown_keys(values, keys[section], "ui_look.json %s" % section)
-		for key in keys[section]:
-			if not values.has(key):
-				_fail("ui_look.json: %s.%s is missing" % [section, key])
-			elif section == "colors" and not Color.html_is_valid(str(values[key])):
-				_fail("ui_look.json: colors.%s '%s' isn't a colour like \"#2f9cf0\"" % [key, values[key]])
-			elif section != "colors" and not (values[key] is float and float(values[key]) >= 0.0):
-				_fail("ui_look.json: %s.%s should be a number of pixels" % [section, key])
-	var icons: Dictionary = look.get("icons", {})
-	for name in icons:
-		_icon_exists(str(name), "ui_look.json icons")
-		if not FileAccess.file_exists("res://assets/ui/icons/%s.svg" % icons[name]):
-			_fail("ui_look.json icons: '%s' is drawn as '%s', but there is no assets/ui/icons/%s.svg" % [name, icons[name], icons[name]])
+	var path := "res://assets/ui/game_theme.tres"
+	var theme := load(path) as Theme
+	if theme == null:
+		_fail("%s: can't be loaded as a theme" % path)
+		return
+	var ui: GDScript = load("res://scenes/ui/ui_theme.gd")
+	for key in ui.PALETTE_KEYS:
+		if not theme.has_color(key, "Palette"):
+			_fail("game_theme.tres: the Palette type has no colour '%s'" % key)
+	for key in ui.SIZE_KEYS:
+		if not theme.has_constant(key, "Sizes"):
+			_fail("game_theme.tres: the Sizes type has no constant '%s'" % key)
+		elif theme.get_constant(key, "Sizes") <= 0:
+			_fail("game_theme.tres: Sizes '%s' should be a number of pixels above 0" % key)
 
 
 func _check_buildings(data: Dictionary, tabs: Dictionary) -> void:

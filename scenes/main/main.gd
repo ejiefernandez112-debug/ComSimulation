@@ -19,9 +19,6 @@ const FrameRate = preload("res://scenes/main/frame_rate.gd")
 var _warehouse_panel: ModalWindow  # made in code (_ready)
 var _sound_cues: SoundCues  # sounds for things that happen by themselves (made in _ready)
 var _glass_blur = null  # the "glass_blur" setting the look was last built for (null = not yet)
-## The Developer window's Look page made every window again (rebuild_windows): skip the start-up
-## messages and open that page again.
-static var _look_rebuild := false
 
 
 func _ready() -> void:
@@ -80,7 +77,7 @@ func _ready() -> void:
 	ui_root.move_child(_warehouse_panel, confirm_dialog.get_index())  # under the "Are you sure?" window
 	_warehouse_panel.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	# The build toolbar steps aside for anything else that uses the bottom of the screen, and for
-	# windows (on a computer a docked window can reach down to the bottom edge). It stays under the
+	# windows (a tall window can reach down to the bottom edge). It stays under the
 	# Build panel, which sits just above it.
 	menu_bar.hide_while_visible([building_bar, build_menu.placing_bar,
 		building_panel, settings_panel, stats_panel, _warehouse_panel])
@@ -90,16 +87,12 @@ func _ready() -> void:
 		dev_panel.name = "DevPanel"
 		ui_root.add_child(dev_panel)
 		dev_panel.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)  # made in code, so give it the whole screen
+		menu_bar.hide_while_visible([dev_panel])  # the build toolbar steps aside for it too
 		var overlay: Control = load("res://scenes/debug/perf_overlay.gd").new()
 		overlay.name = "PerfOverlay"  # the Developer window finds it by this name
 		overlay.village = village
 		ui_root.add_child(overlay)
-		if _look_rebuild:
-			dev_panel.show_dev.call_deferred("look")
-	if _look_rebuild:
-		_look_rebuild = false
-	else:
-		_welcome_back.call_deferred()  # once the screen has its real size
+	_welcome_back.call_deferred()  # once the screen has its real size
 
 
 ## Start-up: what happened while the game was closed, and any problem reading the save.
@@ -139,19 +132,6 @@ func _apply_glass() -> void:
 	UITheme.set_frosted(get_tree(), blur)
 
 
-## The Developer window's Look page changed a colour or size: build the look again.
-func restyle() -> void:
-	_glass_blur = null
-	_apply_glass()
-
-
-## The Look page's "Rebuild windows": load the whole screen again, so every window is made with
-## the new sizes and icons (the game itself lives in Economy and carries on).
-func rebuild_windows() -> void:
-	_look_rebuild = true
-	get_tree().reload_current_scene()
-
-
 ## A category in the bottom build toolbar was tapped: open (or close) the Build panel on it.
 func _on_category(tab_id: String) -> void:
 	_deselect()
@@ -187,7 +167,7 @@ func _unhandled_input(event: InputEvent) -> void:
 
 ## Tapping a building selects it; like Clash of Clans, a building with goods waiting also collects.
 ## Buildings with workers (farms, mills, bakeries, warehouses, water plants…) and power buildings then
-## open their info window (docked on the left on a computer); the others (City Hall, houses) show the
+## open their info window (in the middle of the screen); the others (City Hall, houses) show the
 ## building card at the bottom.
 func _on_building_tapped(building_id: String) -> void:
 	build_menu.close()

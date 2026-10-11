@@ -3,6 +3,15 @@ extends ModalWindow
 ## a Farm, Mill or Bakery its batch (BatchBox: set one up, or see it run and collect it). Move
 ## and Demolish sit at the bottom. A Supermarket shows its shelves and a form to put food on one
 ## (§5.16). Shows numbers from Economy only; the buttons ask main.gd to act (signals).
+##
+## Its rows are on pages picked by tabs at the top (ModalWindow makes the tabs; a building shows
+## only the tabs it has): Info (what it is, what it makes and, for a Plantation, the crop), then
+## Production (the batch), Stock (a Supermarket's "Put on a shelf") or Trade (the Trading Post),
+## then Workers and Upgrade. Move / Suspend / Demolish stay at the bottom under every tab (footer).
+
+## The tabs, in order: [id, name on the button].
+const TABS := [["info", "Info"], ["production", "Production"], ["stock", "Stock"], ["trade", "Trade"],
+	["workers", "Workers"], ["upgrade", "Upgrade"]]
 
 signal collect_requested(building_id: String)
 signal start_batch_requested(building_id: String, recipe_id: String, hours: int, bonus: String, fertilize: bool)
@@ -20,6 +29,7 @@ signal trade_requested(side: String, resource_id: String, qty: int)
 
 var building_id := ""
 var _shown_level := 0  # the level the rows were built for: an upgrade finishing rebuilds them
+var _page: VBoxContainer  # the page new rows go on while the window is being built
 
 # Parts that change while the window is open (refreshed every Economy tick).
 var _road_box: Control  # shown while it has no road: why it stops
@@ -68,6 +78,7 @@ func _ready() -> void:
 
 
 func show_building(id: String) -> void:
+	var tab := shown_tab if id == building_id else "info"  # another building opens on its Info tab
 	building_id = id
 	var b := Economy.building(id)
 	if b.is_empty():
@@ -76,6 +87,7 @@ func show_building(id: String) -> void:
 	if def.category == "retail":
 		choose_defaults()
 	_build_rows(b, def)
+	select_tab(tab)
 	_shown_level = Economy.building_level(b)
 	open("%s  ⋅  Level %d" % [def.name, _shown_level])
 	_refresh()
@@ -101,10 +113,13 @@ func _build_rows(b: Dictionary, def: Dictionary) -> void:
 	_preview.clear()
 	_stock_button = null
 	_trade_box = null
+
+	# --- Info tab ---
+	_page = add_page("info")
 	var about := _body(def.get("description", ""))
 	about.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	about.custom_minimum_size.x = UITheme.WINDOW_WIDTH - 70  # wrapped text needs a width, or it measures one word per line
-	content.add_child(about)
+	_page.add_child(about)
 	var r := BuildingInfo.recipe_of(b)
 	_recipe_row = null
 	# No road / no power: a red line each (shown only while it's true), not a box with a title, so
@@ -113,19 +128,19 @@ func _build_rows(b: Dictionary, def: Dictionary) -> void:
 	if Economy.needs_road(b):
 		_road_text = _wrapped("")
 		_road_text.add_theme_color_override("font_color", UITheme.BAD)
-		content.add_child(_road_text)
+		_page.add_child(_road_text)
 		_road_box = _road_text
 	_power_box = null
 	if Economy.power_need(b) > 0.0:
 		_power_warning = _wrapped("")
 		_power_warning.add_theme_color_override("font_color", UITheme.BAD)
-		content.add_child(_power_warning)
+		_page.add_child(_power_warning)
 		_power_box = _power_warning
 
 	if def.category in ["extractor", "processor"]:
-		# What one hour of work makes (plan.md §5.1), then the batch: set one up, or watch it run.
-		# The row follows the product shown in the batch box (a Plantation's crop, plan.md §5.21).
-		var box := _section("Production")
+		# Info: what one hour of work makes (plan.md §5.1) and, with several products, the buttons
+		# to pick one (a Plantation's crop, plan.md §5.21). The row follows the product picked.
+		var box := _section("Makes")
 		_recipe_row = HBoxContainer.new()
 		_recipe_row.add_theme_constant_override("separation", 10)
 		box.add_child(_recipe_row)
@@ -136,7 +151,12 @@ func _build_rows(b: Dictionary, def: Dictionary) -> void:
 		_batch_box.switch_requested.connect(func(id, recipe_id): switch_product_requested.emit(id, recipe_id))
 		_batch_box.collect_requested.connect(func(id): collect_requested.emit(id))
 		_batch_box.cancel_requested.connect(func(id): cancel_batch_requested.emit(id))
-		box.add_child(_batch_box)
+		var products := _batch_box.take_products()
+		if products:
+			box.add_child(products)
+		# --- Production tab: the batch (set one up, or watch it run) ---
+		_page = add_page("production")
+		_section("Batch").add_child(_batch_box)
 	elif def.category != "storage":  # a warehouse shows its room as a bar below instead
 		# "Now": what it's doing.
 		var now_box := _section("Now")
@@ -172,32 +192,44 @@ func _build_rows(b: Dictionary, def: Dictionary) -> void:
 
 	if def.category == "retail":
 		_build_shelves(b)
+		# --- Stock tab: put food on a shelf ---
+		_page = add_page("stock")
 		_build_stock_form()
 
 	if def.category == "trade":
-		# The Trading Post (plan.md §5.22): sell anything to the trader, or buy anything from it.
+		# --- Trade tab: the Trading Post (plan.md §5.22): sell anything to the trader, or buy
+		# anything from it ---
+		_page = add_page("trade")
 		var trade := _section("Trade")
 		_trade_box = TradeBox.new()
 		_trade_box.setup(UITheme.WINDOW_WIDTH - 70)
 		_trade_box.trade_requested.connect(func(side, res, qty): trade_requested.emit(side, res, qty))
 		trade.add_child(_trade_box)
 
+	# --- Workers tab ---
 	if int(def.get("max_workers", 0)) > 0:
+		_page = add_page("workers")
 		_build_workers(b, def)
 
+	# --- Upgrade tab: the next level, and what it was built with ---
+	var built_with: bool = def.get("buildable", false) and not b.get("materials", {}).is_empty()
+	if Economy.max_level(b.type) > 1 or built_with:
+		_page = add_page("upgrade")
 	if Economy.max_level(b.type) > 1:
 		_build_upgrade()
-
-	if def.get("buildable", false) and not b.get("materials", {}).is_empty():
+	if built_with:
 		# What it was built with (plan.md §5.15): demolishing puts all of it back in the warehouse.
 		_built_with = _wrapped("")
 		_built_with.theme_type_variation = "SmallLabel"
-		content.add_child(_built_with)
+		_page.add_child(_built_with)
 
-	# Move and Demolish: smaller, in their own row at the bottom, so they aren't tapped by accident.
+	set_tabs(TABS)  # one per page this building has (none when it has only the Info page)
+
+	# Move and Demolish: smaller, in their own row at the bottom (the footer: under every tab), so
+	# they aren't tapped by accident.
 	var tools := HBoxContainer.new()
 	tools.add_theme_constant_override("separation", 14)
-	content.add_child(tools)
+	footer.add_child(tools)
 	tools.add_child(_small_button("", "Move", "move", func(): move_requested.emit(building_id)))
 	var spacer := Control.new()
 	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -396,9 +428,10 @@ func _refresh_workers(b: Dictionary, def: Dictionary) -> void:
 	_workers_note.text = note
 
 
+## Move / Suspend / Demolish: three of them (and the gaps) fit across the window's usual width.
 func _small_button(variation: String, text: String, icon_name: String, action: Callable) -> Button:
 	var button := UITheme.button(text, variation, "small", icon_name)
-	button.custom_minimum_size.x = 160
+	button.custom_minimum_size.x = floorf((UITheme.WINDOW_WIDTH - 2.0 * UITheme.WINDOW_PADDING - 3.0 * 14.0) / 3.0)
 	button.pressed.connect(action)
 	return button
 
@@ -681,7 +714,7 @@ func _refresh_stock_form() -> void:
 func _section(title: String) -> VBoxContainer:
 	var box := PanelContainer.new()
 	box.theme_type_variation = "Inset"
-	content.add_child(box)
+	_page.add_child(box)
 	var column := VBoxContainer.new()
 	column.add_theme_constant_override("separation", 6)
 	box.add_child(column)

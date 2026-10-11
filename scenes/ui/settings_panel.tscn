@@ -102,21 +102,21 @@ layout_mode = 2
 size_flags_horizontal = 3
 theme_override_constants/separation = 6
 
-[node name="SoundHeading" type="Label" parent="Window/Column/Scroll/Content"]
+[node name="SoundPage" type="VBoxContainer" parent="Window/Column/Scroll/Content"]
+unique_name_in_owner = true
 layout_mode = 2
-theme_type_variation = &"HeadingLabel"
-text = "Sound"
+theme_override_constants/separation = 6
 
-[node name="MusicRow" type="PanelContainer" parent="Window/Column/Scroll/Content"]
+[node name="MusicRow" type="PanelContainer" parent="Window/Column/Scroll/Content/SoundPage"]
 unique_name_in_owner = true
 layout_mode = 2
 theme_type_variation = &"Inset"
 
-[node name="Row" type="HBoxContainer" parent="Window/Column/Scroll/Content/MusicRow"]
+[node name="Row" type="HBoxContainer" parent="Window/Column/Scroll/Content/SoundPage/MusicRow"]
 layout_mode = 2
 theme_override_constants/separation = 12
 
-[node name="Icon" type="TextureRect" parent="Window/Column/Scroll/Content/MusicRow/Row"]
+[node name="Icon" type="TextureRect" parent="Window/Column/Scroll/Content/SoundPage/MusicRow/Row"]
 modulate = Color(0.6627451, 0.7137255, 0.77254903, 1)
 custom_minimum_size = Vector2(22, 22)
 layout_mode = 2
@@ -125,13 +125,13 @@ texture = ExtResource("5")
 expand_mode = 1
 stretch_mode = 5
 
-[node name="Name" type="Label" parent="Window/Column/Scroll/Content/MusicRow/Row"]
+[node name="Name" type="Label" parent="Window/Column/Scroll/Content/SoundPage/MusicRow/Row"]
 layout_mode = 2
 size_flags_horizontal = 3
 text = "Music"
 vertical_alignment = 1
 
-[node name="MusicButton" type="Button" parent="Window/Column/Scroll/Content/MusicRow/Row"]
+[node name="MusicButton" type="Button" parent="Window/Column/Scroll/Content/SoundPage/MusicRow/Row"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(84, 32)
 layout_mode = 2
@@ -140,16 +140,16 @@ theme_type_variation = &"ChipOnButton"
 theme_override_font_sizes/font_size = 15
 text = "On"
 
-[node name="SoundRow" type="PanelContainer" parent="Window/Column/Scroll/Content"]
+[node name="SoundRow" type="PanelContainer" parent="Window/Column/Scroll/Content/SoundPage"]
 unique_name_in_owner = true
 layout_mode = 2
 theme_type_variation = &"Inset"
 
-[node name="Row" type="HBoxContainer" parent="Window/Column/Scroll/Content/SoundRow"]
+[node name="Row" type="HBoxContainer" parent="Window/Column/Scroll/Content/SoundPage/SoundRow"]
 layout_mode = 2
 theme_override_constants/separation = 12
 
-[node name="Icon" type="TextureRect" parent="Window/Column/Scroll/Content/SoundRow/Row"]
+[node name="Icon" type="TextureRect" parent="Window/Column/Scroll/Content/SoundPage/SoundRow/Row"]
 modulate = Color(0.6627451, 0.7137255, 0.77254903, 1)
 custom_minimum_size = Vector2(22, 22)
 layout_mode = 2
@@ -158,13 +158,13 @@ texture = ExtResource("6")
 expand_mode = 1
 stretch_mode = 5
 
-[node name="Name" type="Label" parent="Window/Column/Scroll/Content/SoundRow/Row"]
+[node name="Name" type="Label" parent="Window/Column/Scroll/Content/SoundPage/SoundRow/Row"]
 layout_mode = 2
 size_flags_horizontal = 3
 text = "Sound effects"
 vertical_alignment = 1
 
-[node name="SoundButton" type="Button" parent="Window/Column/Scroll/Content/SoundRow/Row"]
+[node name="SoundButton" type="Button" parent="Window/Column/Scroll/Content/SoundPage/SoundRow/Row"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(84, 32)
 layout_mode = 2
@@ -173,21 +173,21 @@ theme_type_variation = &"ChipOnButton"
 theme_override_font_sizes/font_size = 15
 text = "On"
 
-[node name="DisplayHeading" type="Label" parent="Window/Column/Scroll/Content"]
+[node name="DisplayPage" type="VBoxContainer" parent="Window/Column/Scroll/Content"]
+unique_name_in_owner = true
 layout_mode = 2
-theme_type_variation = &"HeadingLabel"
-text = "Display"
+theme_override_constants/separation = 6
 
-[node name="NamesRow" type="PanelContainer" parent="Window/Column/Scroll/Content"]
+[node name="NamesRow" type="PanelContainer" parent="Window/Column/Scroll/Content/DisplayPage"]
 unique_name_in_owner = true
 layout_mode = 2
 theme_type_variation = &"Inset"
 
-[node name="Row" type="HBoxContainer" parent="Window/Column/Scroll/Content/NamesRow"]
+[node name="Row" type="HBoxContainer" parent="Window/Column/Scroll/Content/DisplayPage/NamesRow"]
 layout_mode = 2
 theme_override_constants/separation = 12
 
-[node name="Icon" type="TextureRect" parent="Window/Column/Scroll/Content/NamesRow/Row"]
+[node name="Icon" type="TextureRect" parent="Window/Column/Scroll/Content/DisplayPage/NamesRow/Row"]
 modulate = Color(0.6627451, 0.7137255, 0.77254903, 1)
 custom_minimum_size = Vector2(22, 22)
 layout_mode = 2
@@ -196,13 +196,13 @@ texture = ExtResource("7")
 expand_mode = 1
 stretch_mode = 5
 
-[node name="Name" type="Label" parent="Window/Column/Scroll/Content/NamesRow/Row"]
+[node name="Name" type="Label" parent="Window/Column/Scroll/Content/DisplayPage/NamesRow/Row"]
 layout_mode = 2
 size_flags_horizontal = 3
 text = "Building names"
 vertical_alignment = 1
 
-[node name="NamesButton" type="Button" parent="Window/Column/Scroll/Content/NamesRow/Row"]
+[node name="NamesButton" type="Button" parent="Window/Column/Scroll/Content/DisplayPage/NamesRow/Row"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(84, 32)
 layout_mode = 2
@@ -211,16 +211,16 @@ theme_type_variation = &"ChipOnButton"
 theme_override_font_sizes/font_size = 15
 text = "On"
 
-[node name="WaterRow" type="PanelContainer" parent="Window/Column/Scroll/Content"]
+[node name="WaterRow" type="PanelContainer" parent="Window/Column/Scroll/Content/DisplayPage"]
 unique_name_in_owner = true
 layout_mode = 2
 theme_type_variation = &"Inset"
 
-[node name="Row" type="HBoxContainer" parent="Window/Column/Scroll/Content/WaterRow"]
+[node name="Row" type="HBoxContainer" parent="Window/Column/Scroll/Content/DisplayPage/WaterRow"]
 layout_mode = 2
 theme_override_constants/separation = 12
 
-[node name="Icon" type="TextureRect" parent="Window/Column/Scroll/Content/WaterRow/Row"]
+[node name="Icon" type="TextureRect" parent="Window/Column/Scroll/Content/DisplayPage/WaterRow/Row"]
 modulate = Color(0.6627451, 0.7137255, 0.77254903, 1)
 custom_minimum_size = Vector2(22, 22)
 layout_mode = 2
@@ -229,13 +229,13 @@ texture = ExtResource("8")
 expand_mode = 1
 stretch_mode = 5
 
-[node name="Name" type="Label" parent="Window/Column/Scroll/Content/WaterRow/Row"]
+[node name="Name" type="Label" parent="Window/Column/Scroll/Content/DisplayPage/WaterRow/Row"]
 layout_mode = 2
 size_flags_horizontal = 3
 text = "Water detail"
 vertical_alignment = 1
 
-[node name="WaterButton" type="Button" parent="Window/Column/Scroll/Content/WaterRow/Row"]
+[node name="WaterButton" type="Button" parent="Window/Column/Scroll/Content/DisplayPage/WaterRow/Row"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(84, 32)
 layout_mode = 2
@@ -244,17 +244,17 @@ theme_type_variation = &"ChipOnButton"
 theme_override_font_sizes/font_size = 15
 text = "High"
 
-[node name="GlassRow" type="PanelContainer" parent="Window/Column/Scroll/Content"]
+[node name="GlassRow" type="PanelContainer" parent="Window/Column/Scroll/Content/DisplayPage"]
 unique_name_in_owner = true
 layout_mode = 2
 tooltip_text = "Windows blur the map behind them. Turn it off if the game feels slow."
 theme_type_variation = &"Inset"
 
-[node name="Row" type="HBoxContainer" parent="Window/Column/Scroll/Content/GlassRow"]
+[node name="Row" type="HBoxContainer" parent="Window/Column/Scroll/Content/DisplayPage/GlassRow"]
 layout_mode = 2
 theme_override_constants/separation = 12
 
-[node name="Icon" type="TextureRect" parent="Window/Column/Scroll/Content/GlassRow/Row"]
+[node name="Icon" type="TextureRect" parent="Window/Column/Scroll/Content/DisplayPage/GlassRow/Row"]
 modulate = Color(0.6627451, 0.7137255, 0.77254903, 1)
 custom_minimum_size = Vector2(22, 22)
 layout_mode = 2
@@ -263,13 +263,13 @@ texture = ExtResource("9")
 expand_mode = 1
 stretch_mode = 5
 
-[node name="Name" type="Label" parent="Window/Column/Scroll/Content/GlassRow/Row"]
+[node name="Name" type="Label" parent="Window/Column/Scroll/Content/DisplayPage/GlassRow/Row"]
 layout_mode = 2
 size_flags_horizontal = 3
 text = "Frosted glass"
 vertical_alignment = 1
 
-[node name="GlassButton" type="Button" parent="Window/Column/Scroll/Content/GlassRow/Row"]
+[node name="GlassButton" type="Button" parent="Window/Column/Scroll/Content/DisplayPage/GlassRow/Row"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(84, 32)
 layout_mode = 2
@@ -278,16 +278,16 @@ theme_type_variation = &"ChipOnButton"
 theme_override_font_sizes/font_size = 15
 text = "On"
 
-[node name="FullscreenRow" type="PanelContainer" parent="Window/Column/Scroll/Content"]
+[node name="FullscreenRow" type="PanelContainer" parent="Window/Column/Scroll/Content/DisplayPage"]
 unique_name_in_owner = true
 layout_mode = 2
 theme_type_variation = &"Inset"
 
-[node name="Row" type="HBoxContainer" parent="Window/Column/Scroll/Content/FullscreenRow"]
+[node name="Row" type="HBoxContainer" parent="Window/Column/Scroll/Content/DisplayPage/FullscreenRow"]
 layout_mode = 2
 theme_override_constants/separation = 12
 
-[node name="Icon" type="TextureRect" parent="Window/Column/Scroll/Content/FullscreenRow/Row"]
+[node name="Icon" type="TextureRect" parent="Window/Column/Scroll/Content/DisplayPage/FullscreenRow/Row"]
 modulate = Color(0.6627451, 0.7137255, 0.77254903, 1)
 custom_minimum_size = Vector2(22, 22)
 layout_mode = 2
@@ -296,13 +296,13 @@ texture = ExtResource("9")
 expand_mode = 1
 stretch_mode = 5
 
-[node name="Name" type="Label" parent="Window/Column/Scroll/Content/FullscreenRow/Row"]
+[node name="Name" type="Label" parent="Window/Column/Scroll/Content/DisplayPage/FullscreenRow/Row"]
 layout_mode = 2
 size_flags_horizontal = 3
 text = "Full screen"
 vertical_alignment = 1
 
-[node name="FullscreenButton" type="Button" parent="Window/Column/Scroll/Content/FullscreenRow/Row"]
+[node name="FullscreenButton" type="Button" parent="Window/Column/Scroll/Content/DisplayPage/FullscreenRow/Row"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(84, 32)
 layout_mode = 2
@@ -311,16 +311,16 @@ theme_type_variation = &"ChipOnButton"
 theme_override_font_sizes/font_size = 15
 text = "Off"
 
-[node name="GameHeading" type="Label" parent="Window/Column/Scroll/Content"]
+[node name="GamePage" type="VBoxContainer" parent="Window/Column/Scroll/Content"]
+unique_name_in_owner = true
 layout_mode = 2
-theme_type_variation = &"HeadingLabel"
-text = "Game"
+theme_override_constants/separation = 6
 
-[node name="SaveNote" type="Label" parent="Window/Column/Scroll/Content"]
+[node name="SaveNote" type="Label" parent="Window/Column/Scroll/Content/GamePage"]
 layout_mode = 2
 text = "Your game saves by itself on this device."
 
-[node name="StartOverButton" type="Button" parent="Window/Column/Scroll/Content"]
+[node name="StartOverButton" type="Button" parent="Window/Column/Scroll/Content/GamePage"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(190, 44)
 layout_mode = 2
@@ -329,19 +329,19 @@ theme_type_variation = &"DangerButton"
 theme_override_font_sizes/font_size = 19
 text = "Start over"
 
-[node name="AboutHeading" type="Label" parent="Window/Column/Scroll/Content"]
+[node name="AboutHeading" type="Label" parent="Window/Column/Scroll/Content/GamePage"]
 layout_mode = 2
 theme_type_variation = &"HeadingLabel"
 text = "About"
 
-[node name="About" type="Label" parent="Window/Column/Scroll/Content"]
+[node name="About" type="Label" parent="Window/Column/Scroll/Content/GamePage"]
 layout_mode = 2
 theme_type_variation = &"SmallLabel"
 text = "Company Sim - early prototype
 Building models: Kenney (kenney.nl), CC0
 Font: Overpass (SIL Open Font License)"
 
-[node name="QuitButton" type="Button" parent="Window/Column/Scroll/Content"]
+[node name="QuitButton" type="Button" parent="Window/Column/Scroll/Content/GamePage"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(190, 44)
 layout_mode = 2
